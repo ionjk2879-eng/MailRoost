@@ -21,6 +21,7 @@ interface AccountSidebarProps {
   accounts: Account[]
   unreadCountByAccount: Record<string, number>
   selectedAccountId: string | null
+  isInboxView: boolean
   onSelectAccount: (accountId: string | null) => void
   onGoHome: () => void
 }
@@ -29,6 +30,7 @@ export function AccountSidebar({
   accounts,
   unreadCountByAccount,
   selectedAccountId,
+  isInboxView,
   onSelectAccount,
   onGoHome,
 }: AccountSidebarProps) {
@@ -63,7 +65,7 @@ export function AccountSidebar({
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={selectedAccountId === null}
+                  isActive={isInboxView && selectedAccountId === null}
                   onClick={() => {
                     onSelectAccount(null)
                     closeOnMobile()
@@ -90,7 +92,7 @@ export function AccountSidebar({
                 return (
                   <SidebarMenuItem key={account.id}>
                     <SidebarMenuButton
-                      isActive={selectedAccountId === account.id}
+                      isActive={isInboxView && selectedAccountId === account.id}
                       onClick={() => {
                         onSelectAccount(account.id)
                         closeOnMobile()

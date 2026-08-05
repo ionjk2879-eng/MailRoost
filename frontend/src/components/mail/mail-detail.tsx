@@ -36,9 +36,9 @@ a{color:#2563eb}
 export function MailDetail({ mail, accounts, isLoadingBody, onBack }: MailDetailProps) {
   if (!mail) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex h-full min-h-0 w-full flex-col">
         {onBack && <BackButton onBack={onBack} />}
-        <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
+        <div className="text-muted-foreground flex min-h-0 w-full flex-1 items-center justify-center text-sm">
           메일을 선택하세요
         </div>
       </div>
@@ -51,29 +51,31 @@ export function MailDetail({ mail, accounts, isLoadingBody, onBack }: MailDetail
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-col gap-3 p-6">
         {onBack && <BackButton onBack={onBack} />}
-        <div className="flex items-start justify-between gap-4">
-          <h2 className="text-lg font-semibold text-balance">{mail.subject}</h2>
+        <div className="flex min-w-0 items-start justify-between gap-4">
+          <h2 className="min-w-0 flex-1 text-lg font-semibold break-words">{mail.subject}</h2>
           {mail.isStarred && (
             <Star className="size-4 shrink-0 fill-amber-400 text-amber-400" />
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <Avatar>
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar className="shrink-0">
             <AvatarFallback>{mail.fromName.slice(0, 1)}</AvatarFallback>
           </Avatar>
-          <div className="flex flex-1 flex-col text-sm">
-            <div className="flex items-center gap-2">
-              <span className="font-medium">{mail.fromName}</span>
+          <div className="flex min-w-0 flex-1 flex-col text-sm">
+            <span className="truncate">
+              <span className="font-medium">{mail.fromName}</span>{" "}
               <span className="text-muted-foreground">&lt;{mail.fromEmail}&gt;</span>
-            </div>
+            </span>
             <span className="text-muted-foreground text-xs">
               {formatFullDate(mail.receivedAt)}
             </span>
           </div>
           {account && (
-            <Badge variant="secondary" className="gap-1.5">
-              <span className={`size-2 rounded-full ${account.color}`} />
-              {account.provider === "gmail" ? account.email : account.label}
+            <Badge variant="secondary" className="max-w-[45%] shrink-0 gap-1.5">
+              <span className={`size-2 shrink-0 rounded-full ${account.color}`} />
+              <span className="truncate">
+                {account.provider === "gmail" ? account.email : account.label}
+              </span>
             </Badge>
           )}
         </div>

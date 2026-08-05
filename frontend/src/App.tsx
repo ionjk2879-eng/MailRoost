@@ -1,3 +1,4 @@
+import { Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { AccountSidebar } from "@/components/mail/account-sidebar"
 import { CategoryTabs } from "@/components/mail/category-tabs"
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/resizable"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { HomeView } from "@/components/home/home-view"
 import { fetchAccounts, fetchMailDetail, fetchMails } from "@/lib/api"
 import { mockAccounts, mockMails } from "@/lib/mock-data"
 import type { Account, Mail, MailCategory } from "@/types/mail"
@@ -18,6 +20,8 @@ const REAL_ACCOUNT_PREFIX = "gmail:"
 
 function App() {
   const isMobile = useIsMobile()
+  const [isBootstrapping, setIsBootstrapping] = useState(true)
+  const [view, setView] = useState<"home" | "inbox">("home")
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [selectedMailId, setSelectedMailId] = useState<string | null>(null)
@@ -29,7 +33,11 @@ function App() {
     fetchAccounts().then((accounts) => {
       setRealAccounts(accounts)
       if (accounts.length > 0) {
-        fetchMails().then(setRealMails)
+        fetchMails()
+          .then(setRealMails)
+          .finally(() => setIsBootstrapping(false))
+      } else {
+        setIsBootstrapping(false)
       }
     })
   }, [])
@@ -108,10 +116,26 @@ function App() {
     ? (mailDetails[selectedMailStub.id] ?? selectedMailStub)
     : null
 
+  const goToInbox = (accountId: string | null) => {
+    setView("inbox")
+    setSelectedAccountId(accountId)
+    setSelectedCategory(null)
+    setSelectedMailId(null)
+  }
+
   const goHome = () => {
+    setView("home")
     setSelectedAccountId(null)
     setSelectedCategory(null)
     setSelectedMailId(null)
+  }
+
+  if (isBootstrapping) {
+    return (
+      <div className="flex h-svh items-center justify-center">
+        <Loader2 className="text-muted-foreground size-6 animate-spin" />
+      </div>
+    )
   }
 
   const mailListPane = (
@@ -150,26 +174,32 @@ function App() {
         accounts={accounts}
         unreadCountByAccount={unreadCountByAccount}
         selectedAccountId={selectedAccountId}
-        onSelectAccount={(accountId) => {
-          setSelectedAccountId(accountId)
-          setSelectedCategory(null)
-          setSelectedMailId(null)
-        }}
+        isInboxView={view === "inbox"}
+        onSelectAccount={goToInbox}
         onGoHome={goHome}
       />
       <SidebarInset>
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
           <span className="truncate text-sm font-medium">
-            {selectedAccountId
-              ? (() => {
-                  const account = accounts.find((a) => a.id === selectedAccountId)
-                  return account?.provider === "gmail" ? account.email : account?.label
-                })()
-              : "전체 받은편지함"}
+            {view === "home"
+              ? "홈"
+              : selectedAccountId
+                ? (() => {
+                    const account = accounts.find((a) => a.id === selectedAccountId)
+                    return account?.provider === "gmail" ? account.email : account?.label
+                  })()
+                : "전체 받은편지함"}
           </span>
         </header>
-        {isMobile ? (
+        {view === "home" ? (
+          <HomeView
+            accounts={accounts}
+            mails={allMails}
+            unreadCountByAccount={unreadCountByAccount}
+            onSelectAccount={goToInbox}
+          />
+        ) : isMobile ? (
           <div className="min-h-0 flex-1">
             {selectedMailId ? mailDetailPane : mailListPane}
           </div>
