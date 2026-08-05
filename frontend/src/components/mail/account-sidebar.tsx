@@ -1,5 +1,6 @@
 import { Inbox, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ConnectNaverDialog } from "@/components/mail/connect-naver-dialog"
 import {
   Sidebar,
   SidebarContent,
@@ -24,6 +25,7 @@ interface AccountSidebarProps {
   isInboxView: boolean
   onSelectAccount: (accountId: string | null) => void
   onGoHome: () => void
+  onAccountConnected: () => void
 }
 
 export function AccountSidebar({
@@ -33,9 +35,11 @@ export function AccountSidebar({
   isInboxView,
   onSelectAccount,
   onGoHome,
+  onAccountConnected,
 }: AccountSidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar()
   const connectedGmailCount = accounts.filter((a) => a.provider === "gmail").length
+  const connectedNaverCount = accounts.filter((a) => a.provider === "naver").length
   const totalUnread = Object.values(unreadCountByAccount).reduce(
     (sum, count) => sum + count,
     0,
@@ -88,7 +92,9 @@ export function AccountSidebar({
               {accounts.map((account) => {
                 const unread = unreadCountByAccount[account.id] ?? 0
                 const displayText =
-                  account.provider === "gmail" ? account.email : account.label
+                  account.provider === "gmail" || account.provider === "naver"
+                    ? account.email
+                    : account.label
                 return (
                   <SidebarMenuItem key={account.id}>
                     <SidebarMenuButton
@@ -114,7 +120,7 @@ export function AccountSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-3">
+      <SidebarFooter className="flex-col gap-2 p-3">
         <Button
           render={<a href={gmailLoginUrl} />}
           variant="outline"
@@ -124,6 +130,10 @@ export function AccountSidebar({
           <Plus className="size-4" />
           {connectedGmailCount > 0 ? "Gmail 계정 추가" : "Gmail 계정 연결"}
         </Button>
+        <ConnectNaverDialog
+          label={connectedNaverCount > 0 ? "네이버 계정 추가" : "네이버 계정 연결"}
+          onConnected={onAccountConnected}
+        />
       </SidebarFooter>
     </Sidebar>
   )

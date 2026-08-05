@@ -1,17 +1,13 @@
 import { Hono } from "hono"
 import { deleteCookie, setCookie } from "hono/cookie"
 import type { Env } from "../types"
-import { readRawCookie } from "../lib/cookies"
+import { isHttps, readRawCookie } from "../lib/cookies"
 import { buildAuthUrl, exchangeCodeForTokens, fetchProfile } from "../lib/gmail"
 import { createSessionId, readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
 const STATE_COOKIE = "roost_oauth_state"
 
 const auth = new Hono<{ Bindings: Env }>()
-
-function isHttps(url: string): boolean {
-  return new URL(url).protocol === "https:"
-}
 
 auth.get("/gmail/login", (c) => {
   const state = crypto.randomUUID()
@@ -55,6 +51,7 @@ auth.get("/gmail/callback", async (c) => {
   const session = await readSession(c.env, sessionId)
   const accountId = `gmail:${profile.emailAddress}`
   session.accounts[accountId] = {
+    provider: "gmail",
     email: profile.emailAddress,
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token,

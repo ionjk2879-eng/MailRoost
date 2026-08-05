@@ -34,7 +34,9 @@ export function HomeView({ accounts, mails, unreadCountByAccount, onSelectAccoun
             {accounts.map((account) => {
               const unread = unreadCountByAccount[account.id] ?? 0
               const displayText =
-                account.provider === "gmail" ? account.email : account.label
+                account.provider === "gmail" || account.provider === "naver"
+                  ? account.email
+                  : account.label
               return (
                 <button
                   key={account.id}

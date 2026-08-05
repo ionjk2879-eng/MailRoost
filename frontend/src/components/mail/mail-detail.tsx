@@ -74,7 +74,9 @@ export function MailDetail({ mail, accounts, isLoadingBody, onBack }: MailDetail
             <Badge variant="secondary" className="max-w-[45%] shrink-0 gap-1.5">
               <span className={`size-2 shrink-0 rounded-full ${account.color}`} />
               <span className="truncate">
-                {account.provider === "gmail" ? account.email : account.label}
+                {account.provider === "gmail" || account.provider === "naver"
+                  ? account.email
+                  : account.label}
               </span>
             </Badge>
           )}

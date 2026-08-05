@@ -22,8 +22,8 @@ function formatTime(iso: string): string {
 
 export function MailList({ mails, accounts, selectedMailId, onSelectMail }: MailListProps) {
   return (
-    <ScrollArea className="h-full">
-      <div className="flex flex-col">
+    <ScrollArea className="h-full w-full">
+      <div className="flex w-full min-w-0 flex-col">
         {mails.length === 0 && (
           <p className="text-muted-foreground p-6 text-sm">메일이 없습니다.</p>
         )}
@@ -35,21 +35,25 @@ export function MailList({ mails, accounts, selectedMailId, onSelectMail }: Mail
               type="button"
               onClick={() => onSelectMail(mail.id)}
               className={cn(
-                "flex flex-col items-start gap-1 border-b px-4 py-3 text-left text-sm transition-colors",
+                "flex w-full min-w-0 flex-col items-start gap-1 border-b px-4 py-3 text-left text-sm transition-colors",
                 "hover:bg-accent/50",
                 selectedMailId === mail.id && "bg-accent",
               )}
             >
-              <div className="flex w-full items-center gap-2">
+              <div className="flex w-full min-w-0 items-center gap-2">
                 {account && (
                   <span
                     className={cn("size-2 shrink-0 rounded-full", account.color)}
-                    title={account.provider === "gmail" ? account.email : account.label}
+                    title={
+                      account.provider === "gmail" || account.provider === "naver"
+                        ? account.email
+                        : account.label
+                    }
                   />
                 )}
                 <span
                   className={cn(
-                    "truncate",
+                    "min-w-0 flex-1 truncate",
                     !mail.isRead && "font-semibold",
                   )}
                 >
@@ -59,10 +63,10 @@ export function MailList({ mails, accounts, selectedMailId, onSelectMail }: Mail
                   {formatTime(mail.receivedAt)}
                 </span>
               </div>
-              <div className="flex w-full items-center gap-2">
+              <div className="flex w-full min-w-0 items-center gap-2">
                 <span
                   className={cn(
-                    "truncate",
+                    "min-w-0 flex-1 truncate",
                     !mail.isRead && "font-semibold",
                   )}
                 >
@@ -72,7 +76,7 @@ export function MailList({ mails, accounts, selectedMailId, onSelectMail }: Mail
                   <Star className="size-3.5 shrink-0 fill-amber-400 text-amber-400" />
                 )}
               </div>
-              <span className="text-muted-foreground w-full truncate text-xs">
+              <span className="text-muted-foreground w-full min-w-0 truncate text-xs">
                 {mail.snippet}
               </span>
             </button>

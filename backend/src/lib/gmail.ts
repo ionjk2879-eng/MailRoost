@@ -1,4 +1,5 @@
-import type { Env, GmailTokenRecord, Mail, MailCategory } from "../types"
+import type { Env, GmailAccountRecord, Mail, MailCategory } from "../types"
+import { decodeRfc2047, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
 
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -67,7 +68,7 @@ async function refreshAccessToken(
   return res.json()
 }
 
-export async function ensureFreshToken(env: Env, record: GmailTokenRecord): Promise<GmailTokenRecord> {
+export async function ensureFreshToken(env: Env, record: GmailAccountRecord): Promise<GmailAccountRecord> {
   if (record.expiresAt > Date.now() + 60_000) return record
   const refreshed = await refreshAccessToken(record.refreshToken, env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET)
   return {
@@ -108,14 +109,6 @@ function getHeader(headers: GmailHeader[] | undefined, name: string): string {
   return headers?.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? ""
 }
 
-function parseFromHeader(from: string): { name: string; email: string } {
-  const match = from.match(/^(.*?)\s*<(.+)>$/)
-  if (match) {
-    return { name: match[1].replace(/"/g, "").trim() || match[2], email: match[2] }
-  }
-  return { name: from, email: from }
-}
-
 const CATEGORY_LABEL_MAP: Record<string, MailCategory> = {
   CATEGORY_PERSONAL: "primary",
   CATEGORY_SOCIAL: "social",
@@ -141,7 +134,7 @@ function mapMessageToMail(msg: GmailMessage, accountId: string): Mail {
     accountId,
     fromName,
     fromEmail,
-    subject: getHeader(headers, "Subject") || "(제목 없음)",
+    subject: decodeRfc2047(getHeader(headers, "Subject")) || "(제목 없음)",
     snippet: msg.snippet ?? "",
     body: msg.snippet ?? "",
     category: deriveCategory(labelIds),
@@ -178,26 +171,6 @@ function decodeBase64Url(data: string): string {
   const binary = atob(base64)
   const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
   return new TextDecoder("utf-8").decode(bytes)
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-}
-
-// 이메일 HTML은 sandboxed iframe(스크립트 실행 자체가 차단됨) 안에서만 렌더링하지만,
-// 방어 심층화 차원에서 스크립트/이벤트 핸들러/javascript: URL/자동 리다이렉트는 미리 제거한다.
-function sanitizeHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<base\b[^>]*>/gi, "")
-    .replace(/<meta\s+[^>]*http-equiv=["']?refresh["']?[^>]*>/gi, "")
-    .replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "")
-    .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, `$1=$2#$2`)
 }
 
 function findPart(part: GmailMessagePart, mimeType: string): GmailMessagePart | undefined {

@@ -16,7 +16,9 @@ import { fetchAccounts, fetchMailDetail, fetchMails } from "@/lib/api"
 import { mockAccounts, mockMails } from "@/lib/mock-data"
 import type { Account, Mail, MailCategory } from "@/types/mail"
 
-const REAL_ACCOUNT_PREFIX = "gmail:"
+function isRealAccountId(accountId: string): boolean {
+  return accountId.includes(":")
+}
 
 function App() {
   const isMobile = useIsMobile()
@@ -29,34 +31,39 @@ function App() {
   const [realMails, setRealMails] = useState<Mail[]>([])
   const [mailDetails, setMailDetails] = useState<Record<string, Mail>>({})
 
-  useEffect(() => {
-    fetchAccounts().then((accounts) => {
+  const loadAccountsAndMails = () => {
+    return fetchAccounts().then((accounts) => {
       setRealAccounts(accounts)
       if (accounts.length > 0) {
-        fetchMails()
-          .then(setRealMails)
-          .finally(() => setIsBootstrapping(false))
-      } else {
-        setIsBootstrapping(false)
+        return fetchMails().then(setRealMails)
       }
     })
+  }
+
+  useEffect(() => {
+    loadAccountsAndMails().finally(() => setIsBootstrapping(false))
   }, [])
 
   const isGmailConnected = realAccounts.some((a) => a.provider === "gmail")
+  const isNaverConnected = realAccounts.some((a) => a.provider === "naver")
 
   const accounts = useMemo(() => {
-    const mockWithoutGmail = isGmailConnected
-      ? mockAccounts.filter((a) => a.provider !== "gmail")
-      : mockAccounts
-    return [...realAccounts, ...mockWithoutGmail]
-  }, [realAccounts, isGmailConnected])
+    const mockFiltered = mockAccounts.filter((a) => {
+      if (a.provider === "gmail") return !isGmailConnected
+      if (a.provider === "naver") return !isNaverConnected
+      return true
+    })
+    return [...realAccounts, ...mockFiltered]
+  }, [realAccounts, isGmailConnected, isNaverConnected])
 
   const allMails = useMemo(() => {
-    const mockWithoutGmail = isGmailConnected
-      ? mockMails.filter((m) => !m.accountId.startsWith("acc-gmail"))
-      : mockMails
-    return [...realMails, ...mockWithoutGmail]
-  }, [realMails, isGmailConnected])
+    const mockFiltered = mockMails.filter((m) => {
+      if (m.accountId.startsWith("acc-gmail")) return !isGmailConnected
+      if (m.accountId.startsWith("acc-naver")) return !isNaverConnected
+      return true
+    })
+    return [...realMails, ...mockFiltered]
+  }, [realMails, isGmailConnected, isNaverConnected])
 
   const unreadCountByAccount = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -100,7 +107,7 @@ function App() {
   const selectedMailStub = visibleMails.find((mail) => mail.id === selectedMailId) ?? null
 
   useEffect(() => {
-    if (!selectedMailStub || !selectedMailStub.accountId.startsWith(REAL_ACCOUNT_PREFIX)) return
+    if (!selectedMailStub || !isRealAccountId(selectedMailStub.accountId)) return
     if (mailDetails[selectedMailStub.id]) return
     fetchMailDetail(selectedMailStub.id, selectedMailStub.accountId).then((detail) => {
       if (detail) setMailDetails((prev) => ({ ...prev, [detail.id]: detail }))
@@ -109,7 +116,7 @@ function App() {
 
   const isLoadingDetail =
     selectedMailStub !== null &&
-    selectedMailStub.accountId.startsWith(REAL_ACCOUNT_PREFIX) &&
+    isRealAccountId(selectedMailStub.accountId) &&
     !mailDetails[selectedMailStub.id]
 
   const selectedMail = selectedMailStub
@@ -177,6 +184,7 @@ function App() {
         isInboxView={view === "inbox"}
         onSelectAccount={goToInbox}
         onGoHome={goHome}
+        onAccountConnected={loadAccountsAndMails}
       />
       <SidebarInset>
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
@@ -187,7 +195,9 @@ function App() {
               : selectedAccountId
                 ? (() => {
                     const account = accounts.find((a) => a.id === selectedAccountId)
-                    return account?.provider === "gmail" ? account.email : account?.label
+                    return account?.provider === "gmail" || account?.provider === "naver"
+                      ? account.email
+                      : account?.label
                   })()
                 : "전체 받은편지함"}
           </span>

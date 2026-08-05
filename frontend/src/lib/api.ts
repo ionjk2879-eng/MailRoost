@@ -23,3 +23,17 @@ export async function fetchMailDetail(id: string, accountId: string): Promise<Ma
   if (!res.ok) return null
   return res.json()
 }
+
+export async function connectNaverAccount(
+  email: string,
+  appPassword: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await fetch("/auth/naver/connect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, appPassword }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) return { ok: false, error: data.error ?? "네이버 계정 연결에 실패했습니다." }
+  return { ok: true }
+}

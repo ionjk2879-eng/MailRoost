@@ -32,13 +32,22 @@ export interface Mail {
   isStarred: boolean
 }
 
-export interface GmailTokenRecord {
+export interface GmailAccountRecord {
+  provider: "gmail"
   email: string
   accessToken: string
   refreshToken: string
   expiresAt: number
 }
 
+export interface NaverAccountRecord {
+  provider: "naver"
+  email: string
+  appPassword: string
+}
+
+export type ConnectedAccountRecord = GmailAccountRecord | NaverAccountRecord
+
 export interface StoredSession {
-  accounts: Record<string, GmailTokenRecord>
+  accounts: Record<string, ConnectedAccountRecord>
 }

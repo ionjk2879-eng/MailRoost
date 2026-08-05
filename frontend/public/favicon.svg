@@ -1,5 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="8" fill="#EA580C"/>
-  <path d="M6 11a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V11Z" fill="#fff"/>
-  <path d="M6.5 10.2 16 18l9.5-7.8" fill="none" stroke="#EA580C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect width="32" height="32" rx="7" fill="#EA580C"/>
+  <!-- envelope -->
+  <rect x="4" y="17" width="24" height="11" rx="2.2" fill="#fff"/>
+  <path d="M5 17.5 L16 24 L27 17.5" fill="none" stroke="#EA580C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- bird, bold and simple so it still reads at 16px -->
+  <ellipse cx="15.5" cy="13" rx="5.5" ry="4.5" fill="#fff"/>
+  <path d="M20.5 11.5 L25 13 L20.5 14.5 Z" fill="#fff"/>
 </svg>

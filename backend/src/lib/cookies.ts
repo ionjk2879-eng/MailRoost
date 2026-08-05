@@ -6,3 +6,7 @@ export function readRawCookie(cookieHeader: string | undefined, name: string): s
   const match = cookieHeader.match(new RegExp(`(?:^|[;,]\\s*)${name}=([^;,]*)`))
   return match ? decodeURIComponent(match[1]) : undefined
 }
+
+export function isHttps(url: string): boolean {
+  return new URL(url).protocol === "https:"
+}
