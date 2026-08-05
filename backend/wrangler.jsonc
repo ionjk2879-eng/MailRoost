@@ -11,8 +11,7 @@
   "kv_namespaces": [
     {
       "binding": "TOKENS",
-      // 로컬 개발용 placeholder id. 배포 전 `wrangler kv namespace create TOKENS`로 실제 id를 발급받아 교체하세요.
-      "id": "local-dev-tokens"
+      "id": "40211436f424442ba0281acc1c24b1c9"
     }
   ]
 }

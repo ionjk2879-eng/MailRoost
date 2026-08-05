@@ -1,4 +1,4 @@
-import type { Env, GmailTokenRecord, Mail } from "../types"
+import type { Env, GmailTokenRecord, Mail, MailCategory } from "../types"
 
 const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -10,7 +10,7 @@ export function buildAuthUrl(clientId: string, redirectUri: string, state: strin
   url.searchParams.set("response_type", "code")
   url.searchParams.set("scope", GMAIL_SCOPE)
   url.searchParams.set("access_type", "offline")
-  url.searchParams.set("prompt", "consent")
+  url.searchParams.set("prompt", "select_account consent")
   url.searchParams.set("state", state)
   return url.toString()
 }
@@ -81,7 +81,7 @@ export async function fetchProfile(accessToken: string): Promise<{ emailAddress:
   const res = await fetch(`${GMAIL_API_BASE}/profile`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
-  if (!res.ok) throw new Error(`Gmail profile fetch failed: ${res.status}`)
+  if (!res.ok) throw new Error(`Gmail profile fetch failed: ${res.status} ${await res.text()}`)
   return res.json()
 }
 
@@ -116,6 +116,22 @@ function parseFromHeader(from: string): { name: string; email: string } {
   return { name: from, email: from }
 }
 
+const CATEGORY_LABEL_MAP: Record<string, MailCategory> = {
+  CATEGORY_PERSONAL: "primary",
+  CATEGORY_SOCIAL: "social",
+  CATEGORY_PROMOTIONS: "promotions",
+  CATEGORY_UPDATES: "updates",
+  CATEGORY_FORUMS: "forums",
+}
+
+function deriveCategory(labelIds: string[]): MailCategory {
+  for (const labelId of labelIds) {
+    const category = CATEGORY_LABEL_MAP[labelId]
+    if (category) return category
+  }
+  return "primary"
+}
+
 function mapMessageToMail(msg: GmailMessage, accountId: string): Mail {
   const headers = msg.payload?.headers
   const { name: fromName, email: fromEmail } = parseFromHeader(getHeader(headers, "From"))
@@ -128,6 +144,7 @@ function mapMessageToMail(msg: GmailMessage, accountId: string): Mail {
     subject: getHeader(headers, "Subject") || "(제목 없음)",
     snippet: msg.snippet ?? "",
     body: msg.snippet ?? "",
+    category: deriveCategory(labelIds),
     receivedAt: msg.internalDate ? new Date(Number(msg.internalDate)).toISOString() : new Date().toISOString(),
     isRead: !labelIds.includes("UNREAD"),
     isStarred: labelIds.includes("STARRED"),
@@ -165,10 +182,22 @@ function decodeBase64Url(data: string): string {
 
 function stripHtml(html: string): string {
   return html
+    .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim()
+}
+
+// 이메일 HTML은 sandboxed iframe(스크립트 실행 자체가 차단됨) 안에서만 렌더링하지만,
+// 방어 심층화 차원에서 스크립트/이벤트 핸들러/javascript: URL/자동 리다이렉트는 미리 제거한다.
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<base\b[^>]*>/gi, "")
+    .replace(/<meta\s+[^>]*http-equiv=["']?refresh["']?[^>]*>/gi, "")
+    .replace(/\son\w+\s*=\s*(".*?"|'.*?'|[^\s>]+)/gi, "")
+    .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, `$1=$2#$2`)
 }
 
 function findPart(part: GmailMessagePart, mimeType: string): GmailMessagePart | undefined {
@@ -182,14 +211,18 @@ function findPart(part: GmailMessagePart, mimeType: string): GmailMessagePart | 
   return undefined
 }
 
-function extractBody(payload: GmailMessagePart | undefined): string {
-  if (!payload) return ""
-  const plain = findPart(payload, "text/plain")
-  if (plain?.body?.data) return decodeBase64Url(plain.body.data)
-  const html = findPart(payload, "text/html")
-  if (html?.body?.data) return stripHtml(decodeBase64Url(html.body.data))
-  if (payload.body?.data) return decodeBase64Url(payload.body.data)
-  return ""
+function extractBody(payload: GmailMessagePart | undefined): { text?: string; html?: string } {
+  if (!payload) return {}
+  const plainPart = findPart(payload, "text/plain")
+  const htmlPart = findPart(payload, "text/html")
+  const text = plainPart?.body?.data ? decodeBase64Url(plainPart.body.data) : undefined
+  const html = htmlPart?.body?.data ? decodeBase64Url(htmlPart.body.data) : undefined
+  if (text || html) return { text, html }
+  if (payload.body?.data) {
+    const raw = decodeBase64Url(payload.body.data)
+    return payload.mimeType === "text/html" ? { html: raw } : { text: raw }
+  }
+  return {}
 }
 
 export async function getMailDetail(accessToken: string, accountId: string, messageId: string): Promise<Mail> {
@@ -199,7 +232,8 @@ export async function getMailDetail(accessToken: string, accountId: string, mess
   if (!res.ok) throw new Error(`Gmail message fetch failed: ${res.status}`)
   const msg = (await res.json()) as GmailMessage
   const mail = mapMessageToMail(msg, accountId)
-  const body = extractBody(msg.payload)
-  mail.body = body || mail.snippet
+  const { text, html } = extractBody(msg.payload)
+  mail.bodyHtml = html ? sanitizeHtml(html) : undefined
+  mail.body = text || (html ? stripHtml(html) : "") || mail.snippet
   return mail
 }

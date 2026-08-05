@@ -1,28 +1,38 @@
 import { Hono } from "hono"
-import { getCookie } from "hono/cookie"
 import type { Account, Env, Mail } from "../types"
+import { readRawCookie } from "../lib/cookies"
 import { ensureFreshToken, getMailDetail, listInboxMails } from "../lib/gmail"
 import { readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
 const api = new Hono<{ Bindings: Env }>()
 
+// 계정마다 다른 색으로 구분되도록 하는 팔레트. 네이버(초록)/회사메일(파랑) mock 계정과 겹치지 않는 색 위주로 구성.
+const GMAIL_COLOR_PALETTE = [
+  "bg-red-500",
+  "bg-orange-500",
+  "bg-pink-500",
+  "bg-purple-500",
+  "bg-amber-500",
+  "bg-rose-500",
+]
+
 api.get("/accounts", async (c) => {
-  const sessionId = getCookie(c, SESSION_COOKIE)
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json<Account[]>([])
 
   const session = await readSession(c.env, sessionId)
-  const accounts: Account[] = Object.entries(session.accounts).map(([id, record]) => ({
+  const accounts: Account[] = Object.entries(session.accounts).map(([id, record], index) => ({
     id,
     email: record.email,
     provider: "gmail",
     label: "Gmail",
-    color: "bg-red-500",
+    color: GMAIL_COLOR_PALETTE[index % GMAIL_COLOR_PALETTE.length],
   }))
   return c.json(accounts)
 })
 
 api.get("/mail", async (c) => {
-  const sessionId = getCookie(c, SESSION_COOKIE)
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json<Mail[]>([])
 
   const session = await readSession(c.env, sessionId)
@@ -53,7 +63,7 @@ api.get("/mail", async (c) => {
 })
 
 api.get("/mail/:id", async (c) => {
-  const sessionId = getCookie(c, SESSION_COOKIE)
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   const accountId = c.req.query("accountId")
   const mailId = c.req.param("id")
   if (!sessionId || !accountId) return c.json({ error: "not found" }, 404)

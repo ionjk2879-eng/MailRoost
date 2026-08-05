@@ -21,7 +21,6 @@ interface AccountSidebarProps {
   unreadCountByAccount: Record<string, number>
   selectedAccountId: string | null
   onSelectAccount: (accountId: string | null) => void
-  isGmailConnected: boolean
 }
 
 export function AccountSidebar({
@@ -29,8 +28,8 @@ export function AccountSidebar({
   unreadCountByAccount,
   selectedAccountId,
   onSelectAccount,
-  isGmailConnected,
 }: AccountSidebarProps) {
+  const connectedGmailCount = accounts.filter((a) => a.provider === "gmail").length
   const totalUnread = Object.values(unreadCountByAccount).reduce(
     (sum, count) => sum + count,
     0,
@@ -66,16 +65,19 @@ export function AccountSidebar({
             <SidebarMenu>
               {accounts.map((account) => {
                 const unread = unreadCountByAccount[account.id] ?? 0
+                const displayText =
+                  account.provider === "gmail" ? account.email : account.label
                 return (
                   <SidebarMenuItem key={account.id}>
                     <SidebarMenuButton
                       isActive={selectedAccountId === account.id}
                       onClick={() => onSelectAccount(account.id)}
+                      title={account.email}
                     >
                       <span
                         className={`size-2 shrink-0 rounded-full ${account.color}`}
                       />
-                      <span className="truncate">{account.label}</span>
+                      <span className="truncate">{displayText}</span>
                     </SidebarMenuButton>
                     {unread > 0 && (
                       <SidebarMenuBadge>{unread}</SidebarMenuBadge>
@@ -87,19 +89,17 @@ export function AccountSidebar({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      {!isGmailConnected && (
-        <SidebarFooter className="p-3">
-          <Button
-            render={<a href={gmailLoginUrl} />}
-            variant="outline"
-            size="sm"
-            className="w-full justify-start gap-2"
-          >
-            <Plus className="size-4" />
-            Gmail 계정 연결
-          </Button>
-        </SidebarFooter>
-      )}
+      <SidebarFooter className="p-3">
+        <Button
+          render={<a href={gmailLoginUrl} />}
+          variant="outline"
+          size="sm"
+          className="w-full justify-start gap-2"
+        >
+          <Plus className="size-4" />
+          {connectedGmailCount > 0 ? "Gmail 계정 추가" : "Gmail 계정 연결"}
+        </Button>
+      </SidebarFooter>
     </Sidebar>
   )
 }

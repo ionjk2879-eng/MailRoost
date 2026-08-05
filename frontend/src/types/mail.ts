@@ -1,5 +1,7 @@
 export type Provider = "gmail" | "naver" | "daum" | "imap"
 
+export type MailCategory = "primary" | "social" | "promotions" | "updates" | "forums"
+
 export interface Account {
   id: string
   email: string
@@ -16,6 +18,8 @@ export interface Mail {
   subject: string
   snippet: string
   body: string
+  bodyHtml?: string
+  category: MailCategory
   receivedAt: string
   isRead: boolean
   isStarred: boolean

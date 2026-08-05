@@ -44,7 +44,7 @@ export function MailList({ mails, accounts, selectedMailId, onSelectMail }: Mail
                 {account && (
                   <span
                     className={cn("size-2 shrink-0 rounded-full", account.color)}
-                    title={account.label}
+                    title={account.provider === "gmail" ? account.email : account.label}
                   />
                 )}
                 <span

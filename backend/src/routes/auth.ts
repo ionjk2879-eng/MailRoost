@@ -1,6 +1,7 @@
 import { Hono } from "hono"
-import { deleteCookie, getCookie, setCookie } from "hono/cookie"
+import { deleteCookie, setCookie } from "hono/cookie"
 import type { Env } from "../types"
+import { readRawCookie } from "../lib/cookies"
 import { buildAuthUrl, exchangeCodeForTokens, fetchProfile } from "../lib/gmail"
 import { createSessionId, readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
@@ -8,11 +9,15 @@ const STATE_COOKIE = "roost_oauth_state"
 
 const auth = new Hono<{ Bindings: Env }>()
 
+function isHttps(url: string): boolean {
+  return new URL(url).protocol === "https:"
+}
+
 auth.get("/gmail/login", (c) => {
   const state = crypto.randomUUID()
   setCookie(c, STATE_COOKIE, state, {
     httpOnly: true,
-    secure: true,
+    secure: isHttps(c.req.url),
     sameSite: "Lax",
     path: "/",
     maxAge: 600,
@@ -25,7 +30,7 @@ auth.get("/gmail/login", (c) => {
 auth.get("/gmail/callback", async (c) => {
   const code = c.req.query("code")
   const state = c.req.query("state")
-  const expectedState = getCookie(c, STATE_COOKIE)
+  const expectedState = readRawCookie(c.req.header("Cookie"), STATE_COOKIE)
   deleteCookie(c, STATE_COOKIE, { path: "/" })
 
   if (!code || !state || !expectedState || state !== expectedState) {
@@ -44,7 +49,7 @@ auth.get("/gmail/callback", async (c) => {
 
   const profile = await fetchProfile(tokens.access_token)
 
-  let sessionId = getCookie(c, SESSION_COOKIE)
+  let sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) sessionId = createSessionId()
 
   const session = await readSession(c.env, sessionId)
@@ -59,7 +64,7 @@ auth.get("/gmail/callback", async (c) => {
 
   setCookie(c, SESSION_COOKIE, sessionId, {
     httpOnly: true,
-    secure: true,
+    secure: isHttps(c.req.url),
     sameSite: "Lax",
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
