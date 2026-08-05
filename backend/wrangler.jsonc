@@ -1,0 +1,18 @@
+{
+  "name": "mailroost",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-01",
+  "assets": {
+    "directory": "../frontend/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/auth/*"]
+  },
+  "kv_namespaces": [
+    {
+      "binding": "TOKENS",
+      // 로컬 개발용 placeholder id. 배포 전 `wrangler kv namespace create TOKENS`로 실제 id를 발급받아 교체하세요.
+      "id": "local-dev-tokens"
+    }
+  ]
+}

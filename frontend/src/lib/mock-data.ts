@@ -1,0 +1,104 @@
+import type { Account, Mail } from "@/types/mail"
+
+export const mockAccounts: Account[] = [
+  {
+    id: "acc-gmail",
+    email: "me@gmail.com",
+    provider: "gmail",
+    label: "Gmail",
+    color: "bg-red-500",
+  },
+  {
+    id: "acc-naver",
+    email: "me@naver.com",
+    provider: "naver",
+    label: "네이버",
+    color: "bg-green-500",
+  },
+  {
+    id: "acc-work",
+    email: "me@company.com",
+    provider: "imap",
+    label: "회사 메일",
+    color: "bg-blue-500",
+  },
+]
+
+export const mockMails: Mail[] = [
+  {
+    id: "mail-1",
+    accountId: "acc-gmail",
+    fromName: "GitHub",
+    fromEmail: "notifications@github.com",
+    subject: "[my-repo] 새 PR이 열렸습니다: Add unified inbox UI",
+    snippet: "ionjk2879 opened a pull request. 리뷰를 요청합니다...",
+    body: "ionjk2879 opened pull request #42 in my-repo:\n\n\"Add unified inbox UI\"\n\n리뷰를 부탁드립니다. 변경 사항에는 프론트엔드 레이아웃과 목업 데이터가 포함되어 있습니다.",
+    receivedAt: "2026-08-05T09:12:00+09:00",
+    isRead: false,
+    isStarred: true,
+  },
+  {
+    id: "mail-2",
+    accountId: "acc-naver",
+    fromName: "쿠팡",
+    fromEmail: "noreply@coupang.com",
+    subject: "주문하신 상품이 발송되었습니다",
+    snippet: "주문번호 20260805-1234 상품이 오늘 출발합니다.",
+    body: "안녕하세요, 고객님.\n\n주문번호 20260805-1234 상품이 오늘 출발하였습니다.\n배송 조회는 마이페이지에서 확인하실 수 있습니다.",
+    receivedAt: "2026-08-05T08:47:00+09:00",
+    isRead: false,
+    isStarred: false,
+  },
+  {
+    id: "mail-3",
+    accountId: "acc-work",
+    fromName: "김팀장",
+    fromEmail: "team.lead@company.com",
+    subject: "[공지] 다음 주 스프린트 계획 회의 일정 안내",
+    snippet: "다음 주 화요일 오전 10시에 스프린트 계획 회의를 진행합니다...",
+    body: "안녕하세요, 팀 여러분.\n\n다음 주 화요일(8/12) 오전 10시에 스프린트 계획 회의를 진행할 예정입니다.\n회의실은 추후 공지드리겠습니다.\n\n감사합니다.",
+    receivedAt: "2026-08-04T18:30:00+09:00",
+    isRead: true,
+    isStarred: false,
+  },
+  {
+    id: "mail-4",
+    accountId: "acc-gmail",
+    fromName: "Google",
+    fromEmail: "no-reply@accounts.google.com",
+    subject: "새로운 기기에서 로그인되었습니다",
+    snippet: "Windows 기기에서 계정에 로그인했습니다. 본인이 맞다면 무시하세요.",
+    body: "새로운 Windows 기기에서 계정 로그인이 감지되었습니다.\n\n시간: 2026-08-04 21:03\n위치: 대한민국 서울\n\n본인이 아니라면 즉시 비밀번호를 변경하세요.",
+    receivedAt: "2026-08-04T21:03:00+09:00",
+    isRead: true,
+    isStarred: false,
+  },
+  {
+    id: "mail-5",
+    accountId: "acc-work",
+    fromName: "박대리",
+    fromEmail: "park@company.com",
+    subject: "Re: 견적서 검토 부탁드립니다",
+    snippet: "검토 완료했습니다. 몇 가지 수정사항 공유드려요.",
+    body: "견적서 검토 완료했습니다.\n\n1. 수량 단위 확인 필요\n2. 납기일 재조정 요청\n3. 총액 재계산 필요\n\n확인 후 회신 부탁드립니다.",
+    receivedAt: "2026-08-04T15:11:00+09:00",
+    isRead: true,
+    isStarred: true,
+  },
+  {
+    id: "mail-6",
+    accountId: "acc-naver",
+    fromName: "네이버페이",
+    fromEmail: "npay@naver.com",
+    subject: "결제 완료 안내 (32,900원)",
+    snippet: "네이버페이로 32,900원이 결제되었습니다.",
+    body: "결제가 완료되었습니다.\n\n결제금액: 32,900원\n가맹점: 온라인서점\n결제일시: 2026-08-04 12:20",
+    receivedAt: "2026-08-04T12:20:00+09:00",
+    isRead: true,
+    isStarred: false,
+  },
+]
+
+export function accountById(accountId: string): Account | undefined {
+  return mockAccounts.find((a) => a.id === accountId)
+}
