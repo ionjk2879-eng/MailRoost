@@ -9,6 +9,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { fetchAccounts, fetchMailDetail, fetchMails } from "@/lib/api"
 import { mockAccounts, mockMails } from "@/lib/mock-data"
 import type { Account, Mail, MailCategory } from "@/types/mail"
@@ -16,6 +17,7 @@ import type { Account, Mail, MailCategory } from "@/types/mail"
 const REAL_ACCOUNT_PREFIX = "gmail:"
 
 function App() {
+  const isMobile = useIsMobile()
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [selectedMailId, setSelectedMailId] = useState<string | null>(null)
@@ -106,6 +108,42 @@ function App() {
     ? (mailDetails[selectedMailStub.id] ?? selectedMailStub)
     : null
 
+  const goHome = () => {
+    setSelectedAccountId(null)
+    setSelectedCategory(null)
+    setSelectedMailId(null)
+  }
+
+  const mailListPane = (
+    <div className="flex h-full min-h-0 flex-col">
+      <CategoryTabs
+        counts={categoryCounts}
+        selected={selectedCategory}
+        onSelect={(category) => {
+          setSelectedCategory(category)
+          setSelectedMailId(null)
+        }}
+      />
+      <div className="min-h-0 flex-1">
+        <MailList
+          mails={visibleMails}
+          accounts={accounts}
+          selectedMailId={selectedMailId}
+          onSelectMail={setSelectedMailId}
+        />
+      </div>
+    </div>
+  )
+
+  const mailDetailPane = (
+    <MailDetail
+      mail={selectedMail}
+      accounts={accounts}
+      isLoadingBody={isLoadingDetail}
+      onBack={isMobile ? () => setSelectedMailId(null) : undefined}
+    />
+  )
+
   return (
     <SidebarProvider className="h-svh overflow-hidden">
       <AccountSidebar
@@ -117,11 +155,12 @@ function App() {
           setSelectedCategory(null)
           setSelectedMailId(null)
         }}
+        onGoHome={goHome}
       />
       <SidebarInset>
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
-          <span className="text-sm font-medium">
+          <span className="truncate text-sm font-medium">
             {selectedAccountId
               ? (() => {
                   const account = accounts.find((a) => a.id === selectedAccountId)
@@ -130,32 +169,21 @@ function App() {
               : "전체 받은편지함"}
           </span>
         </header>
-        <ResizablePanelGroup orientation="horizontal" className="flex-1">
-          <ResizablePanel defaultSize="38" minSize="25" maxSize="55" className="overflow-hidden">
-            <div className="flex h-full min-h-0 flex-col">
-              <CategoryTabs
-                counts={categoryCounts}
-                selected={selectedCategory}
-                onSelect={(category) => {
-                  setSelectedCategory(category)
-                  setSelectedMailId(null)
-                }}
-              />
-              <div className="min-h-0 flex-1">
-                <MailList
-                  mails={visibleMails}
-                  accounts={accounts}
-                  selectedMailId={selectedMailId}
-                  onSelectMail={setSelectedMailId}
-                />
-              </div>
-            </div>
-          </ResizablePanel>
-          <ResizableHandle withHandle />
-          <ResizablePanel defaultSize="62" className="overflow-hidden">
-            <MailDetail mail={selectedMail} accounts={accounts} isLoadingBody={isLoadingDetail} />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+        {isMobile ? (
+          <div className="min-h-0 flex-1">
+            {selectedMailId ? mailDetailPane : mailListPane}
+          </div>
+        ) : (
+          <ResizablePanelGroup orientation="horizontal" className="flex-1">
+            <ResizablePanel defaultSize="38" minSize="25" maxSize="55" className="overflow-hidden">
+              {mailListPane}
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize="62" className="overflow-hidden">
+              {mailDetailPane}
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        )}
       </SidebarInset>
     </SidebarProvider>
   )

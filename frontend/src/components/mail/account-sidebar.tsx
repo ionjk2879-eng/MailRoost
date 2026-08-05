@@ -12,6 +12,7 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { gmailLoginUrl } from "@/lib/api"
 import type { Account } from "@/types/mail"
@@ -21,6 +22,7 @@ interface AccountSidebarProps {
   unreadCountByAccount: Record<string, number>
   selectedAccountId: string | null
   onSelectAccount: (accountId: string | null) => void
+  onGoHome: () => void
 }
 
 export function AccountSidebar({
@@ -28,17 +30,32 @@ export function AccountSidebar({
   unreadCountByAccount,
   selectedAccountId,
   onSelectAccount,
+  onGoHome,
 }: AccountSidebarProps) {
+  const { isMobile, setOpenMobile } = useSidebar()
   const connectedGmailCount = accounts.filter((a) => a.provider === "gmail").length
   const totalUnread = Object.values(unreadCountByAccount).reduce(
     (sum, count) => sum + count,
     0,
   )
 
+  const closeOnMobile = () => {
+    if (isMobile) setOpenMobile(false)
+  }
+
   return (
     <Sidebar>
       <SidebarHeader className="px-4 py-3">
-        <span className="text-lg font-semibold">MailRoost</span>
+        <button
+          type="button"
+          onClick={() => {
+            onGoHome()
+            closeOnMobile()
+          }}
+          className="cursor-pointer rounded-md text-lg font-semibold outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          MailRoost
+        </button>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -47,7 +64,10 @@ export function AccountSidebar({
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={selectedAccountId === null}
-                  onClick={() => onSelectAccount(null)}
+                  onClick={() => {
+                    onSelectAccount(null)
+                    closeOnMobile()
+                  }}
                 >
                   <Inbox />
                   <span>전체 받은편지함</span>
@@ -71,7 +91,10 @@ export function AccountSidebar({
                   <SidebarMenuItem key={account.id}>
                     <SidebarMenuButton
                       isActive={selectedAccountId === account.id}
-                      onClick={() => onSelectAccount(account.id)}
+                      onClick={() => {
+                        onSelectAccount(account.id)
+                        closeOnMobile()
+                      }}
                       title={account.email}
                     >
                       <span

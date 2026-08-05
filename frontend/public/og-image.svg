@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#111827"/>
+  <g transform="translate(430,205)">
+    <rect width="220" height="220" rx="48" fill="#EA580C"/>
+    <path d="M42 78a14 14 0 0 1 14-14h110a14 14 0 0 1 14 14v66a14 14 0 0 1-14 14H56a14 14 0 0 1-14-14V78Z" fill="#fff"/>
+    <path d="M45 74 110 122l65-48" fill="none" stroke="#EA580C" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="600" y="500" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="72" font-weight="600" fill="#ffffff">MailRoost</text>
+  <text x="600" y="555" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="28" fill="#9ca3af">여러 이메일 계정을 한곳에 모아보기</text>
+</svg>

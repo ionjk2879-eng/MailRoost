@@ -1,6 +1,7 @@
-import { Star } from "lucide-react"
+import { ChevronLeft, Star } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Account, Mail } from "@/types/mail"
@@ -9,6 +10,7 @@ interface MailDetailProps {
   mail: Mail | null
   accounts: Account[]
   isLoadingBody?: boolean
+  onBack?: () => void
 }
 
 function formatFullDate(iso: string): string {
@@ -31,11 +33,14 @@ a{color:#2563eb}
 </style></head><body>${bodyHtml}</body></html>`
 }
 
-export function MailDetail({ mail, accounts, isLoadingBody }: MailDetailProps) {
+export function MailDetail({ mail, accounts, isLoadingBody, onBack }: MailDetailProps) {
   if (!mail) {
     return (
-      <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
-        메일을 선택하세요
+      <div className="flex h-full flex-col">
+        {onBack && <BackButton onBack={onBack} />}
+        <div className="text-muted-foreground flex flex-1 items-center justify-center text-sm">
+          메일을 선택하세요
+        </div>
       </div>
     )
   }
@@ -45,6 +50,7 @@ export function MailDetail({ mail, accounts, isLoadingBody }: MailDetailProps) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-col gap-3 p-6">
+        {onBack && <BackButton onBack={onBack} />}
         <div className="flex items-start justify-between gap-4">
           <h2 className="text-lg font-semibold text-balance">{mail.subject}</h2>
           {mail.isStarred && (
@@ -96,5 +102,14 @@ export function MailDetail({ mail, accounts, isLoadingBody }: MailDetailProps) {
         )}
       </div>
     </div>
+  )
+}
+
+function BackButton({ onBack }: { onBack: () => void }) {
+  return (
+    <Button variant="ghost" size="sm" className="-ml-2 w-fit gap-1" onClick={onBack}>
+      <ChevronLeft className="size-4" />
+      목록으로
+    </Button>
   )
 }
