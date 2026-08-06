@@ -908,7 +908,6 @@ function App() {
               onMarkAllRead={handleMarkAllRead}
               onDeleteBeforeDate={handleDeleteBeforeDate}
               onEmptyTrashAccount={handleEmptyTrashAccount}
-              onEmptyAllTrash={handleEmptyAllTrash}
               folders={folders}
               rules={rules}
               onCreateRule={handleCreateRule}
@@ -926,6 +925,7 @@ function App() {
               isLoadingMore={isTrashLoadingMore}
               onLoadMore={handleLoadMoreTrash}
               onEmptyAccount={handleEmptyTrashAccount}
+              onEmptyAllAccounts={handleEmptyAllTrash}
               onDeleteSelected={handleDeleteFromTrash}
               onRestoreSelected={handleRestoreFromTrash}
             />

@@ -13,6 +13,7 @@ interface TrashViewProps {
   isLoadingMore: boolean
   onLoadMore: () => void
   onEmptyAccount: (accountId: string) => Promise<void>
+  onEmptyAllAccounts: () => Promise<{ ok: boolean; error?: string }>
   onDeleteSelected: (mails: Mail[]) => Promise<void>
   onRestoreSelected: (mails: Mail[]) => Promise<void>
 }
@@ -41,6 +42,7 @@ export function TrashView({
   isLoadingMore,
   onLoadMore,
   onEmptyAccount,
+  onEmptyAllAccounts,
   onDeleteSelected,
   onRestoreSelected,
 }: TrashViewProps) {
@@ -49,6 +51,9 @@ export function TrashView({
   const [confirmEmptyId, setConfirmEmptyId] = useState<string | null>(null)
   const [isDeletingSelected, setIsDeletingSelected] = useState(false)
   const [isRestoringSelected, setIsRestoringSelected] = useState(false)
+  const [confirmEmptyAll, setConfirmEmptyAll] = useState(false)
+  const [isEmptyingAll, setIsEmptyingAll] = useState(false)
+  const [emptyAllError, setEmptyAllError] = useState<string | null>(null)
 
   const allChecked = mails.length > 0 && mails.every((m) => checkedIds.has(m.id))
   const someChecked = checkedIds.size > 0 && !allChecked
@@ -73,6 +78,15 @@ export function TrashView({
     setEmptyingAccountId(null)
   }
 
+  const handleEmptyAll = async () => {
+    setConfirmEmptyAll(false)
+    setEmptyAllError(null)
+    setIsEmptyingAll(true)
+    const result = await onEmptyAllAccounts()
+    setIsEmptyingAll(false)
+    if (!result.ok) setEmptyAllError(result.error ?? "휴지통을 비우지 못했습니다.")
+  }
+
   const handleDeleteSelected = async () => {
     const targets = mails.filter((m) => checkedIds.has(m.id))
     if (targets.length === 0) return
@@ -94,11 +108,27 @@ export function TrashView({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 space-y-4 border-b p-6">
-        <div>
-          <h2 className="text-lg font-semibold">휴지통</h2>
-          <p className="text-muted-foreground text-sm">
-            삭제한 메일은 여기로 이동합니다. 휴지통에서 완전히 삭제하면 복구할 수 없습니다.
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold">휴지통</h2>
+            <p className="text-muted-foreground text-sm">
+              삭제한 메일은 여기로 이동합니다. 휴지통에서 완전히 삭제하면 복구할 수 없습니다.
+            </p>
+            {emptyAllError && <p className="text-destructive mt-1 text-sm">{emptyAllError}</p>}
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="shrink-0"
+            disabled={accounts.length === 0 || isEmptyingAll}
+            onClick={() => setConfirmEmptyAll(true)}
+          >
+            {isEmptyingAll ? (
+              <><Loader2 className="mr-2 size-3.5 animate-spin" />비우는 중...</>
+            ) : (
+              "전체 계정 휴지통 비우기"
+            )}
+          </Button>
         </div>
         {accounts.length > 0 && (
           <div className="overflow-hidden rounded-lg border">
@@ -256,6 +286,22 @@ export function TrashView({
             <div className="flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => setConfirmEmptyId(null)}>취소</Button>
               <Button variant="destructive" size="sm" onClick={() => handleEmpty(confirmEmptyId)}>비우기</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmEmptyAll && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background mx-4 w-full max-w-sm rounded-lg border p-6 shadow-xl">
+            <h3 className="mb-2 font-semibold">전체 계정 휴지통 비우기</h3>
+            <p className="text-muted-foreground mb-4 text-sm">
+              연결된 <strong>{accounts.length}개 계정</strong>의 휴지통에 있는 메일을 전부 영구 삭제합니다.
+              이 작업은 되돌릴 수 없습니다.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setConfirmEmptyAll(false)}>취소</Button>
+              <Button variant="destructive" size="sm" onClick={handleEmptyAll}>전체 비우기</Button>
             </div>
           </div>
         </div>
