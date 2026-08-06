@@ -15,17 +15,33 @@ export function parseAssignmentKey(key: string): { accountId: string; mailId: st
 }
 
 export function emptyMailOrgState(): MailOrgState {
-  return { folders: [], assignments: {}, rules: [], classified: {} }
+  return { folders: [], assignments: {}, rules: [], classified: {}, accountOrder: [] }
 }
 
-// 이 기능들이 추가되기 전에 저장된 상태에는 rules/classified 필드가 없을 수 있어 채워준다.
+// 이 기능들이 추가되기 전에 저장된 상태에는 일부 필드가 없을 수 있어 채워준다.
 export function normalizeMailOrgState(state: Partial<MailOrgState>): MailOrgState {
   return {
     folders: state.folders ?? [],
     assignments: state.assignments ?? {},
     rules: state.rules ?? [],
     classified: state.classified ?? {},
+    accountOrder: state.accountOrder ?? [],
   }
+}
+
+// order에 있는 id 순서대로 배치하고, order에 없는 항목은 뒤에 원래 순서 그대로 붙인다.
+export function applyOrder<T>(items: T[], order: string[], getId: (item: T) => string): T[] {
+  const byId = new Map(items.map((item) => [getId(item), item]))
+  const ordered: T[] = []
+  for (const id of order) {
+    const item = byId.get(id)
+    if (item) {
+      ordered.push(item)
+      byId.delete(id)
+    }
+  }
+  ordered.push(...byId.values())
+  return ordered
 }
 
 export async function getUserMailOrg(env: Env, userId: string): Promise<MailOrgState> {

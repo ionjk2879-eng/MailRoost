@@ -40,6 +40,8 @@ import {
   moveMails,
   permanentDeleteFromTrash,
   renameFolder as apiRenameFolder,
+  reorderAccounts as apiReorderAccounts,
+  reorderFolders as apiReorderFolders,
   toggleStar,
   updateRule as apiUpdateRule,
 } from "@/lib/api"
@@ -535,6 +537,17 @@ function App() {
     return { ok: true }
   }
 
+  const handleReorderFolders = async (order: string[]) => {
+    const previous = folders
+    const byId = new Map(folders.map((f) => [f.id, f]))
+    setFolders(order.map((id) => byId.get(id)).filter((f): f is MailFolder => !!f))
+    const result = await apiReorderFolders(order)
+    if (!result.ok) {
+      setFolders(previous)
+      showError(result.error ?? "메일함 순서 변경에 실패했습니다.")
+    }
+  }
+
   const handleCreateRule = async (
     field: "from" | "subject",
     keyword: string,
@@ -641,6 +654,17 @@ function App() {
     if (selectedAccountId === accountId) {
       setSelectedAccountId(null)
       setSelectedMailId(null)
+    }
+  }
+
+  const handleReorderAccounts = async (order: string[]) => {
+    const previous = realAccounts
+    const byId = new Map(realAccounts.map((a) => [a.id, a]))
+    setRealAccounts(order.map((id) => byId.get(id)).filter((a): a is Account => !!a))
+    const result = await apiReorderAccounts(order)
+    if (!result.ok) {
+      setRealAccounts(previous)
+      showError(result.error ?? "계정 순서 변경에 실패했습니다.")
     }
   }
 
@@ -791,8 +815,10 @@ function App() {
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
+        onReorderFolders={handleReorderFolders}
         onAccountConnected={loadAccountsAndMails}
         onDeleteAccount={handleDeleteAccount}
+        onReorderAccounts={handleReorderAccounts}
         onLogout={handleLogout}
       />
       <SidebarInset>

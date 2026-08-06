@@ -59,7 +59,7 @@ import {
   naverToggleStar,
   naverToggleStarBulk,
 } from "../lib/imap"
-import { assignmentKey, emptyMailOrgState, getUserMailOrg, normalizeMailOrgState, parseAssignmentKey, saveUserMailOrg } from "../lib/mailOrg"
+import { applyOrder, assignmentKey, emptyMailOrgState, getUserMailOrg, normalizeMailOrgState, parseAssignmentKey, saveUserMailOrg } from "../lib/mailOrg"
 import { naverSendMail, daumSendMail } from "../lib/smtp"
 import { readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
@@ -176,9 +176,10 @@ api.get("/accounts", async (c) => {
 
   const session = await readSession(c.env, sessionId)
   const accountMap = await resolveAccounts(c.env, session)
+  const org = await resolveMailOrg(c.env, session)
 
   let gmailIdx = 0, naverIdx = 0, daumIdx = 0, imapIdx = 0
-  const accounts: Account[] = Object.entries(accountMap).map(([id, record]) => {
+  let accounts: Account[] = Object.entries(accountMap).map(([id, record]) => {
     if (record.provider === "naver") {
       return { id, email: record.email, provider: "naver" as const, label: "네이버", color: NAVER_COLOR_PALETTE[naverIdx++ % NAVER_COLOR_PALETTE.length] }
     }
@@ -190,7 +191,26 @@ api.get("/accounts", async (c) => {
     }
     return { id, email: record.email, provider: "gmail" as const, label: "Gmail", color: GMAIL_COLOR_PALETTE[gmailIdx++ % GMAIL_COLOR_PALETTE.length] }
   })
+  accounts = applyOrder(accounts, org.accountOrder, (a) => a.id)
   return c.json(accounts)
+})
+
+api.post("/accounts/reorder", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req.json<{ order?: string[] }>().catch(() => null)
+  const order = body?.order
+  if (!Array.isArray(order)) return c.json({ error: "bad request" }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const validOrder = order.filter((id) => id in accountMap)
+
+  const org = await resolveMailOrg(c.env, session)
+  org.accountOrder = validOrder
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ ok: true })
 })
 
 api.delete("/accounts/:id", async (c) => {
@@ -281,6 +301,21 @@ api.patch("/folders/:id", async (c) => {
   folder.name = name
   await persistMailOrg(c.env, sessionId, session, org)
   return c.json({ folder })
+})
+
+api.post("/folders/reorder", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req.json<{ order?: string[] }>().catch(() => null)
+  const order = body?.order
+  if (!Array.isArray(order)) return c.json({ error: "bad request" }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  org.folders = applyOrder(org.folders, order, (f) => f.id)
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ folders: org.folders })
 })
 
 api.get("/folders/:id/mail", async (c) => {

@@ -94,6 +94,8 @@ export interface MailOrgState {
   rules: AutoClassifyRule[]
   // 규칙 평가를 한 번이라도 거친 메일 (재평가/무한 재분류 방지용)
   classified: Record<string, true>
+  // 사이드바에 표시할 계정 순서 (드래그로 조정). 여기 없는 계정은 뒤에 자연 순서대로 붙는다.
+  accountOrder: string[]
 }
 
 export interface StoredSession {

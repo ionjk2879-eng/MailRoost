@@ -58,6 +58,19 @@ export async function deleteFolder(id: string): Promise<{ ok: boolean; error?: s
   return { ok: true }
 }
 
+export async function reorderFolders(order: string[]): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("/api/folders/reorder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ order }),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "메일함 순서 변경에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
 export async function fetchRules(): Promise<AutoClassifyRule[]> {
   const res = await fetch("/api/rules")
   if (!res.ok) return []
@@ -271,6 +284,19 @@ export async function deleteAccount(id: string): Promise<{ ok: boolean; error?: 
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     return { ok: false, error: data.error ?? "계정 삭제에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function reorderAccounts(order: string[]): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("/api/accounts/reorder", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ order }),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "계정 순서 변경에 실패했습니다." }
   }
   return { ok: true }
 }

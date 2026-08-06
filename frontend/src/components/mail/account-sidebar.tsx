@@ -1,5 +1,6 @@
 import { Archive, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
+import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -30,7 +31,46 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { deleteAccount, gmailLoginUrl } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import type { Account, MailFolder } from "@/types/mail"
+
+// 목록을 드래그로 재정렬하기 위한 최소한의 네이티브 HTML5 DnD 헬퍼.
+// 리스트마다 독립적인 인스턴스를 써야 하므로 훅으로 분리했다.
+function useDragReorder(ids: string[], onReorder: (order: string[]) => void) {
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [overId, setOverId] = useState<string | null>(null)
+
+  const handleDragStart = (id: string) => (e: DragEvent) => {
+    setDraggingId(id)
+    e.dataTransfer.effectAllowed = "move"
+  }
+
+  const handleDragOver = (id: string) => (e: DragEvent) => {
+    e.preventDefault()
+    if (id !== draggingId) setOverId(id)
+  }
+
+  const handleDrop = (id: string) => (e: DragEvent) => {
+    e.preventDefault()
+    setOverId(null)
+    if (!draggingId || draggingId === id) return
+    const from = ids.indexOf(draggingId)
+    const to = ids.indexOf(id)
+    setDraggingId(null)
+    if (from === -1 || to === -1) return
+    const next = [...ids]
+    next.splice(from, 1)
+    next.splice(to, 0, draggingId)
+    onReorder(next)
+  }
+
+  const handleDragEnd = () => {
+    setDraggingId(null)
+    setOverId(null)
+  }
+
+  return { draggingId, overId, handleDragStart, handleDragOver, handleDrop, handleDragEnd }
+}
 
 interface AccountSidebarProps {
   accounts: Account[]
@@ -52,8 +92,10 @@ interface AccountSidebarProps {
   onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
   onRenameFolder: (folderId: string, name: string) => Promise<{ ok: boolean; error?: string }>
   onDeleteFolder: (folderId: string) => void
+  onReorderFolders: (order: string[]) => void
   onAccountConnected: () => void
   onDeleteAccount: (accountId: string) => void
+  onReorderAccounts: (order: string[]) => void
   onLogout: () => void
 }
 
@@ -77,8 +119,10 @@ export function AccountSidebar({
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
+  onReorderFolders,
   onAccountConnected,
   onDeleteAccount,
+  onReorderAccounts,
   onLogout,
 }: AccountSidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar()
@@ -94,6 +138,8 @@ export function AccountSidebar({
   const [renameValue, setRenameValue] = useState("")
   const [renameError, setRenameError] = useState<string | null>(null)
   const [isRenaming, setIsRenaming] = useState(false)
+  const accountDrag = useDragReorder(accounts.map((a) => a.id), onReorderAccounts)
+  const folderDrag = useDragReorder(folders.map((f) => f.id), onReorderFolders)
   const connectedGmailCount = accounts.filter((a) => a.provider === "gmail").length
   const connectedNaverCount = accounts.filter((a) => a.provider === "naver").length
   const connectedDaumCount = accounts.filter((a) => a.provider === "daum").length
@@ -238,7 +284,19 @@ export function AccountSidebar({
                     ? account.email
                     : account.label
                 return (
-                  <SidebarMenuItem key={account.id} className="group/item">
+                  <SidebarMenuItem
+                    key={account.id}
+                    className={cn(
+                      "group/item cursor-grab active:cursor-grabbing",
+                      accountDrag.draggingId === account.id && "opacity-40",
+                      accountDrag.overId === account.id && "border-primary border-t-2",
+                    )}
+                    draggable
+                    onDragStart={accountDrag.handleDragStart(account.id)}
+                    onDragOver={accountDrag.handleDragOver(account.id)}
+                    onDrop={accountDrag.handleDrop(account.id)}
+                    onDragEnd={accountDrag.handleDragEnd}
+                  >
                     <SidebarMenuButton
                       isActive={isInboxView && selectedAccountId === account.id}
                       onClick={() => {
@@ -295,7 +353,19 @@ export function AccountSidebar({
           <SidebarGroupContent>
             <SidebarMenu>
               {folders.map((folder) => (
-                <SidebarMenuItem key={folder.id} className="group/item">
+                <SidebarMenuItem
+                  key={folder.id}
+                  className={cn(
+                    "group/item cursor-grab active:cursor-grabbing",
+                    folderDrag.draggingId === folder.id && "opacity-40",
+                    folderDrag.overId === folder.id && "border-primary border-t-2",
+                  )}
+                  draggable
+                  onDragStart={folderDrag.handleDragStart(folder.id)}
+                  onDragOver={folderDrag.handleDragOver(folder.id)}
+                  onDrop={folderDrag.handleDrop(folder.id)}
+                  onDragEnd={folderDrag.handleDragEnd}
+                >
                   <SidebarMenuButton
                     isActive={isFolderView && selectedFolderId === folder.id}
                     onClick={() => {
