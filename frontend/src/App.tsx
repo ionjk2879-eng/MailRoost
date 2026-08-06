@@ -125,11 +125,6 @@ function App() {
     setSelectedMailId(null)
   }
 
-  const handleAuthSuccess = (user: { id: string; email: string }) => {
-    setCurrentUser(user)
-    loadAccountsAndMails()
-  }
-
   const handleLogout = async () => {
     await logout()
     setCurrentUser(null)
@@ -164,7 +159,7 @@ function App() {
   }
 
   if (!currentUser) {
-    return <LandingView onAuthSuccess={handleAuthSuccess} />
+    return <LandingView />
   }
 
   const mailListPane = (
