@@ -1,7 +1,9 @@
 import type { Env, GmailAccountRecord, Mail, MailCategory } from "../types"
 import { decodeRfc2047, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
 
-const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.modify"
+// gmail.modify로는 라벨 변경/휴지통 이동까지만 되고 영구 삭제(batchDelete)는 403이 난다.
+// 휴지통 비우기/선택 영구삭제를 지원하려면 전체 계정 접근 스코프가 필요하다.
+const GMAIL_SCOPE = "https://mail.google.com/"
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
 export function buildAuthUrl(clientId: string, redirectUri: string, state: string): string {
