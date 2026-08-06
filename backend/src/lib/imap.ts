@@ -277,11 +277,20 @@ async function imapFindTrashMailbox(client: ImapClient): Promise<string | null> 
   const special = await client.command('LIST (SPECIAL-USE) "" "*"')
   if (special.ok) {
     const found = findTrashInListLines(special.lines, true)
-    if (found) return found
+    if (found) {
+      console.log(`[imap] trash mailbox found via SPECIAL-USE: ${found}`)
+      return found
+    }
   }
   const plain = await client.command('LIST "" "*"')
-  if (!plain.ok) return null
-  return findTrashInListLines(plain.lines, false)
+  if (!plain.ok) {
+    console.log(`[imap] LIST command failed: ${plain.statusLine}`)
+    return null
+  }
+  console.log(`[imap] mailbox list: ${JSON.stringify(plain.lines)}`)
+  const found = findTrashInListLines(plain.lines, false)
+  console.log(`[imap] trash mailbox after name matching: ${found ?? "NOT FOUND"}`)
+  return found
 }
 
 // ── Core IMAP operations (provider-agnostic) ──────────────────────────────────

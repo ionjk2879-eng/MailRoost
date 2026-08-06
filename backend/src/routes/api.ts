@@ -604,12 +604,14 @@ api.get("/trash", async (c) => {
       if (record.provider === "naver") {
         const offset = cursorState.offset ?? 0
         const { mails, hasMore } = await naverListTrash(record.email, record.appPassword, accountId, IMAP_PAGE, offset)
+        console.log(`[trash] provider=naver accountId=${accountId} count=${mails.length}`)
         return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
       }
 
       if (record.provider === "daum" || record.provider === "imap") {
         const offset = cursorState.offset ?? 0
         const { mails, hasMore } = await fetchImapTrash(accountId, record, IMAP_PAGE, offset)
+        console.log(`[trash] provider=${record.provider} accountId=${accountId} count=${mails.length}`)
         return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
       }
 
@@ -617,6 +619,7 @@ api.get("/trash", async (c) => {
       const updatedRecord = fresh.accessToken !== record.accessToken ? fresh : undefined
       const pageToken = cursorState.pageToken
       const { mails, nextPageToken } = await gmailListTrash(fresh.accessToken, accountId, GMAIL_PAGE, pageToken)
+      console.log(`[trash] provider=gmail accountId=${accountId} count=${mails.length}`)
       return { accountId, mails, cursor: nextPageToken ? { pageToken: nextPageToken } : undefined, updatedRecord }
     }),
   )
@@ -876,16 +879,21 @@ api.post("/mail/bulk-delete", async (c) => {
   const record = accountMap[accountId]
   if (!record) return c.json({ error: "not found" }, 404)
 
+  console.log(`[bulk-delete] provider=${record.provider} accountId=${accountId} mailIds=${JSON.stringify(mailIds)}`)
+
   if (record.provider === "naver") {
     await naverDeleteMailBulk(record.email, record.appPassword, mailIds)
+    console.log(`[bulk-delete] naver delete done`)
     return c.json({ ok: true })
   }
   if (record.provider === "daum") {
     await daumDeleteMailBulk(record.email, record.password, mailIds)
+    console.log(`[bulk-delete] daum delete done`)
     return c.json({ ok: true })
   }
   if (record.provider === "imap") {
     await imapDeleteMailBulk({ host: record.host, port: record.port, email: record.email, password: record.password }, mailIds)
+    console.log(`[bulk-delete] imap delete done`)
     return c.json({ ok: true })
   }
 
@@ -895,6 +903,7 @@ api.post("/mail/bulk-delete", async (c) => {
     await persistAccounts(c.env, sessionId, session, accountMap)
   }
   await gmailTrashBulk(fresh.accessToken, mailIds)
+  console.log(`[bulk-delete] gmail trash done`)
   return c.json({ ok: true })
 })
 
