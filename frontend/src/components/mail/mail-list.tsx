@@ -26,6 +26,8 @@ interface MailListProps {
   isLoadingMore?: boolean
   hasMore?: boolean
   onLoadMore?: () => void
+  onSelectAll?: () => void
+  isSelectingAll?: boolean
 }
 
 function formatTime(iso: string): string {
@@ -64,6 +66,8 @@ export function MailList({
   isLoadingMore,
   hasMore,
   onLoadMore,
+  onSelectAll,
+  isSelectingAll,
 }: MailListProps) {
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
@@ -177,6 +181,23 @@ export function MailList({
           <div className="flex-1" />
         )}
       </div>
+
+      {/* 전체 선택 배너 */}
+      {allChecked && hasMore && onSelectAll && (
+        <div className="bg-primary/5 border-primary/20 flex shrink-0 items-center justify-center gap-2 border-b px-3 py-2 text-sm">
+          <span className="text-muted-foreground">
+            현재 표시된 <strong>{mails.length}개</strong>가 모두 선택되었습니다.
+          </span>
+          <button
+            type="button"
+            onClick={onSelectAll}
+            disabled={isSelectingAll}
+            className="text-primary hover:text-primary/80 font-medium underline underline-offset-2 disabled:opacity-50"
+          >
+            {isSelectingAll ? "불러오는 중..." : "받은편지함 전체 선택"}
+          </button>
+        </div>
+      )}
 
       {/* 메일 목록 */}
       <ScrollArea className="min-h-0 flex-1">

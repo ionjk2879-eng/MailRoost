@@ -47,6 +47,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("")
   const [checkedMailIds, setCheckedMailIds] = useState<Set<string>>(new Set())
   const [isBulkLoading, setIsBulkLoading] = useState(false)
+  const [isSelectingAll, setIsSelectingAll] = useState(false)
 
   const loadAccountsAndMails = () => {
     return fetchAccounts().then((accounts) => {
@@ -269,6 +270,34 @@ function App() {
     }
   }
 
+  const handleSelectAll = async () => {
+    if (isSelectingAll) return
+    setIsSelectingAll(true)
+    try {
+      let cursor = nextCursor
+      let accumulated = [...realMails]
+      while (cursor) {
+        const { mails, nextCursor: newCursor } = await fetchMails(cursor)
+        const existingIds = new Set(accumulated.map((m) => `${m.accountId}:${m.id}`))
+        const fresh = mails.filter((m) => !existingIds.has(`${m.accountId}:${m.id}`))
+        accumulated = [...accumulated, ...fresh]
+        cursor = newCursor
+      }
+      setRealMails(accumulated)
+      setNextCursor(null)
+      // select all that match current filters
+      const allVisible = selectedAccountId
+        ? accumulated.filter((m) => m.accountId === selectedAccountId)
+        : accumulated
+      const filtered = selectedCategory
+        ? allVisible.filter((m) => m.category === selectedCategory)
+        : allVisible
+      setCheckedMailIds(new Set(filtered.map((m) => m.id)))
+    } finally {
+      setIsSelectingAll(false)
+    }
+  }
+
   const goToInbox = (accountId: string | null) => {
     setView("inbox")
     setSelectedAccountId(accountId)
@@ -373,6 +402,8 @@ function App() {
           hasMore={!searchQuery && !!nextCursor}
           isLoadingMore={isLoadingMore}
           onLoadMore={handleLoadMore}
+          onSelectAll={handleSelectAll}
+          isSelectingAll={isSelectingAll}
         />
       </div>
     </div>

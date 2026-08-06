@@ -164,19 +164,22 @@ api.get("/mail", async (c) => {
 
     const cursorState = cursorMap[accountId] ?? {}
 
+    const IMAP_PAGE = 999
+    const GMAIL_PAGE = 100
+
     if (record.provider === "naver") {
       const offset = cursorState.offset ?? 0
-      const { mails, hasMore } = await naverListInbox(record.email, record.appPassword, accountId, 20, offset)
+      const { mails, hasMore } = await naverListInbox(record.email, record.appPassword, accountId, IMAP_PAGE, offset)
       results.push(...mails)
-      if (hasMore) nextCursorMap[accountId] = { offset: offset + 20 }
+      if (hasMore) nextCursorMap[accountId] = { offset: offset + IMAP_PAGE }
       continue
     }
 
     if (record.provider === "daum" || record.provider === "imap") {
       const offset = cursorState.offset ?? 0
-      const { mails, hasMore } = await fetchImapMails(accountId, record, 20, offset)
+      const { mails, hasMore } = await fetchImapMails(accountId, record, IMAP_PAGE, offset)
       results.push(...mails)
-      if (hasMore) nextCursorMap[accountId] = { offset: offset + 20 }
+      if (hasMore) nextCursorMap[accountId] = { offset: offset + IMAP_PAGE }
       continue
     }
 
@@ -186,7 +189,7 @@ api.get("/mail", async (c) => {
       accountsChanged = true
     }
     const pageToken = cursorState.pageToken
-    const { mails, nextPageToken } = await listInboxMails(fresh.accessToken, accountId, 20, pageToken)
+    const { mails, nextPageToken } = await listInboxMails(fresh.accessToken, accountId, GMAIL_PAGE, pageToken)
     results.push(...mails)
     if (nextPageToken) nextCursorMap[accountId] = { pageToken: nextPageToken }
   }
