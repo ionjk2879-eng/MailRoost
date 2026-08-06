@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { setCookie } from "hono/cookie"
 import type { Env } from "../types"
+import { getUserAccounts, saveUserAccounts } from "../lib/auth"
 import { isHttps, readRawCookie } from "../lib/cookies"
 import { verifyNaverCredentials } from "../lib/imap"
 import { createSessionId, readSession, SESSION_COOKIE, writeSession } from "../lib/session"
@@ -27,8 +28,16 @@ naver.post("/connect", async (c) => {
 
   const session = await readSession(c.env, sessionId)
   const accountId = `naver:${email}`
-  session.accounts[accountId] = { provider: "naver", email, appPassword }
-  await writeSession(c.env, sessionId, session)
+  const naverRecord = { provider: "naver" as const, email, appPassword }
+
+  if (session.userId) {
+    const accounts = await getUserAccounts(c.env, session.userId)
+    accounts[accountId] = naverRecord
+    await saveUserAccounts(c.env, session.userId, accounts)
+  } else {
+    session.accounts[accountId] = naverRecord
+    await writeSession(c.env, sessionId, session)
+  }
 
   setCookie(c, SESSION_COOKIE, sessionId, {
     httpOnly: true,

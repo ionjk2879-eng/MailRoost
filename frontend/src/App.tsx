@@ -13,7 +13,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { useIsMobile } from "@/hooks/use-mobile"
 import { HomeView } from "@/components/home/home-view"
 import { LandingView } from "@/components/home/landing-view"
-import { fetchAccounts, fetchMailDetail, fetchMails, logout } from "@/lib/api"
+import { fetchAccounts, fetchCurrentUser, fetchMailDetail, fetchMails, logout } from "@/lib/api"
 import type { Account, Mail, MailCategory } from "@/types/mail"
 
 function isRealAccountId(accountId: string): boolean {
@@ -23,6 +23,7 @@ function isRealAccountId(accountId: string): boolean {
 function App() {
   const isMobile = useIsMobile()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
   const [view, setView] = useState<"home" | "inbox">("home")
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
@@ -41,7 +42,12 @@ function App() {
   }
 
   useEffect(() => {
-    loadAccountsAndMails().finally(() => setIsBootstrapping(false))
+    fetchCurrentUser()
+      .then((user) => {
+        setCurrentUser(user)
+        if (user) return loadAccountsAndMails()
+      })
+      .finally(() => setIsBootstrapping(false))
   }, [])
 
   const accounts = realAccounts
@@ -119,8 +125,14 @@ function App() {
     setSelectedMailId(null)
   }
 
+  const handleAuthSuccess = (user: { id: string; email: string }) => {
+    setCurrentUser(user)
+    loadAccountsAndMails()
+  }
+
   const handleLogout = async () => {
     await logout()
+    setCurrentUser(null)
     setRealAccounts([])
     setRealMails([])
     setMailDetails({})
@@ -151,8 +163,8 @@ function App() {
     )
   }
 
-  if (realAccounts.length === 0) {
-    return <LandingView onConnected={loadAccountsAndMails} />
+  if (!currentUser) {
+    return <LandingView onAuthSuccess={handleAuthSuccess} />
   }
 
   const mailListPane = (

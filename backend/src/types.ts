@@ -48,6 +48,14 @@ export interface NaverAccountRecord {
 
 export type ConnectedAccountRecord = GmailAccountRecord | NaverAccountRecord
 
+export interface UserRecord {
+  id: string
+  email: string
+  passwordHash: string
+  salt: string
+}
+
 export interface StoredSession {
+  userId?: string
   accounts: Record<string, ConnectedAccountRecord>
 }

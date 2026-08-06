@@ -24,6 +24,40 @@ export async function fetchMailDetail(id: string, accountId: string): Promise<Ma
   return res.json()
 }
 
+export async function fetchCurrentUser(): Promise<{ id: string; email: string } | null> {
+  const res = await fetch("/api/me")
+  if (!res.ok) return null
+  return res.json()
+}
+
+export async function signup(
+  email: string,
+  password: string,
+): Promise<{ ok: true; user: { id: string; email: string } } | { ok: false; error: string }> {
+  const res = await fetch("/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string; user?: { id: string; email: string } }
+  if (!res.ok) return { ok: false, error: data.error ?? "회원가입에 실패했습니다." }
+  return { ok: true, user: data.user! }
+}
+
+export async function loginUser(
+  email: string,
+  password: string,
+): Promise<{ ok: true; user: { id: string; email: string } } | { ok: false; error: string }> {
+  const res = await fetch("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string; user?: { id: string; email: string } }
+  if (!res.ok) return { ok: false, error: data.error ?? "로그인에 실패했습니다." }
+  return { ok: true, user: data.user! }
+}
+
 export async function logout(): Promise<void> {
   await fetch("/auth/logout", { method: "POST" })
 }
