@@ -82,6 +82,19 @@ api.get("/mail", async (c) => {
   return c.json(results)
 })
 
+api.delete("/accounts/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const accountId = c.req.param("id")
+  const session = await readSession(c.env, sessionId)
+  if (!session.accounts[accountId]) return c.json({ error: "not found" }, 404)
+
+  delete session.accounts[accountId]
+  await writeSession(c.env, sessionId, session)
+  return c.json({ ok: true })
+})
+
 api.get("/mail/:id", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   const accountId = c.req.query("accountId")

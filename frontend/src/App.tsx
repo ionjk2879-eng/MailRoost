@@ -12,7 +12,7 @@ import {
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { HomeView } from "@/components/home/home-view"
-import { fetchAccounts, fetchMailDetail, fetchMails } from "@/lib/api"
+import { fetchAccounts, fetchMailDetail, fetchMails, logout } from "@/lib/api"
 import { mockAccounts, mockMails } from "@/lib/mock-data"
 import type { Account, Mail, MailCategory } from "@/types/mail"
 
@@ -137,6 +137,30 @@ function App() {
     setSelectedMailId(null)
   }
 
+  const handleLogout = async () => {
+    await logout()
+    setRealAccounts([])
+    setRealMails([])
+    setMailDetails({})
+    goHome()
+  }
+
+  const handleDeleteAccount = (accountId: string) => {
+    setRealAccounts((prev) => prev.filter((a) => a.id !== accountId))
+    setRealMails((prev) => prev.filter((m) => m.accountId !== accountId))
+    setMailDetails((prev) => {
+      const next = { ...prev }
+      for (const key of Object.keys(next)) {
+        if (next[key].accountId === accountId) delete next[key]
+      }
+      return next
+    })
+    if (selectedAccountId === accountId) {
+      setSelectedAccountId(null)
+      setSelectedMailId(null)
+    }
+  }
+
   if (isBootstrapping) {
     return (
       <div className="flex h-svh items-center justify-center">
@@ -185,6 +209,8 @@ function App() {
         onSelectAccount={goToInbox}
         onGoHome={goHome}
         onAccountConnected={loadAccountsAndMails}
+        onDeleteAccount={handleDeleteAccount}
+        onLogout={handleLogout}
       />
       <SidebarInset>
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">

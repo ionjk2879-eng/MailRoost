@@ -24,6 +24,19 @@ export async function fetchMailDetail(id: string, accountId: string): Promise<Ma
   return res.json()
 }
 
+export async function logout(): Promise<void> {
+  await fetch("/auth/logout", { method: "POST" })
+}
+
+export async function deleteAccount(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/accounts/${encodeURIComponent(id)}`, { method: "DELETE" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "계정 삭제에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
 export async function connectNaverAccount(
   email: string,
   appPassword: string,

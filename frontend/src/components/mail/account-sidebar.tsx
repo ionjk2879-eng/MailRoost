@@ -1,5 +1,15 @@
-import { Inbox, Plus } from "lucide-react"
+import { Inbox, LogOut, Plus, Trash2 } from "lucide-react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { ConnectNaverDialog } from "@/components/mail/connect-naver-dialog"
 import {
   Sidebar,
@@ -15,7 +25,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { gmailLoginUrl } from "@/lib/api"
+import { deleteAccount, gmailLoginUrl } from "@/lib/api"
 import type { Account } from "@/types/mail"
 
 interface AccountSidebarProps {
@@ -26,6 +36,8 @@ interface AccountSidebarProps {
   onSelectAccount: (accountId: string | null) => void
   onGoHome: () => void
   onAccountConnected: () => void
+  onDeleteAccount: (accountId: string) => void
+  onLogout: () => void
 }
 
 export function AccountSidebar({
@@ -36,10 +48,16 @@ export function AccountSidebar({
   onSelectAccount,
   onGoHome,
   onAccountConnected,
+  onDeleteAccount,
+  onLogout,
 }: AccountSidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar()
+  const [pendingDelete, setPendingDelete] = useState<Account | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const connectedGmailCount = accounts.filter((a) => a.provider === "gmail").length
   const connectedNaverCount = accounts.filter((a) => a.provider === "naver").length
+  const hasRealAccounts = accounts.some((a) => a.id.includes(":"))
   const totalUnread = Object.values(unreadCountByAccount).reduce(
     (sum, count) => sum + count,
     0,
@@ -47,6 +65,20 @@ export function AccountSidebar({
 
   const closeOnMobile = () => {
     if (isMobile) setOpenMobile(false)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return
+    setIsDeleting(true)
+    setDeleteError(null)
+    const result = await deleteAccount(pendingDelete.id)
+    setIsDeleting(false)
+    if (!result.ok) {
+      setDeleteError(result.error ?? "삭제에 실패했습니다.")
+      return
+    }
+    setPendingDelete(null)
+    onDeleteAccount(pendingDelete.id)
   }
 
   return (
@@ -91,12 +123,13 @@ export function AccountSidebar({
             <SidebarMenu>
               {accounts.map((account) => {
                 const unread = unreadCountByAccount[account.id] ?? 0
+                const isReal = account.id.includes(":")
                 const displayText =
                   account.provider === "gmail" || account.provider === "naver"
                     ? account.email
                     : account.label
                 return (
-                  <SidebarMenuItem key={account.id}>
+                  <SidebarMenuItem key={account.id} className="group/item">
                     <SidebarMenuButton
                       isActive={isInboxView && selectedAccountId === account.id}
                       onClick={() => {
@@ -110,8 +143,23 @@ export function AccountSidebar({
                       />
                       <span className="truncate">{displayText}</span>
                     </SidebarMenuButton>
-                    {unread > 0 && (
-                      <SidebarMenuBadge>{unread}</SidebarMenuBadge>
+                    {isReal ? (
+                      <button
+                        type="button"
+                        aria-label="계정 삭제"
+                        onClick={() => {
+                          setDeleteError(null)
+                          setPendingDelete(account)
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 focus-visible:opacity-100"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    ) : (
+                      unread > 0 && <SidebarMenuBadge>{unread}</SidebarMenuBadge>
+                    )}
+                    {isReal && unread > 0 && (
+                      <SidebarMenuBadge className="group-hover/item:hidden">{unread}</SidebarMenuBadge>
                     )}
                   </SidebarMenuItem>
                 )
@@ -134,7 +182,42 @@ export function AccountSidebar({
           label={connectedNaverCount > 0 ? "네이버 계정 추가" : "네이버 계정 연결"}
           onConnected={onAccountConnected}
         />
+        {hasRealAccounts && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground w-full justify-start gap-2"
+            onClick={onLogout}
+          >
+            <LogOut className="size-4" />
+            로그아웃
+          </Button>
+        )}
       </SidebarFooter>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => { if (!open) setPendingDelete(null) }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>계정 연결 해제</DialogTitle>
+            <DialogDescription>
+              <strong>{pendingDelete?.email}</strong> 계정을 MailRoost에서 삭제합니다.
+              저장된 토큰이 제거되며, 다시 연결하려면 계정을 다시 추가해야 합니다.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError && <p className="text-destructive text-sm">{deleteError}</p>}
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="outline" disabled={isDeleting} />}>
+              취소
+            </DialogClose>
+            <Button variant="destructive" onClick={handleConfirmDelete} disabled={isDeleting}>
+              {isDeleting ? "삭제 중..." : "삭제"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sidebar>
   )
 }
