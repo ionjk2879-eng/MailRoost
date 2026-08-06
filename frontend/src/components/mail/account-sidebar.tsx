@@ -1,4 +1,4 @@
-import { FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, Trash2 } from "lucide-react"
+import { Archive, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
@@ -39,6 +39,7 @@ interface AccountSidebarProps {
   isInboxView: boolean
   isCleanupView: boolean
   isTrashView: boolean
+  isArchiveView: boolean
   folders: MailFolder[]
   selectedFolderId: string | null
   isFolderView: boolean
@@ -46,6 +47,7 @@ interface AccountSidebarProps {
   onGoHome: () => void
   onGoCleanup: () => void
   onGoTrash: () => void
+  onGoArchive: () => void
   onSelectFolder: (folderId: string) => void
   onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
   onRenameFolder: (folderId: string, name: string) => Promise<{ ok: boolean; error?: string }>
@@ -62,6 +64,7 @@ export function AccountSidebar({
   isInboxView,
   isCleanupView,
   isTrashView,
+  isArchiveView,
   folders,
   selectedFolderId,
   isFolderView,
@@ -69,6 +72,7 @@ export function AccountSidebar({
   onGoHome,
   onGoCleanup,
   onGoTrash,
+  onGoArchive,
   onSelectFolder,
   onCreateFolder,
   onRenameFolder,
@@ -193,6 +197,18 @@ export function AccountSidebar({
                 >
                   <Sparkles />
                   <span>정리하기</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isArchiveView}
+                  onClick={() => {
+                    onGoArchive()
+                    closeOnMobile()
+                  }}
+                >
+                  <Archive />
+                  <span>보관함</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

@@ -74,6 +74,10 @@ const FOLDER_COLOR_PALETTE = [
   "bg-orange-500", "bg-teal-500", "bg-rose-500", "bg-indigo-500",
 ]
 
+// 보관함은 사용자 정의 메일함과 동일한 배정(assignment) 메커니즘을 쓰는 예약된 가상 폴더 ID.
+// org.folders 목록에는 들어가지 않으므로 이름변경/삭제 대상이 되지 않는다.
+const ARCHIVE_FOLDER_ID = "archive"
+
 // ── Cursor-based pagination helpers ──────────────────────────────────────────
 
 type CursorState = { pageToken?: string; offset?: number }
@@ -342,7 +346,7 @@ api.post("/mail/move", async (c) => {
   const session = await readSession(c.env, sessionId)
   const org = await resolveMailOrg(c.env, session)
 
-  if (folderId !== null && !org.folders.some((f) => f.id === folderId)) {
+  if (folderId !== null && folderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === folderId)) {
     return c.json({ error: "메일함을 찾을 수 없습니다." }, 404)
   }
 

@@ -39,6 +39,7 @@ import {
   renameFolder as apiRenameFolder,
   toggleStar,
 } from "@/lib/api"
+import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Account, Mail, MailCategory, MailFolder } from "@/types/mail"
 
 function isRealAccountId(accountId: string): boolean {
@@ -59,7 +60,7 @@ function App() {
   const isMobile = useIsMobile()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder">("home")
+  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder" | "archive">("home")
   const [trashMails, setTrashMails] = useState<Mail[]>([])
   const [trashCursor, setTrashCursor] = useState<string | null>(null)
   const [isTrashLoading, setIsTrashLoading] = useState(false)
@@ -489,6 +490,16 @@ function App() {
     loadFolderMails(folderId)
   }
 
+  // 보관함은 사용자 정의 메일함과 동일한 배정 메커니즘을 쓰는 예약된 가상 폴더라서
+  // folderMails/selectedFolderId 상태를 그대로 재사용한다.
+  const goToArchive = () => {
+    setView("archive")
+    setSelectedFolderId(ARCHIVE_FOLDER_ID)
+    setSelectedMailId(null)
+    setCheckedMailIds(new Set())
+    loadFolderMails(ARCHIVE_FOLDER_ID)
+  }
+
   const handleCreateFolder = async (name: string): Promise<{ ok: boolean; error?: string }> => {
     const result = await apiCreateFolder(name)
     if (!result.ok) return { ok: false, error: result.error }
@@ -518,7 +529,7 @@ function App() {
     setIsRefreshing(true)
     try {
       if (view === "trash") await loadTrash()
-      else if (view === "folder" && selectedFolderId) await loadFolderMails(selectedFolderId)
+      else if ((view === "folder" || view === "archive") && selectedFolderId) await loadFolderMails(selectedFolderId)
       else await loadAccountsAndMails()
     } finally {
       setIsRefreshing(false)
@@ -648,6 +659,7 @@ function App() {
           onBulkMarkUnread={handleBulkMarkUnread}
           onBulkDelete={handleBulkDelete}
           isBulkLoading={isBulkLoading}
+          onBulkArchive={() => handleBulkMoveFromInbox(ARCHIVE_FOLDER_ID)}
           folders={folders}
           onBulkMove={handleBulkMoveFromInbox}
           hasMore={!searchQuery && !!nextCursor}
@@ -667,6 +679,7 @@ function App() {
       onToggleStar={handleToggleStar}
       onMarkAsUnread={handleMarkAsUnread}
       onDelete={handleDeleteMail}
+      onArchive={(mailId, accountId) => handleMoveMailFromInbox(mailId, accountId, ARCHIVE_FOLDER_ID)}
       folders={folders}
       onMove={handleMoveMailFromInbox}
     />
@@ -687,6 +700,7 @@ function App() {
       onBulkMarkUnread={handleBulkMarkUnreadInFolder}
       onBulkDelete={handleBulkDeleteInFolder}
       isBulkLoading={isBulkLoading}
+      onBulkArchive={view === "archive" ? undefined : () => handleBulkMoveFromFolder(ARCHIVE_FOLDER_ID)}
       folders={folders}
       currentFolderId={selectedFolderId ?? undefined}
       onBulkMove={handleBulkMoveFromFolder}
@@ -702,6 +716,11 @@ function App() {
       onToggleStar={handleToggleStar}
       onMarkAsUnread={handleMarkAsUnread}
       onDelete={handleDeleteMail}
+      onArchive={
+        view === "archive"
+          ? undefined
+          : (mailId, accountId) => handleMoveMailFromFolder(mailId, accountId, ARCHIVE_FOLDER_ID)
+      }
       folders={folders}
       currentFolderId={selectedFolderId ?? undefined}
       onMove={handleMoveMailFromFolder}
@@ -717,6 +736,7 @@ function App() {
         isInboxView={view === "inbox"}
         isCleanupView={view === "cleanup"}
         isTrashView={view === "trash"}
+        isArchiveView={view === "archive"}
         folders={folders}
         selectedFolderId={selectedFolderId}
         isFolderView={view === "folder"}
@@ -724,6 +744,7 @@ function App() {
         onGoHome={goHome}
         onGoCleanup={goToCleanup}
         onGoTrash={goToTrash}
+        onGoArchive={goToArchive}
         onSelectFolder={goToFolder}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}
@@ -742,9 +763,11 @@ function App() {
                 ? "정리하기"
                 : view === "trash"
                   ? "휴지통"
-                  : view === "folder"
-                    ? (folders.find((f) => f.id === selectedFolderId)?.name ?? "메일함")
-                    : selectedAccountId
+                  : view === "archive"
+                    ? "보관함"
+                    : view === "folder"
+                      ? (folders.find((f) => f.id === selectedFolderId)?.name ?? "메일함")
+                      : selectedAccountId
                       ? (() => {
                           const account = accounts.find((a) => a.id === selectedAccountId)
                           return account?.provider === "gmail" || account?.provider === "naver" || account?.provider === "daum"
@@ -753,7 +776,7 @@ function App() {
                         })()
                       : "전체 받은편지함"}
           </span>
-          {(view === "inbox" || view === "trash" || view === "folder") && (
+          {(view === "inbox" || view === "trash" || view === "folder" || view === "archive") && (
             <Button
               variant="ghost"
               size="icon"
@@ -796,7 +819,7 @@ function App() {
               onDeleteSelected={handleDeleteFromTrash}
             />
           </div>
-        ) : view === "folder" ? (
+        ) : view === "folder" || view === "archive" ? (
           isFolderLoading && folderMails.length === 0 ? (
             <div className="flex flex-1 items-center justify-center">
               <Loader2 className="text-muted-foreground size-6 animate-spin" />

@@ -17,6 +17,9 @@ export interface MailFolder {
   createdAt: number
 }
 
+// 보관함은 사용자 정의 메일함과 동일한 배정 메커니즘을 쓰는 예약된 가상 폴더 ID
+export const ARCHIVE_FOLDER_ID = "archive"
+
 export interface Mail {
   id: string
   accountId: string

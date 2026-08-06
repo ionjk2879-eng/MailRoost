@@ -1,4 +1,4 @@
-import { ChevronLeft, FolderInput, Inbox, MailOpen, Reply, Star, Trash2 } from "lucide-react"
+import { Archive, ChevronLeft, FolderInput, Inbox, MailOpen, Reply, Star, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +17,7 @@ interface MailDetailProps {
   onToggleStar?: (mailId: string, accountId: string, starred: boolean) => void
   onMarkAsUnread?: (mailId: string, accountId: string) => void
   onDelete?: (mailId: string, accountId: string) => void
+  onArchive?: (mailId: string, accountId: string) => void
   folders?: MailFolder[]
   currentFolderId?: string
   onMove?: (mailId: string, accountId: string, folderId: string | null) => void
@@ -50,6 +51,7 @@ export function MailDetail({
   onToggleStar,
   onMarkAsUnread,
   onDelete,
+  onArchive,
   folders,
   currentFolderId,
   onMove,
@@ -122,6 +124,17 @@ export function MailDetail({
                 }
               />
             </button>
+            {onArchive && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="보관"
+                onClick={() => onArchive(mail.id, mail.accountId)}
+              >
+                <Archive className="size-4" />
+              </Button>
+            )}
             {onMove && (
               <div ref={moveRef} className="relative">
                 <Button

@@ -1,4 +1,4 @@
-import { Check, ChevronDown, FolderInput, Inbox, Loader2, MailOpen, Minus, Star, Trash2, X } from "lucide-react"
+import { Archive, Check, ChevronDown, FolderInput, Inbox, Loader2, MailOpen, Minus, Star, Trash2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -22,7 +22,8 @@ interface MailListProps {
   onBulkMarkUnread: () => void
   onBulkDelete: () => void
   isBulkLoading?: boolean
-  // 메일함 이동
+  // 보관 / 메일함 이동
+  onBulkArchive?: () => void
   folders?: MailFolder[]
   currentFolderId?: string
   onBulkMove?: (folderId: string | null) => void
@@ -65,6 +66,7 @@ export function MailList({
   onBulkMarkUnread,
   onBulkDelete,
   isBulkLoading,
+  onBulkArchive,
   folders,
   currentFolderId,
   onBulkMove,
@@ -172,6 +174,19 @@ export function MailList({
                 <MailOpen className="size-3.5 opacity-50" />
                 <span className="hidden sm:inline">읽지않음</span>
               </Button>
+              {onBulkArchive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={onBulkArchive}
+                  disabled={isBulkLoading}
+                  title="보관"
+                >
+                  <Archive className="size-3.5" />
+                  <span className="hidden sm:inline">보관</span>
+                </Button>
+              )}
               {onBulkMove && (
                 <div ref={moveRef} className="relative">
                   <Button
