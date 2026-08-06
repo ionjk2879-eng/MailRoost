@@ -2,6 +2,7 @@ import { Loader2, Search, X } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { AccountSidebar } from "@/components/mail/account-sidebar"
 import { CategoryTabs } from "@/components/mail/category-tabs"
+import { ComposeDialog } from "@/components/mail/compose-dialog"
 import { MailDetail } from "@/components/mail/mail-detail"
 import { MailList } from "@/components/mail/mail-list"
 import {
@@ -14,12 +15,14 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { HomeView } from "@/components/home/home-view"
 import { LandingView } from "@/components/home/landing-view"
 import {
+  deleteMail,
   fetchAccounts,
   fetchCurrentUser,
   fetchMailDetail,
   fetchMails,
   logout,
   markAsRead,
+  markAsUnread,
   toggleStar,
 } from "@/lib/api"
 import type { Account, Mail, MailCategory } from "@/types/mail"
@@ -167,6 +170,28 @@ function App() {
     toggleStar(mailId, accountId, starred)
   }
 
+  const handleMarkAsUnread = (mailId: string, accountId: string) => {
+    setRealMails((prev) => prev.map((m) => (m.id === mailId && m.accountId === accountId ? { ...m, isRead: false } : m)))
+    setMailDetails((prev) => {
+      const detail = prev[mailId]
+      if (!detail) return prev
+      return { ...prev, [mailId]: { ...detail, isRead: false } }
+    })
+    markAsUnread(mailId, accountId)
+  }
+
+  const handleDeleteMail = async (mailId: string, accountId: string) => {
+    // Optimistically remove from UI
+    setRealMails((prev) => prev.filter((m) => !(m.id === mailId && m.accountId === accountId)))
+    setMailDetails((prev) => {
+      const next = { ...prev }
+      delete next[mailId]
+      return next
+    })
+    if (selectedMailId === mailId) setSelectedMailId(null)
+    deleteMail(mailId, accountId)
+  }
+
   const handleLoadMore = async () => {
     if (!nextCursor || isLoadingMore) return
     setIsLoadingMore(true)
@@ -289,6 +314,8 @@ function App() {
       isLoadingBody={isLoadingDetail}
       onBack={isMobile ? () => setSelectedMailId(null) : undefined}
       onToggleStar={handleToggleStar}
+      onMarkAsUnread={handleMarkAsUnread}
+      onDelete={handleDeleteMail}
     />
   )
 
@@ -308,7 +335,7 @@ function App() {
       <SidebarInset>
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
-          <span className="truncate text-sm font-medium">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
             {view === "home"
               ? "홈"
               : selectedAccountId
@@ -320,6 +347,9 @@ function App() {
                   })()
                 : "전체 받은편지함"}
           </span>
+          {view === "inbox" && (
+            <ComposeDialog accounts={accounts} />
+          )}
         </header>
         {view === "home" ? (
           <HomeView

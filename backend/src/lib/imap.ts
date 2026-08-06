@@ -283,6 +283,21 @@ export async function imapToggleStar(config: ImapConfig, uid: string, starred: b
   })
 }
 
+export async function imapMarkAsUnread(config: ImapConfig, uid: string): Promise<void> {
+  await withImap(config, async (client) => {
+    await client.command("SELECT INBOX")
+    await client.command(`UID STORE ${uid} -FLAGS (\\Seen)`)
+  })
+}
+
+export async function imapDeleteMail(config: ImapConfig, uid: string): Promise<void> {
+  await withImap(config, async (client) => {
+    await client.command("SELECT INBOX")
+    await client.command(`UID STORE ${uid} +FLAGS (\\Deleted)`)
+    await client.command("EXPUNGE")
+  })
+}
+
 export async function imapGetMailDetail(config: ImapConfig, accountId: string, uid: string): Promise<Mail> {
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
@@ -351,6 +366,14 @@ export async function naverToggleStar(email: string, appPassword: string, uid: s
   return imapToggleStar(naverConfig(email, appPassword), uid, starred)
 }
 
+export async function naverMarkAsUnread(email: string, appPassword: string, uid: string): Promise<void> {
+  return imapMarkAsUnread(naverConfig(email, appPassword), uid)
+}
+
+export async function naverDeleteMail(email: string, appPassword: string, uid: string): Promise<void> {
+  return imapDeleteMail(naverConfig(email, appPassword), uid)
+}
+
 export async function naverGetMailDetail(
   email: string,
   appPassword: string,
@@ -364,6 +387,14 @@ export async function naverGetMailDetail(
 
 export async function verifyDaumCredentials(email: string, password: string): Promise<void> {
   await imapVerify(daumConfig(email, password))
+}
+
+export async function daumMarkAsUnread(email: string, password: string, uid: string): Promise<void> {
+  return imapMarkAsUnread(daumConfig(email, password), uid)
+}
+
+export async function daumDeleteMail(email: string, password: string, uid: string): Promise<void> {
+  return imapDeleteMail(daumConfig(email, password), uid)
 }
 
 export async function daumListInbox(

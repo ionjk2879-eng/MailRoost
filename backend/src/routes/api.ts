@@ -7,22 +7,32 @@ import {
   getMailDetail,
   listInboxMails,
   markAsRead as gmailMarkAsRead,
+  markAsUnread as gmailMarkAsUnread,
   toggleStar as gmailToggleStar,
+  trashMail as gmailTrash,
+  sendGmailMessage,
 } from "../lib/gmail"
 import {
+  daumDeleteMail,
   daumGetMailDetail,
   daumListInbox,
   daumMarkAsRead,
+  daumMarkAsUnread,
   daumToggleStar,
+  imapDeleteMail,
   imapGetMailDetail,
   imapListInbox,
   imapMarkAsRead,
+  imapMarkAsUnread,
   imapToggleStar,
+  naverDeleteMail,
   naverGetMailDetail,
   naverListInbox,
   naverMarkAsRead,
+  naverMarkAsUnread,
   naverToggleStar,
 } from "../lib/imap"
+import { naverSendMail, daumSendMail } from "../lib/smtp"
 import { readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
 const api = new Hono<{ Bindings: Env }>()
@@ -194,21 +204,28 @@ api.patch("/mail/:id/read", async (c) => {
   const mailId = c.req.param("id")
   if (!sessionId || !accountId) return c.json({ error: "bad request" }, 400)
 
+  const body = await c.req.json<{ read?: boolean }>().catch(() => null)
+  const read = body?.read ?? true
+
   const session = await readSession(c.env, sessionId)
   const accountMap = await resolveAccounts(c.env, session)
   const record = accountMap[accountId]
   if (!record) return c.json({ error: "not found" }, 404)
 
   if (record.provider === "naver") {
-    await naverMarkAsRead(record.email, record.appPassword, mailId)
+    if (read) await naverMarkAsRead(record.email, record.appPassword, mailId)
+    else await naverMarkAsUnread(record.email, record.appPassword, mailId)
     return c.json({ ok: true })
   }
   if (record.provider === "daum") {
-    await daumMarkAsRead(record.email, record.password, mailId)
+    if (read) await daumMarkAsRead(record.email, record.password, mailId)
+    else await daumMarkAsUnread(record.email, record.password, mailId)
     return c.json({ ok: true })
   }
   if (record.provider === "imap") {
-    await imapMarkAsRead({ host: record.host, port: record.port, email: record.email, password: record.password }, mailId)
+    const cfg = { host: record.host, port: record.port, email: record.email, password: record.password }
+    if (read) await imapMarkAsRead(cfg, mailId)
+    else await imapMarkAsUnread(cfg, mailId)
     return c.json({ ok: true })
   }
 
@@ -217,7 +234,8 @@ api.patch("/mail/:id/read", async (c) => {
     accountMap[accountId] = fresh
     await persistAccounts(c.env, sessionId, session, accountMap)
   }
-  await gmailMarkAsRead(fresh.accessToken, mailId)
+  if (read) await gmailMarkAsRead(fresh.accessToken, mailId)
+  else await gmailMarkAsUnread(fresh.accessToken, mailId)
   return c.json({ ok: true })
 })
 
@@ -288,6 +306,73 @@ api.get("/mail/:id", async (c) => {
     await persistAccounts(c.env, sessionId, session, accountMap)
   }
   return c.json(await getMailDetail(fresh.accessToken, accountId, mailId))
+})
+
+api.delete("/mail/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  const accountId = c.req.query("accountId")
+  const mailId = c.req.param("id")
+  if (!sessionId || !accountId) return c.json({ error: "bad request" }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const record = accountMap[accountId]
+  if (!record) return c.json({ error: "not found" }, 404)
+
+  if (record.provider === "naver") {
+    await naverDeleteMail(record.email, record.appPassword, mailId)
+    return c.json({ ok: true })
+  }
+  if (record.provider === "daum") {
+    await daumDeleteMail(record.email, record.password, mailId)
+    return c.json({ ok: true })
+  }
+  if (record.provider === "imap") {
+    await imapDeleteMail({ host: record.host, port: record.port, email: record.email, password: record.password }, mailId)
+    return c.json({ ok: true })
+  }
+
+  const fresh = await ensureFreshToken(c.env, record)
+  if (fresh.accessToken !== record.accessToken) {
+    accountMap[accountId] = fresh
+    await persistAccounts(c.env, sessionId, session, accountMap)
+  }
+  await gmailTrash(fresh.accessToken, mailId)
+  return c.json({ ok: true })
+})
+
+api.post("/mail/send", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req.json<{ accountId?: string; to?: string; subject?: string; body?: string }>().catch(() => null)
+  const { accountId, to, subject, body: mailBody } = body ?? {}
+  if (!accountId || !to || !subject || !mailBody) return c.json({ error: "필수 항목이 누락되었습니다." }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const record = accountMap[accountId]
+  if (!record) return c.json({ error: "계정을 찾을 수 없습니다." }, 404)
+
+  if (record.provider === "naver") {
+    await naverSendMail(record.email, record.appPassword, to, subject, mailBody)
+    return c.json({ ok: true })
+  }
+  if (record.provider === "daum") {
+    await daumSendMail(record.email, record.password, to, subject, mailBody)
+    return c.json({ ok: true })
+  }
+  if (record.provider === "imap") {
+    return c.json({ error: "IMAP 계정은 현재 메일 보내기를 지원하지 않습니다." }, 400)
+  }
+
+  const fresh = await ensureFreshToken(c.env, record)
+  if (fresh.accessToken !== record.accessToken) {
+    accountMap[accountId] = fresh
+    await persistAccounts(c.env, sessionId, session, accountMap)
+  }
+  await sendGmailMessage(fresh.accessToken, record.email, to, subject, mailBody)
+  return c.json({ ok: true })
 })
 
 export default api

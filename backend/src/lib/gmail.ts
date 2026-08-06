@@ -215,15 +215,70 @@ function extractBody(payload: GmailMessagePart | undefined): { text?: string; ht
   return {}
 }
 
-export async function markAsRead(accessToken: string, messageId: string): Promise<void> {
+async function modifyLabels(accessToken: string, messageId: string, body: object): Promise<void> {
   await fetch(`${GMAIL_API_BASE}/messages/${messageId}/modify`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ removeLabelIds: ["UNREAD"] }),
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   })
+}
+
+export async function markAsRead(accessToken: string, messageId: string): Promise<void> {
+  await modifyLabels(accessToken, messageId, { removeLabelIds: ["UNREAD"] })
+}
+
+export async function markAsUnread(accessToken: string, messageId: string): Promise<void> {
+  await modifyLabels(accessToken, messageId, { addLabelIds: ["UNREAD"] })
+}
+
+export async function trashMail(accessToken: string, messageId: string): Promise<void> {
+  await fetch(`${GMAIL_API_BASE}/messages/${messageId}/trash`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = ""
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
+}
+
+function encodeRfc2047Gmail(str: string): string {
+  if (!/[^\x00-\x7F]/.test(str)) return str
+  const bytes = new TextEncoder().encode(str)
+  return `=?UTF-8?B?${(() => { let b = ""; for (let i = 0; i < bytes.length; i++) b += String.fromCharCode(bytes[i]); return btoa(b) })()}?=`
+}
+
+export async function sendGmailMessage(
+  accessToken: string,
+  from: string,
+  to: string,
+  subject: string,
+  body: string,
+): Promise<void> {
+  const raw = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${encodeRfc2047Gmail(subject)}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: text/plain; charset=utf-8`,
+    `Content-Transfer-Encoding: 8bit`,
+    ``,
+    body,
+  ].join("\r\n")
+
+  const encoded = bytesToBase64Url(new TextEncoder().encode(raw))
+
+  const res = await fetch(`${GMAIL_API_BASE}/messages/send`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ raw: encoded }),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => "")
+    throw new Error(`Gmail 전송 실패: ${res.status} ${text}`)
+  }
 }
 
 export async function getMailDetail(accessToken: string, accountId: string, messageId: string): Promise<Mail> {

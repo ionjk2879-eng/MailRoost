@@ -47,6 +47,45 @@ export async function toggleStar(id: string, accountId: string, starred: boolean
   )
 }
 
+export async function markAsUnread(id: string, accountId: string): Promise<void> {
+  await fetch(
+    `/api/mail/${encodeURIComponent(id)}/read?accountId=${encodeURIComponent(accountId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ read: false }),
+    },
+  )
+}
+
+export async function deleteMail(id: string, accountId: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(
+    `/api/mail/${encodeURIComponent(id)}?accountId=${encodeURIComponent(accountId)}`,
+    { method: "DELETE" },
+  )
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "메일 삭제에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function sendMail(
+  accountId: string,
+  to: string,
+  subject: string,
+  body: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("/api/mail/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, to, subject, body }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  if (!res.ok) return { ok: false, error: data.error ?? "메일 전송에 실패했습니다." }
+  return { ok: true }
+}
+
 export async function logout(): Promise<void> {
   await fetch("/auth/logout", { method: "POST" })
 }

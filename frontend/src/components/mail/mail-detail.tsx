@@ -1,9 +1,10 @@
-import { ChevronLeft, Star } from "lucide-react"
+import { ChevronLeft, MailOpen, Reply, Star, Trash2 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ComposeDialog } from "@/components/mail/compose-dialog"
 import type { Account, Mail } from "@/types/mail"
 
 interface MailDetailProps {
@@ -12,6 +13,8 @@ interface MailDetailProps {
   isLoadingBody?: boolean
   onBack?: () => void
   onToggleStar?: (mailId: string, accountId: string, starred: boolean) => void
+  onMarkAsUnread?: (mailId: string, accountId: string) => void
+  onDelete?: (mailId: string, accountId: string) => void
 }
 
 function formatFullDate(iso: string): string {
@@ -34,7 +37,7 @@ a{color:#2563eb}
 </style></head><body>${bodyHtml}</body></html>`
 }
 
-export function MailDetail({ mail, accounts, isLoadingBody, onBack, onToggleStar }: MailDetailProps) {
+export function MailDetail({ mail, accounts, isLoadingBody, onBack, onToggleStar, onMarkAsUnread, onDelete }: MailDetailProps) {
   if (!mail) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col">
@@ -54,18 +57,51 @@ export function MailDetail({ mail, accounts, isLoadingBody, onBack, onToggleStar
         {onBack && <BackButton onBack={onBack} />}
         <div className="flex min-w-0 items-start justify-between gap-4">
           <h2 className="min-w-0 flex-1 text-lg font-semibold break-words">{mail.subject}</h2>
-          <button
-            type="button"
-            onClick={() => onToggleStar?.(mail.id, mail.accountId, !mail.isStarred)}
-            className="shrink-0 rounded p-1 transition-colors hover:bg-accent"
-            aria-label={mail.isStarred ? "별표 해제" : "별표 추가"}
-          >
-            <Star
-              className={
-                mail.isStarred ? "size-4 fill-amber-400 text-amber-400" : "size-4 text-muted-foreground"
+          <div className="flex shrink-0 items-center gap-1">
+            <ComposeDialog
+              accounts={accounts}
+              defaultAccountId={mail.accountId}
+              defaultTo={mail.fromEmail}
+              defaultSubject={mail.subject.startsWith("Re:") ? mail.subject : `Re: ${mail.subject}`}
+              trigger={
+                <Button variant="ghost" size="icon" className="size-8" title="답장">
+                  <Reply className="size-4" />
+                </Button>
               }
             />
-          </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              title={mail.isRead ? "읽지 않음으로 표시" : "이미 읽지 않은 메일"}
+              onClick={() => onMarkAsUnread?.(mail.id, mail.accountId)}
+              disabled={!mail.isRead}
+            >
+              <MailOpen className="size-4" />
+            </Button>
+            <button
+              type="button"
+              onClick={() => onToggleStar?.(mail.id, mail.accountId, !mail.isStarred)}
+              className="hover:bg-accent flex size-8 items-center justify-center rounded-md transition-colors"
+              aria-label={mail.isStarred ? "별표 해제" : "별표 추가"}
+              title={mail.isStarred ? "별표 해제" : "별표 추가"}
+            >
+              <Star
+                className={
+                  mail.isStarred ? "size-4 fill-amber-400 text-amber-400" : "size-4 text-muted-foreground"
+                }
+              />
+            </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hover:text-destructive size-8"
+              title="삭제"
+              onClick={() => onDelete?.(mail.id, mail.accountId)}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
         </div>
         <div className="flex min-w-0 items-center gap-3">
           <Avatar className="shrink-0">
