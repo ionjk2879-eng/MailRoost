@@ -1,4 +1,4 @@
-import type { Account, Mail, MailFolder } from "@/types/mail"
+import type { Account, AutoClassifyRule, Mail, MailFolder } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -54,6 +54,51 @@ export async function deleteFolder(id: string): Promise<{ ok: boolean; error?: s
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     return { ok: false, error: data.error ?? "메일함 삭제에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function fetchRules(): Promise<AutoClassifyRule[]> {
+  const res = await fetch("/api/rules")
+  if (!res.ok) return []
+  const data = (await res.json()) as { rules: AutoClassifyRule[] }
+  return data.rules
+}
+
+export async function createRule(
+  field: "from" | "subject",
+  keyword: string,
+  targetFolderId: string,
+): Promise<{ ok: true; rule: AutoClassifyRule } | { ok: false; error: string }> {
+  const res = await fetch("/api/rules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ field, keyword, targetFolderId }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { rule?: AutoClassifyRule; error?: string }
+  if (!res.ok || !data.rule) return { ok: false, error: data.error ?? "규칙 생성에 실패했습니다." }
+  return { ok: true, rule: data.rule }
+}
+
+export async function updateRule(
+  id: string,
+  patch: Partial<Pick<AutoClassifyRule, "field" | "keyword" | "targetFolderId" | "enabled">>,
+): Promise<{ ok: true; rule: AutoClassifyRule } | { ok: false; error: string }> {
+  const res = await fetch(`/api/rules/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  })
+  const data = (await res.json().catch(() => ({}))) as { rule?: AutoClassifyRule; error?: string }
+  if (!res.ok || !data.rule) return { ok: false, error: data.error ?? "규칙 수정에 실패했습니다." }
+  return { ok: true, rule: data.rule }
+}
+
+export async function deleteRule(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/rules/${encodeURIComponent(id)}`, { method: "DELETE" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "규칙 삭제에 실패했습니다." }
   }
   return { ok: true }
 }

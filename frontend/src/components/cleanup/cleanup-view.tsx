@@ -1,8 +1,10 @@
 import { AlertTriangle, Loader2 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import type { Account, Mail } from "@/types/mail"
+import { ARCHIVE_FOLDER_ID } from "@/types/mail"
+import type { Account, AutoClassifyRule, Mail, MailFolder } from "@/types/mail"
 
 type MainTab = "mailbox" | "auto" | "quickreply" | "shortcuts"
 type MailboxSubTab = "manage" | "unread" | "bydate"
@@ -12,6 +14,15 @@ interface CleanupViewProps {
   mails: Mail[]
   onMarkAllRead: (accountId?: string) => Promise<void>
   onDeleteBeforeDate: (cutoff: Date, accountId?: string) => Promise<void>
+  folders: MailFolder[]
+  rules: AutoClassifyRule[]
+  onCreateRule: (
+    field: "from" | "subject",
+    keyword: string,
+    targetFolderId: string,
+  ) => Promise<{ ok: boolean; error?: string }>
+  onToggleRule: (ruleId: string, enabled: boolean) => void
+  onDeleteRule: (ruleId: string) => void
 }
 
 const SHORTCUTS = [
@@ -30,7 +41,7 @@ function MailboxManageTab({
   mails,
   onMarkAllRead,
   onDeleteBeforeDate,
-}: CleanupViewProps) {
+}: Pick<CleanupViewProps, "accounts" | "mails" | "onMarkAllRead" | "onDeleteBeforeDate">) {
   const [subTab, setSubTab] = useState<MailboxSubTab>("manage")
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [cutoffDate, setCutoffDate] = useState("")
@@ -305,11 +316,167 @@ function MailboxManageTab({
   )
 }
 
+function AutoClassifyTab({
+  folders,
+  rules,
+  onCreateRule,
+  onToggleRule,
+  onDeleteRule,
+}: {
+  folders: MailFolder[]
+  rules: AutoClassifyRule[]
+  onCreateRule: (
+    field: "from" | "subject",
+    keyword: string,
+    targetFolderId: string,
+  ) => Promise<{ ok: boolean; error?: string }>
+  onToggleRule: (ruleId: string, enabled: boolean) => void
+  onDeleteRule: (ruleId: string) => void
+}) {
+  const folderOptions = [{ id: ARCHIVE_FOLDER_ID, name: "보관함" }, ...folders]
+  const [field, setField] = useState<"from" | "subject">("from")
+  const [keyword, setKeyword] = useState("")
+  const [targetFolderId, setTargetFolderId] = useState(folderOptions[0].id)
+  const [error, setError] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
+
+  const folderName = (id: string) =>
+    id === ARCHIVE_FOLDER_ID ? "보관함" : (folders.find((f) => f.id === id)?.name ?? "(삭제된 메일함)")
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmed = keyword.trim()
+    if (!trimmed) return
+    setIsCreating(true)
+    setError(null)
+    const result = await onCreateRule(field, trimmed, targetFolderId)
+    setIsCreating(false)
+    if (!result.ok) {
+      setError(result.error ?? "규칙 생성에 실패했습니다.")
+      return
+    }
+    setKeyword("")
+  }
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div className="rounded-lg border p-4">
+        <h3 className="mb-1 font-medium">새 규칙 만들기</h3>
+        <p className="text-muted-foreground mb-4 text-sm">
+          새로 도착하는 메일부터 적용됩니다. 이미 받은편지함에 있는 메일에는 소급 적용되지 않아요.
+        </p>
+        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
+          <div className="space-y-1.5">
+            <label className="text-muted-foreground text-xs">조건</label>
+            <select
+              value={field}
+              onChange={(e) => setField(e.target.value as "from" | "subject")}
+              className="border-input bg-background h-9 rounded-md border px-2 text-sm focus:outline-none"
+            >
+              <option value="from">보낸사람</option>
+              <option value="subject">제목</option>
+            </select>
+          </div>
+          <div className="min-w-[140px] flex-1 space-y-1.5">
+            <label className="text-muted-foreground text-xs">포함 키워드</label>
+            <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="예: 뉴스레터" required />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-muted-foreground text-xs">이동할 곳</label>
+            <select
+              value={targetFolderId}
+              onChange={(e) => setTargetFolderId(e.target.value)}
+              className="border-input bg-background h-9 rounded-md border px-2 text-sm focus:outline-none"
+            >
+              {folderOptions.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+          <Button type="submit" size="sm" disabled={isCreating || !keyword.trim()}>
+            {isCreating ? <Loader2 className="size-3.5 animate-spin" /> : "추가"}
+          </Button>
+        </form>
+        {folders.length === 0 && (
+          <p className="text-muted-foreground mt-3 flex items-start gap-1.5 text-xs">
+            <AlertTriangle className="mt-0.5 size-3 shrink-0" />
+            사이드바에서 메일함을 만들어두면 보관함 대신 그쪽으로 보낼 수도 있어요.
+          </p>
+        )}
+        {error && <p className="text-destructive mt-2 text-sm">{error}</p>}
+      </div>
+
+      <div className="overflow-hidden rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="px-4 py-2.5 text-left font-medium">조건</th>
+              <th className="px-4 py-2.5 text-left font-medium">이동할 곳</th>
+              <th className="px-4 py-2.5 text-center font-medium">사용</th>
+              <th className="px-4 py-2.5 text-right font-medium">관리</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rules.map((rule) => (
+              <tr key={rule.id} className={cn("hover:bg-muted/30", !rule.enabled && "opacity-50")}>
+                <td className="px-4 py-3">
+                  {rule.field === "from" ? "보낸사람" : "제목"}에 <strong>"{rule.keyword}"</strong> 포함
+                </td>
+                <td className="px-4 py-3">{folderName(rule.targetFolderId)}</td>
+                <td className="px-4 py-3 text-center">
+                  <button
+                    type="button"
+                    onClick={() => onToggleRule(rule.id, !rule.enabled)}
+                    className={cn(
+                      "h-5 w-9 rounded-full transition-colors",
+                      rule.enabled ? "bg-primary" : "bg-muted-foreground/30",
+                    )}
+                    aria-label={rule.enabled ? "규칙 끄기" : "규칙 켜기"}
+                  >
+                    <span
+                      className={cn(
+                        "block size-4 rounded-full bg-background shadow transition-transform",
+                        rule.enabled ? "translate-x-4.5" : "translate-x-0.5",
+                      )}
+                    />
+                  </button>
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-destructive hover:text-destructive text-xs"
+                    onClick={() => onDeleteRule(rule.id)}
+                  >
+                    삭제
+                  </Button>
+                </td>
+              </tr>
+            ))}
+            {rules.length === 0 && (
+              <tr>
+                <td colSpan={4} className="text-muted-foreground px-4 py-8 text-center text-sm">
+                  아직 규칙이 없습니다.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export function CleanupView({
   accounts,
   mails,
   onMarkAllRead,
   onDeleteBeforeDate,
+  folders,
+  rules,
+  onCreateRule,
+  onToggleRule,
+  onDeleteRule,
 }: CleanupViewProps) {
   const [mainTab, setMainTab] = useState<MainTab>("mailbox")
 
@@ -355,10 +522,13 @@ export function CleanupView({
         )}
 
         {mainTab === "auto" && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-lg font-medium mb-2">자동분류</p>
-            <p className="text-muted-foreground text-sm">준비 중입니다.</p>
-          </div>
+          <AutoClassifyTab
+            folders={folders}
+            rules={rules}
+            onCreateRule={onCreateRule}
+            onToggleRule={onToggleRule}
+            onDeleteRule={onDeleteRule}
+          />
         )}
 
         {mainTab === "quickreply" && (

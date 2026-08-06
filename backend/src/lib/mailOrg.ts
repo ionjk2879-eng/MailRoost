@@ -15,13 +15,23 @@ export function parseAssignmentKey(key: string): { accountId: string; mailId: st
 }
 
 export function emptyMailOrgState(): MailOrgState {
-  return { folders: [], assignments: {} }
+  return { folders: [], assignments: {}, rules: [], classified: {} }
+}
+
+// 이 기능들이 추가되기 전에 저장된 상태에는 rules/classified 필드가 없을 수 있어 채워준다.
+export function normalizeMailOrgState(state: Partial<MailOrgState>): MailOrgState {
+  return {
+    folders: state.folders ?? [],
+    assignments: state.assignments ?? {},
+    rules: state.rules ?? [],
+    classified: state.classified ?? {},
+  }
 }
 
 export async function getUserMailOrg(env: Env, userId: string): Promise<MailOrgState> {
   const raw = await env.TOKENS.get(`user:mailorg:${userId}`)
   if (!raw) return emptyMailOrgState()
-  return JSON.parse(raw) as MailOrgState
+  return normalizeMailOrgState(JSON.parse(raw) as Partial<MailOrgState>)
 }
 
 export async function saveUserMailOrg(env: Env, userId: string, state: MailOrgState): Promise<void> {

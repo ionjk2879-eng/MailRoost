@@ -22,7 +22,9 @@ import {
   bulkDeleteMails,
   bulkMarkRead,
   createFolder as apiCreateFolder,
+  createRule as apiCreateRule,
   deleteFolder as apiDeleteFolder,
+  deleteRule as apiDeleteRule,
   emptyTrash,
   fetchAccounts,
   fetchCurrentUser,
@@ -30,6 +32,7 @@ import {
   fetchFolders,
   fetchMailDetail,
   fetchMails,
+  fetchRules,
   fetchTrashMails,
   logout,
   markAsRead,
@@ -38,9 +41,10 @@ import {
   permanentDeleteFromTrash,
   renameFolder as apiRenameFolder,
   toggleStar,
+  updateRule as apiUpdateRule,
 } from "@/lib/api"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { Account, Mail, MailCategory, MailFolder } from "@/types/mail"
+import type { Account, AutoClassifyRule, Mail, MailCategory, MailFolder } from "@/types/mail"
 
 function isRealAccountId(accountId: string): boolean {
   return accountId.includes(":")
@@ -69,6 +73,7 @@ function App() {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
   const [folderMails, setFolderMails] = useState<Mail[]>([])
   const [isFolderLoading, setIsFolderLoading] = useState(false)
+  const [rules, setRules] = useState<AutoClassifyRule[]>([])
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [selectedMailId, setSelectedMailId] = useState<string | null>(null)
@@ -107,7 +112,13 @@ function App() {
     fetchCurrentUser()
       .then((user) => {
         setCurrentUser(user)
-        if (user) return Promise.all([loadAccountsAndMails(), fetchFolders().then(setFolders)])
+        if (user) {
+          return Promise.all([
+            loadAccountsAndMails(),
+            fetchFolders().then(setFolders),
+            fetchRules().then(setRules),
+          ])
+        }
       })
       .finally(() => setIsBootstrapping(false))
   }, [])
@@ -524,6 +535,36 @@ function App() {
     return { ok: true }
   }
 
+  const handleCreateRule = async (
+    field: "from" | "subject",
+    keyword: string,
+    targetFolderId: string,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const result = await apiCreateRule(field, keyword, targetFolderId)
+    if (!result.ok) return { ok: false, error: result.error }
+    setRules((prev) => [...prev, result.rule])
+    return { ok: true }
+  }
+
+  const handleToggleRule = async (ruleId: string, enabled: boolean) => {
+    setRules((prev) => prev.map((r) => (r.id === ruleId ? { ...r, enabled } : r)))
+    const result = await apiUpdateRule(ruleId, { enabled })
+    if (!result.ok) {
+      setRules((prev) => prev.map((r) => (r.id === ruleId ? { ...r, enabled: !enabled } : r)))
+      showError(result.error ?? "규칙 수정에 실패했습니다.")
+    }
+  }
+
+  const handleDeleteRule = async (ruleId: string) => {
+    const removed = rules.find((r) => r.id === ruleId)
+    setRules((prev) => prev.filter((r) => r.id !== ruleId))
+    const result = await apiDeleteRule(ruleId)
+    if (!result.ok) {
+      if (removed) setRules((prev) => [...prev, removed])
+      showError(result.error ?? "규칙 삭제에 실패했습니다.")
+    }
+  }
+
   const handleManualRefresh = async () => {
     if (isRefreshing) return
     setIsRefreshing(true)
@@ -581,6 +622,7 @@ function App() {
     setFolders([])
     setFolderMails([])
     setSelectedFolderId(null)
+    setRules([])
     goHome()
   }
 
@@ -804,6 +846,11 @@ function App() {
               mails={allMails}
               onMarkAllRead={handleMarkAllRead}
               onDeleteBeforeDate={handleDeleteBeforeDate}
+              folders={folders}
+              rules={rules}
+              onCreateRule={handleCreateRule}
+              onToggleRule={handleToggleRule}
+              onDeleteRule={handleDeleteRule}
             />
           </div>
         ) : view === "trash" ? (

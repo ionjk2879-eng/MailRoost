@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { Account, ConnectedAccountRecord, DaumAccountRecord, Env, ImapAccountRecord, Mail, MailFolder, MailOrgState, StoredSession } from "../types"
+import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Env, ImapAccountRecord, Mail, MailFolder, MailOrgState, StoredSession } from "../types"
 import { getUserAccounts, getUserById, saveUserAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import {
@@ -59,7 +59,7 @@ import {
   naverToggleStar,
   naverToggleStarBulk,
 } from "../lib/imap"
-import { assignmentKey, emptyMailOrgState, getUserMailOrg, parseAssignmentKey, saveUserMailOrg } from "../lib/mailOrg"
+import { assignmentKey, emptyMailOrgState, getUserMailOrg, normalizeMailOrgState, parseAssignmentKey, saveUserMailOrg } from "../lib/mailOrg"
 import { naverSendMail, daumSendMail } from "../lib/smtp"
 import { readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
@@ -117,7 +117,7 @@ async function persistAccounts(
 
 async function resolveMailOrg(env: Env, session: StoredSession): Promise<MailOrgState> {
   if (session.userId) return getUserMailOrg(env, session.userId)
-  return session.mailOrg ?? emptyMailOrgState()
+  return session.mailOrg ? normalizeMailOrgState(session.mailOrg) : emptyMailOrgState()
 }
 
 async function persistMailOrg(
@@ -334,6 +334,94 @@ api.get("/folders/:id/mail", async (c) => {
   return c.json({ mails })
 })
 
+// ── 자동분류 규칙 ──────────────────────────────────────────────────────────────
+
+api.get("/rules", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ rules: [] })
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  return c.json({ rules: org.rules })
+})
+
+api.post("/rules", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req.json<{ field?: string; keyword?: string; targetFolderId?: string }>().catch(() => null)
+  const field = body?.field
+  const keyword = body?.keyword?.trim()
+  const targetFolderId = body?.targetFolderId
+  if (field !== "from" && field !== "subject") return c.json({ error: "잘못된 조건입니다." }, 400)
+  if (!keyword) return c.json({ error: "키워드를 입력해주세요." }, 400)
+  if (!targetFolderId) return c.json({ error: "이동할 메일함을 선택해주세요." }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  if (targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
+    return c.json({ error: "메일함을 찾을 수 없습니다." }, 404)
+  }
+
+  const rule: AutoClassifyRule = {
+    id: crypto.randomUUID(),
+    field,
+    keyword,
+    targetFolderId,
+    enabled: true,
+    createdAt: Date.now(),
+  }
+  org.rules.push(rule)
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ rule })
+})
+
+api.patch("/rules/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const ruleId = c.req.param("id")
+  const body = await c.req
+    .json<{ field?: string; keyword?: string; targetFolderId?: string; enabled?: boolean }>()
+    .catch(() => null)
+
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  const rule = org.rules.find((r) => r.id === ruleId)
+  if (!rule) return c.json({ error: "규칙을 찾을 수 없습니다." }, 404)
+
+  if (body?.field !== undefined) {
+    if (body.field !== "from" && body.field !== "subject") return c.json({ error: "잘못된 조건입니다." }, 400)
+    rule.field = body.field
+  }
+  if (body?.keyword !== undefined) {
+    const keyword = body.keyword.trim()
+    if (!keyword) return c.json({ error: "키워드를 입력해주세요." }, 400)
+    rule.keyword = keyword
+  }
+  if (body?.targetFolderId !== undefined) {
+    if (body.targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === body.targetFolderId)) {
+      return c.json({ error: "메일함을 찾을 수 없습니다." }, 404)
+    }
+    rule.targetFolderId = body.targetFolderId
+  }
+  if (body?.enabled !== undefined) rule.enabled = body.enabled
+
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ rule })
+})
+
+api.delete("/rules/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const ruleId = c.req.param("id")
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  org.rules = org.rules.filter((r) => r.id !== ruleId)
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ ok: true })
+})
+
 api.post("/mail/move", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
@@ -375,6 +463,7 @@ api.get("/mail", async (c) => {
 
   const results: Mail[] = []
   let accountsChanged = false
+  let orgChanged = false
 
   const IMAP_PAGE = 50
   const GMAIL_PAGE = 50
@@ -382,6 +471,23 @@ api.get("/mail", async (c) => {
   // 사용자 정의 메일함으로 옮긴 메일은 받은편지함 목록에서 제외한다 (실제 서버에서는 옮기지 않으므로 앱에서 걸러냄)
   const isAssignedElsewhere = (accountId: string, mailId: string) =>
     Object.prototype.hasOwnProperty.call(org.assignments, assignmentKey(accountId, mailId))
+
+  // 새로 도착한(한 번도 평가한 적 없는) 메일만 규칙과 대조한다 — 사용자가 수동으로 받은편지함으로
+  // 되돌린 메일이 새로고침할 때마다 다시 자동분류되는 것을 막기 위함.
+  function classifyIfNew(accountId: string, mail: Mail): void {
+    const key = assignmentKey(accountId, mail.id)
+    if (Object.prototype.hasOwnProperty.call(org.classified, key)) return
+    for (const rule of org.rules) {
+      if (!rule.enabled) continue
+      const haystack = (rule.field === "from" ? `${mail.fromName} ${mail.fromEmail}` : mail.subject).toLowerCase()
+      if (haystack.includes(rule.keyword.toLowerCase())) {
+        org.assignments[key] = rule.targetFolderId
+        break
+      }
+    }
+    org.classified[key] = true
+    orgChanged = true
+  }
 
   // 계정별로 병렬 조회 (직렬로 하면 계정 수만큼 지연이 누적됨)
   const perAccountResults = await Promise.all(
@@ -413,6 +519,9 @@ api.get("/mail", async (c) => {
 
   for (const result of perAccountResults) {
     if (!result) continue
+    if (org.rules.length > 0) {
+      for (const mail of result.mails) classifyIfNew(result.accountId, mail)
+    }
     results.push(...result.mails.filter((m) => !isAssignedElsewhere(result.accountId, m.id)))
     if (result.cursor) nextCursorMap[result.accountId] = result.cursor
     if (result.updatedRecord) {
@@ -422,6 +531,7 @@ api.get("/mail", async (c) => {
   }
 
   if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
+  if (orgChanged) await persistMailOrg(c.env, sessionId, session, org)
 
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   const nextCursor = Object.keys(nextCursorMap).length > 0 ? encodeCursor(nextCursorMap) : null

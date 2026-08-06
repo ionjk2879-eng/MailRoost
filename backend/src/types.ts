@@ -76,10 +76,24 @@ export interface MailFolder {
   createdAt: number
 }
 
+// 자동분류 규칙: 보낸사람/제목에 키워드가 포함되면 지정한 메일함(또는 보관함)으로 자동 이동.
+// 새로 도착한(=한 번이라도 평가된 적 없는) 메일에만 적용되고, 기존 메일에는 소급 적용되지 않는다.
+export interface AutoClassifyRule {
+  id: string
+  field: "from" | "subject"
+  keyword: string
+  targetFolderId: string
+  enabled: boolean
+  createdAt: number
+}
+
 export interface MailOrgState {
   folders: MailFolder[]
-  // key: `${accountId}${mailId}` -> folderId
+  // key: assignmentKey(accountId, mailId) in lib/mailOrg.ts -> folderId
   assignments: Record<string, string>
+  rules: AutoClassifyRule[]
+  // 규칙 평가를 한 번이라도 거친 메일 (재평가/무한 재분류 방지용)
+  classified: Record<string, true>
 }
 
 export interface StoredSession {
