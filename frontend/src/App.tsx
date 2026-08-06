@@ -1,11 +1,12 @@
 import { Loader2, Search, X } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { AccountSidebar } from "@/components/mail/account-sidebar"
 import { CategoryTabs } from "@/components/mail/category-tabs"
 import { ComposeDialog } from "@/components/mail/compose-dialog"
 import { MailDetail } from "@/components/mail/mail-detail"
 import { MailList } from "@/components/mail/mail-list"
 import { CleanupView } from "@/components/cleanup/cleanup-view"
+import { TrashView } from "@/components/trash/trash-view"
 import {
   ResizableHandle,
   ResizablePanel,
@@ -16,27 +17,54 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { HomeView } from "@/components/home/home-view"
 import { LandingView } from "@/components/home/landing-view"
 import {
-  deleteMail,
+  bulkDeleteMails,
+  bulkMarkRead,
+  createFolder as apiCreateFolder,
+  deleteFolder as apiDeleteFolder,
+  emptyTrash,
   fetchAccounts,
   fetchCurrentUser,
+  fetchFolderMails,
+  fetchFolders,
   fetchMailDetail,
   fetchMails,
+  fetchTrashMails,
   logout,
   markAsRead,
   markAsUnread,
+  moveMails,
+  permanentDeleteFromTrash,
   toggleStar,
 } from "@/lib/api"
-import type { Account, Mail, MailCategory } from "@/types/mail"
+import type { Account, Mail, MailCategory, MailFolder } from "@/types/mail"
 
 function isRealAccountId(accountId: string): boolean {
   return accountId.includes(":")
+}
+
+function groupIdsByAccount(mails: Mail[]): Map<string, string[]> {
+  const map = new Map<string, string[]>()
+  for (const mail of mails) {
+    const ids = map.get(mail.accountId)
+    if (ids) ids.push(mail.id)
+    else map.set(mail.accountId, [mail.id])
+  }
+  return map
 }
 
 function App() {
   const isMobile = useIsMobile()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [view, setView] = useState<"home" | "inbox" | "cleanup">("home")
+  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder">("home")
+  const [trashMails, setTrashMails] = useState<Mail[]>([])
+  const [trashCursor, setTrashCursor] = useState<string | null>(null)
+  const [isTrashLoading, setIsTrashLoading] = useState(false)
+  const [isTrashLoadingMore, setIsTrashLoadingMore] = useState(false)
+  const [folders, setFolders] = useState<MailFolder[]>([])
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
+  const [folderMails, setFolderMails] = useState<Mail[]>([])
+  const [isFolderLoading, setIsFolderLoading] = useState(false)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [selectedMailId, setSelectedMailId] = useState<string | null>(null)
@@ -48,16 +76,25 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("")
   const [checkedMailIds, setCheckedMailIds] = useState<Set<string>>(new Set())
   const [isBulkLoading, setIsBulkLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  // 삭제 요청이 아직 서버에 반영되지 않은 사이 폴링이 되살리는 것을 막기 위한 tombstone
+  const deletedKeysRef = useRef<Set<string>>(new Set())
+
+  const showError = (message: string) => {
+    setErrorMessage(message)
+    window.setTimeout(() => setErrorMessage((prev) => (prev === message ? null : prev)), 5000)
+  }
+
+  const filterOutDeleted = (mails: Mail[]) =>
+    mails.filter((m) => !deletedKeysRef.current.has(`${m.accountId}:${m.id}`))
 
   const loadAccountsAndMails = () => {
-    return fetchAccounts().then((accounts) => {
+    // 계정 목록과 메일 목록을 동시에 요청 (순차 요청 시 왕복 지연이 두 배로 누적됨)
+    return Promise.all([fetchAccounts(), fetchMails()]).then(([accounts, { mails, nextCursor: cursor }]) => {
       setRealAccounts(accounts)
-      if (accounts.length > 0) {
-        return fetchMails().then(({ mails, nextCursor: cursor }) => {
-          setRealMails(mails)
-          setNextCursor(cursor)
-        })
-      }
+      setRealMails(filterOutDeleted(mails))
+      setNextCursor(cursor)
     })
   }
 
@@ -65,16 +102,16 @@ function App() {
     fetchCurrentUser()
       .then((user) => {
         setCurrentUser(user)
-        if (user) return loadAccountsAndMails()
+        if (user) return Promise.all([loadAccountsAndMails(), fetchFolders().then(setFolders)])
       })
       .finally(() => setIsBootstrapping(false))
   }, [])
 
-  // 탭이 보일 때만 60초마다 자동 새로고침
+  // 탭이 보일 때만 20초마다 자동 새로고침
   useEffect(() => {
     if (!currentUser) return
     const poll = () => { if (!document.hidden) loadAccountsAndMails() }
-    const interval = setInterval(poll, 60_000)
+    const interval = setInterval(poll, 20_000)
     document.addEventListener("visibilitychange", poll)
     return () => {
       clearInterval(interval)
@@ -132,7 +169,10 @@ function App() {
     )
   }, [accountMails, selectedCategory, searchQuery])
 
-  const selectedMailStub = visibleMails.find((mail) => mail.id === selectedMailId) ?? null
+  const selectedMailStub =
+    visibleMails.find((mail) => mail.id === selectedMailId)
+    ?? folderMails.find((mail) => mail.id === selectedMailId)
+    ?? null
 
   useEffect(() => {
     if (!selectedMailStub || !isRealAccountId(selectedMailStub.accountId)) return
@@ -154,15 +194,19 @@ function App() {
   const handleSelectMail = (mailId: string | null) => {
     setSelectedMailId(mailId)
     if (!mailId) return
-    const mail = allMails.find((m) => m.id === mailId)
+    const mail = allMails.find((m) => m.id === mailId) ?? folderMails.find((m) => m.id === mailId)
     if (mail && !mail.isRead) {
       setRealMails((prev) => prev.map((m) => (m.id === mailId ? { ...m, isRead: true } : m)))
+      setFolderMails((prev) => prev.map((m) => (m.id === mailId ? { ...m, isRead: true } : m)))
       markAsRead(mailId, mail.accountId)
     }
   }
 
   const handleToggleStar = (mailId: string, accountId: string, starred: boolean) => {
     setRealMails((prev) =>
+      prev.map((m) => (m.id === mailId && m.accountId === accountId ? { ...m, isStarred: starred } : m)),
+    )
+    setFolderMails((prev) =>
       prev.map((m) => (m.id === mailId && m.accountId === accountId ? { ...m, isStarred: starred } : m)),
     )
     setMailDetails((prev) => {
@@ -182,58 +226,101 @@ function App() {
     })
   }
 
-  const handleSelectByFilter = (filter: "all" | "none" | "read" | "unread" | "starred" | "unstarred") => {
+  const selectByFilter = (mails: Mail[], filter: "all" | "none" | "read" | "unread" | "starred" | "unstarred") => {
     switch (filter) {
-      case "all": setCheckedMailIds(new Set(visibleMails.map((m) => m.id))); break
+      case "all": setCheckedMailIds(new Set(mails.map((m) => m.id))); break
       case "none": setCheckedMailIds(new Set()); break
-      case "read": setCheckedMailIds(new Set(visibleMails.filter((m) => m.isRead).map((m) => m.id))); break
-      case "unread": setCheckedMailIds(new Set(visibleMails.filter((m) => !m.isRead).map((m) => m.id))); break
-      case "starred": setCheckedMailIds(new Set(visibleMails.filter((m) => m.isStarred).map((m) => m.id))); break
-      case "unstarred": setCheckedMailIds(new Set(visibleMails.filter((m) => !m.isStarred).map((m) => m.id))); break
+      case "read": setCheckedMailIds(new Set(mails.filter((m) => m.isRead).map((m) => m.id))); break
+      case "unread": setCheckedMailIds(new Set(mails.filter((m) => !m.isRead).map((m) => m.id))); break
+      case "starred": setCheckedMailIds(new Set(mails.filter((m) => m.isStarred).map((m) => m.id))); break
+      case "unstarred": setCheckedMailIds(new Set(mails.filter((m) => !m.isStarred).map((m) => m.id))); break
     }
   }
 
-  const handleBulkMarkRead = async () => {
-    const targets = visibleMails.filter((m) => checkedMailIds.has(m.id) && !m.isRead)
-    setRealMails((prev) => prev.map((m) => (checkedMailIds.has(m.id) ? { ...m, isRead: true } : m)))
+  const handleSelectByFilter = (filter: "all" | "none" | "read" | "unread" | "starred" | "unstarred") =>
+    selectByFilter(visibleMails, filter)
+
+  const handleSelectByFilterInFolder = (filter: "all" | "none" | "read" | "unread" | "starred" | "unstarred") =>
+    selectByFilter(folderMails, filter)
+
+  const bulkMarkReadGeneric = async (
+    mails: Mail[],
+    setList: (updater: (prev: Mail[]) => Mail[]) => void,
+    read: boolean,
+  ) => {
+    const targets = mails.filter((m) => checkedMailIds.has(m.id) && m.isRead !== read)
+    setList((prev) => prev.map((m) => (checkedMailIds.has(m.id) ? { ...m, isRead: read } : m)))
     setCheckedMailIds(new Set())
     if (targets.length > 0) {
       setIsBulkLoading(true)
-      await Promise.all(targets.map((m) => markAsRead(m.id, m.accountId)))
+      const groups = groupIdsByAccount(targets)
+      await Promise.all([...groups.entries()].map(([accountId, ids]) => bulkMarkRead(accountId, ids, read)))
       setIsBulkLoading(false)
     }
   }
 
-  const handleBulkMarkUnread = async () => {
-    const targets = visibleMails.filter((m) => checkedMailIds.has(m.id) && m.isRead)
-    setRealMails((prev) => prev.map((m) => (checkedMailIds.has(m.id) ? { ...m, isRead: false } : m)))
-    setCheckedMailIds(new Set())
-    if (targets.length > 0) {
-      setIsBulkLoading(true)
-      await Promise.all(targets.map((m) => markAsUnread(m.id, m.accountId)))
-      setIsBulkLoading(false)
-    }
-  }
+  const handleBulkMarkRead = () => bulkMarkReadGeneric(visibleMails, setRealMails, true)
+  const handleBulkMarkUnread = () => bulkMarkReadGeneric(visibleMails, setRealMails, false)
+  const handleBulkMarkReadInFolder = () => bulkMarkReadGeneric(folderMails, setFolderMails, true)
+  const handleBulkMarkUnreadInFolder = () => bulkMarkReadGeneric(folderMails, setFolderMails, false)
 
-  const handleBulkDelete = async () => {
-    const targets = visibleMails.filter((m) => checkedMailIds.has(m.id))
+  // 낙관적으로 즉시 제거하되, 실패한 계정 몫은 되돌리고 에러를 표시한다.
+  // 삭제 확정 전까지는 tombstone에 등록해 폴링이 되살리지 못하게 막는다.
+  const deleteMailsWithRevert = async (targets: Mail[], origin: "inbox" | "folder" = "inbox") => {
     if (targets.length === 0) return
+    for (const m of targets) deletedKeysRef.current.add(`${m.accountId}:${m.id}`)
+
+    const setList = origin === "folder" ? setFolderMails : setRealMails
     const deletedIds = new Set(targets.map((m) => m.id))
-    setRealMails((prev) => prev.filter((m) => !deletedIds.has(m.id)))
+    setList((prev) => prev.filter((m) => !deletedIds.has(m.id)))
     setMailDetails((prev) => {
       const next = { ...prev }
       for (const id of deletedIds) delete next[id]
       return next
     })
     if (selectedMailId && deletedIds.has(selectedMailId)) setSelectedMailId(null)
+
+    const groups = groupIdsByAccount(targets)
+    const outcomes = await Promise.all(
+      [...groups.entries()].map(async ([accountId, ids]) => ({
+        accountId,
+        ids,
+        result: await bulkDeleteMails(accountId, ids),
+      })),
+    )
+
+    const failed = outcomes.filter((o) => !o.result.ok)
+    if (failed.length > 0) {
+      const failedTargets = targets.filter((m) =>
+        failed.some((f) => f.accountId === m.accountId && f.ids.includes(m.id)),
+      )
+      for (const m of failedTargets) deletedKeysRef.current.delete(`${m.accountId}:${m.id}`)
+      setList((prev) => [...prev, ...failedTargets])
+      showError(failed[0].result.error ?? "일부 메일을 삭제하지 못했습니다. 다시 시도해주세요.")
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    const targets = visibleMails.filter((m) => checkedMailIds.has(m.id))
+    if (targets.length === 0) return
     setCheckedMailIds(new Set())
     setIsBulkLoading(true)
-    await Promise.all(targets.map((m) => deleteMail(m.id, m.accountId)))
+    await deleteMailsWithRevert(targets)
+    setIsBulkLoading(false)
+  }
+
+  const handleBulkDeleteInFolder = async () => {
+    const targets = folderMails.filter((m) => checkedMailIds.has(m.id))
+    if (targets.length === 0) return
+    setCheckedMailIds(new Set())
+    setIsBulkLoading(true)
+    await deleteMailsWithRevert(targets, "folder")
     setIsBulkLoading(false)
   }
 
   const handleMarkAsUnread = (mailId: string, accountId: string) => {
     setRealMails((prev) => prev.map((m) => (m.id === mailId && m.accountId === accountId ? { ...m, isRead: false } : m)))
+    setFolderMails((prev) => prev.map((m) => (m.id === mailId && m.accountId === accountId ? { ...m, isRead: false } : m)))
     setMailDetails((prev) => {
       const detail = prev[mailId]
       if (!detail) return prev
@@ -243,15 +330,53 @@ function App() {
   }
 
   const handleDeleteMail = async (mailId: string, accountId: string) => {
-    // Optimistically remove from UI
-    setRealMails((prev) => prev.filter((m) => !(m.id === mailId && m.accountId === accountId)))
+    const target = allMails.find((m) => m.id === mailId && m.accountId === accountId)
+      ?? folderMails.find((m) => m.id === mailId && m.accountId === accountId)
+    if (!target) return
+    await deleteMailsWithRevert([target], view === "folder" ? "folder" : "inbox")
+  }
+
+  // 메일함 이동: 실제 서버에서는 옮기지 않고 앱 내부 배정만 바꾼다.
+  const applyMove = async (targets: Mail[], folderId: string | null, origin: "inbox" | "folder") => {
+    if (targets.length === 0) return
+    const setList = origin === "folder" ? setFolderMails : setRealMails
+    const ids = new Set(targets.map((m) => m.id))
+    setList((prev) => prev.filter((m) => !ids.has(m.id)))
     setMailDetails((prev) => {
       const next = { ...prev }
-      delete next[mailId]
+      for (const id of ids) delete next[id]
       return next
     })
-    if (selectedMailId === mailId) setSelectedMailId(null)
-    deleteMail(mailId, accountId)
+    if (selectedMailId && ids.has(selectedMailId)) setSelectedMailId(null)
+
+    const items = targets.map((m) => ({ accountId: m.accountId, mailId: m.id }))
+    const result = await moveMails(items, folderId)
+    if (!result.ok) {
+      setList((prev) => [...prev, ...targets])
+      showError(result.error ?? "메일 이동에 실패했습니다.")
+    }
+  }
+
+  const handleBulkMoveFromInbox = (folderId: string | null) => {
+    const targets = visibleMails.filter((m) => checkedMailIds.has(m.id))
+    setCheckedMailIds(new Set())
+    applyMove(targets, folderId, "inbox")
+  }
+
+  const handleBulkMoveFromFolder = (folderId: string | null) => {
+    const targets = folderMails.filter((m) => checkedMailIds.has(m.id))
+    setCheckedMailIds(new Set())
+    applyMove(targets, folderId, "folder")
+  }
+
+  const handleMoveMailFromInbox = (mailId: string, accountId: string, folderId: string | null) => {
+    const target = allMails.find((m) => m.id === mailId && m.accountId === accountId)
+    if (target) applyMove([target], folderId, "inbox")
+  }
+
+  const handleMoveMailFromFolder = (mailId: string, accountId: string, folderId: string | null) => {
+    const target = folderMails.find((m) => m.id === mailId && m.accountId === accountId)
+    if (target) applyMove([target], folderId, "folder")
   }
 
   const handleLoadMore = async () => {
@@ -261,7 +386,7 @@ function App() {
       const { mails, nextCursor: newCursor } = await fetchMails(nextCursor)
       setRealMails((prev) => {
         const existingIds = new Set(prev.map((m) => `${m.accountId}:${m.id}`))
-        const fresh = mails.filter((m) => !existingIds.has(`${m.accountId}:${m.id}`))
+        const fresh = filterOutDeleted(mails).filter((m) => !existingIds.has(`${m.accountId}:${m.id}`))
         return [...prev, ...fresh]
       })
       setNextCursor(newCursor)
@@ -276,7 +401,8 @@ function App() {
       if (!m.isRead && (accountId === undefined || m.accountId === accountId)) return { ...m, isRead: true }
       return m
     }))
-    await Promise.all(targets.map((m) => markAsRead(m.id, m.accountId)))
+    const groups = groupIdsByAccount(targets)
+    await Promise.all([...groups.entries()].map(([accId, ids]) => bulkMarkRead(accId, ids, true)))
   }
 
   const handleDeleteBeforeDate = async (cutoff: Date, accountId?: string) => {
@@ -284,15 +410,7 @@ function App() {
       const match = accountId === undefined || m.accountId === accountId
       return match && new Date(m.receivedAt) < cutoff
     })
-    const deletedIds = new Set(targets.map((m) => m.id))
-    setRealMails((prev) => prev.filter((m) => !deletedIds.has(m.id)))
-    setMailDetails((prev) => {
-      const next = { ...prev }
-      for (const id of deletedIds) delete next[id]
-      return next
-    })
-    if (selectedMailId && deletedIds.has(selectedMailId)) setSelectedMailId(null)
-    await Promise.all(targets.map((m) => deleteMail(m.id, m.accountId)))
+    await deleteMailsWithRevert(targets)
   }
 
   const goToInbox = (accountId: string | null) => {
@@ -319,6 +437,104 @@ function App() {
     setCheckedMailIds(new Set())
   }
 
+  const loadTrash = () => {
+    setIsTrashLoading(true)
+    return fetchTrashMails()
+      .then(({ mails, nextCursor: cursor }) => {
+        setTrashMails(mails)
+        setTrashCursor(cursor)
+      })
+      .finally(() => setIsTrashLoading(false))
+  }
+
+  const goToTrash = () => {
+    setView("trash")
+    setSelectedMailId(null)
+    setCheckedMailIds(new Set())
+    loadTrash()
+  }
+
+  const handleLoadMoreTrash = async () => {
+    if (!trashCursor || isTrashLoadingMore) return
+    setIsTrashLoadingMore(true)
+    try {
+      const { mails, nextCursor: newCursor } = await fetchTrashMails(trashCursor)
+      setTrashMails((prev) => {
+        const existingIds = new Set(prev.map((m) => `${m.accountId}:${m.id}`))
+        const fresh = mails.filter((m) => !existingIds.has(`${m.accountId}:${m.id}`))
+        return [...prev, ...fresh]
+      })
+      setTrashCursor(newCursor)
+    } finally {
+      setIsTrashLoadingMore(false)
+    }
+  }
+
+  const loadFolderMails = (folderId: string) => {
+    setIsFolderLoading(true)
+    return fetchFolderMails(folderId)
+      .then(setFolderMails)
+      .finally(() => setIsFolderLoading(false))
+  }
+
+  const goToFolder = (folderId: string) => {
+    setView("folder")
+    setSelectedFolderId(folderId)
+    setSelectedMailId(null)
+    setCheckedMailIds(new Set())
+    loadFolderMails(folderId)
+  }
+
+  const handleCreateFolder = async (name: string): Promise<{ ok: boolean; error?: string }> => {
+    const result = await apiCreateFolder(name)
+    if (!result.ok) return { ok: false, error: result.error }
+    setFolders((prev) => [...prev, result.folder])
+    return { ok: true }
+  }
+
+  const handleDeleteFolder = async (folderId: string) => {
+    setFolders((prev) => prev.filter((f) => f.id !== folderId))
+    if (selectedFolderId === folderId) {
+      goHome()
+    }
+    await apiDeleteFolder(folderId)
+    // 삭제된 메일함에 있던 메일은 서버에서 배정이 풀려 받은편지함으로 돌아간다
+    loadAccountsAndMails()
+  }
+
+  const handleEmptyTrashAccount = async (accountId: string) => {
+    const result = await emptyTrash(accountId)
+    if (!result.ok) {
+      showError(result.error ?? "휴지통을 비우지 못했습니다.")
+      return
+    }
+    setTrashMails((prev) => prev.filter((m) => m.accountId !== accountId))
+  }
+
+  const handleDeleteFromTrash = async (targets: Mail[]) => {
+    if (targets.length === 0) return
+    const deletedIds = new Set(targets.map((m) => m.id))
+    setTrashMails((prev) => prev.filter((m) => !deletedIds.has(m.id)))
+
+    const groups = groupIdsByAccount(targets)
+    const outcomes = await Promise.all(
+      [...groups.entries()].map(async ([accountId, ids]) => ({
+        accountId,
+        ids,
+        result: await permanentDeleteFromTrash(accountId, ids),
+      })),
+    )
+
+    const failed = outcomes.filter((o) => !o.result.ok)
+    if (failed.length > 0) {
+      const failedTargets = targets.filter((m) =>
+        failed.some((f) => f.accountId === m.accountId && f.ids.includes(m.id)),
+      )
+      setTrashMails((prev) => [...prev, ...failedTargets])
+      showError(failed[0].result.error ?? "일부 메일을 영구 삭제하지 못했습니다.")
+    }
+  }
+
   const handleLogout = async () => {
     await logout()
     setCurrentUser(null)
@@ -326,12 +542,19 @@ function App() {
     setRealMails([])
     setMailDetails({})
     setNextCursor(null)
+    setTrashMails([])
+    setTrashCursor(null)
+    setFolders([])
+    setFolderMails([])
+    setSelectedFolderId(null)
     goHome()
   }
 
   const handleDeleteAccount = (accountId: string) => {
     setRealAccounts((prev) => prev.filter((a) => a.id !== accountId))
     setRealMails((prev) => prev.filter((m) => m.accountId !== accountId))
+    setTrashMails((prev) => prev.filter((m) => m.accountId !== accountId))
+    setFolderMails((prev) => prev.filter((m) => m.accountId !== accountId))
     setMailDetails((prev) => {
       const next = { ...prev }
       for (const key of Object.keys(next)) {
@@ -402,6 +625,8 @@ function App() {
           onBulkMarkUnread={handleBulkMarkUnread}
           onBulkDelete={handleBulkDelete}
           isBulkLoading={isBulkLoading}
+          folders={folders}
+          onBulkMove={handleBulkMoveFromInbox}
           hasMore={!searchQuery && !!nextCursor}
           isLoadingMore={isLoadingMore}
           onLoadMore={handleLoadMore}
@@ -419,6 +644,44 @@ function App() {
       onToggleStar={handleToggleStar}
       onMarkAsUnread={handleMarkAsUnread}
       onDelete={handleDeleteMail}
+      folders={folders}
+      onMove={handleMoveMailFromInbox}
+    />
+  )
+
+  const folderListPane = (
+    <MailList
+      mails={folderMails}
+      accounts={accounts}
+      selectedMailId={selectedMailId}
+      onSelectMail={handleSelectMail}
+      onToggleStar={handleToggleStar}
+      checkedIds={checkedMailIds}
+      onToggleCheck={handleToggleCheck}
+      onSelectByFilter={handleSelectByFilterInFolder}
+      onClearChecked={() => setCheckedMailIds(new Set())}
+      onBulkMarkRead={handleBulkMarkReadInFolder}
+      onBulkMarkUnread={handleBulkMarkUnreadInFolder}
+      onBulkDelete={handleBulkDeleteInFolder}
+      isBulkLoading={isBulkLoading}
+      folders={folders}
+      currentFolderId={selectedFolderId ?? undefined}
+      onBulkMove={handleBulkMoveFromFolder}
+    />
+  )
+
+  const folderDetailPane = (
+    <MailDetail
+      mail={selectedMail}
+      accounts={accounts}
+      isLoadingBody={isLoadingDetail}
+      onBack={isMobile ? () => setSelectedMailId(null) : undefined}
+      onToggleStar={handleToggleStar}
+      onMarkAsUnread={handleMarkAsUnread}
+      onDelete={handleDeleteMail}
+      folders={folders}
+      currentFolderId={selectedFolderId ?? undefined}
+      onMove={handleMoveMailFromFolder}
     />
   )
 
@@ -430,9 +693,17 @@ function App() {
         selectedAccountId={selectedAccountId}
         isInboxView={view === "inbox"}
         isCleanupView={view === "cleanup"}
+        isTrashView={view === "trash"}
+        folders={folders}
+        selectedFolderId={selectedFolderId}
+        isFolderView={view === "folder"}
         onSelectAccount={goToInbox}
         onGoHome={goHome}
         onGoCleanup={goToCleanup}
+        onGoTrash={goToTrash}
+        onSelectFolder={goToFolder}
+        onCreateFolder={handleCreateFolder}
+        onDeleteFolder={handleDeleteFolder}
         onAccountConnected={loadAccountsAndMails}
         onDeleteAccount={handleDeleteAccount}
         onLogout={handleLogout}
@@ -445,14 +716,18 @@ function App() {
               ? "홈"
               : view === "cleanup"
                 ? "정리하기"
-                : selectedAccountId
-                  ? (() => {
-                      const account = accounts.find((a) => a.id === selectedAccountId)
-                      return account?.provider === "gmail" || account?.provider === "naver" || account?.provider === "daum"
-                        ? account.email
-                        : account?.label
-                    })()
-                  : "전체 받은편지함"}
+                : view === "trash"
+                  ? "휴지통"
+                  : view === "folder"
+                    ? (folders.find((f) => f.id === selectedFolderId)?.name ?? "메일함")
+                    : selectedAccountId
+                      ? (() => {
+                          const account = accounts.find((a) => a.id === selectedAccountId)
+                          return account?.provider === "gmail" || account?.provider === "naver" || account?.provider === "daum"
+                            ? account.email
+                            : account?.label
+                        })()
+                      : "전체 받은편지함"}
           </span>
           {view === "inbox" && <ComposeDialog accounts={accounts} />}
         </header>
@@ -472,6 +747,39 @@ function App() {
               onDeleteBeforeDate={handleDeleteBeforeDate}
             />
           </div>
+        ) : view === "trash" ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <TrashView
+              accounts={accounts}
+              mails={trashMails}
+              isLoading={isTrashLoading}
+              hasMore={!!trashCursor}
+              isLoadingMore={isTrashLoadingMore}
+              onLoadMore={handleLoadMoreTrash}
+              onEmptyAccount={handleEmptyTrashAccount}
+              onDeleteSelected={handleDeleteFromTrash}
+            />
+          </div>
+        ) : view === "folder" ? (
+          isFolderLoading && folderMails.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center">
+              <Loader2 className="text-muted-foreground size-6 animate-spin" />
+            </div>
+          ) : isMobile ? (
+            <div className="min-h-0 flex-1">
+              {selectedMailId ? folderDetailPane : folderListPane}
+            </div>
+          ) : (
+            <ResizablePanelGroup orientation="horizontal" className="flex-1">
+              <ResizablePanel defaultSize="38" minSize="25" maxSize="55" className="overflow-hidden">
+                {folderListPane}
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+              <ResizablePanel defaultSize="62" className="overflow-hidden">
+                {folderDetailPane}
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          )
         ) : isMobile ? (
           <div className="min-h-0 flex-1">
             {selectedMailId ? mailDetailPane : mailListPane}
@@ -488,6 +796,11 @@ function App() {
           </ResizablePanelGroup>
         )}
       </SidebarInset>
+      {errorMessage && (
+        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
+          {errorMessage}
+        </div>
+      )}
     </SidebarProvider>
   )
 }

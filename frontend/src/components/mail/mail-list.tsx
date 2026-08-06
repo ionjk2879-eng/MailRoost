@@ -1,8 +1,8 @@
-import { Check, ChevronDown, Loader2, MailOpen, Minus, Star, Trash2, X } from "lucide-react"
+import { Check, ChevronDown, FolderInput, Inbox, Loader2, MailOpen, Minus, Star, Trash2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { Account, Mail } from "@/types/mail"
+import type { Account, Mail, MailFolder } from "@/types/mail"
 import { cn } from "@/lib/utils"
 
 type SelectFilter = "all" | "none" | "read" | "unread" | "starred" | "unstarred"
@@ -22,6 +22,10 @@ interface MailListProps {
   onBulkMarkUnread: () => void
   onBulkDelete: () => void
   isBulkLoading?: boolean
+  // 메일함 이동
+  folders?: MailFolder[]
+  currentFolderId?: string
+  onBulkMove?: (folderId: string | null) => void
   // 페이지네이션
   isLoadingMore?: boolean
   hasMore?: boolean
@@ -61,12 +65,17 @@ export function MailList({
   onBulkMarkUnread,
   onBulkDelete,
   isBulkLoading,
+  folders,
+  currentFolderId,
+  onBulkMove,
   isLoadingMore,
   hasMore,
   onLoadMore,
 }: MailListProps) {
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const moveRef = useRef<HTMLDivElement>(null)
 
   const isSelecting = checkedIds.size > 0
   const allChecked = mails.length > 0 && mails.every((m) => checkedIds.has(m.id))
@@ -82,6 +91,17 @@ export function MailList({
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
   }, [filterOpen])
+
+  useEffect(() => {
+    if (!moveOpen) return
+    const handler = (e: MouseEvent) => {
+      if (moveRef.current && !moveRef.current.contains(e.target as Node)) {
+        setMoveOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [moveOpen])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -152,6 +172,57 @@ export function MailList({
                 <MailOpen className="size-3.5 opacity-50" />
                 <span className="hidden sm:inline">읽지않음</span>
               </Button>
+              {onBulkMove && (
+                <div ref={moveRef} className="relative">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 gap-1 px-2 text-xs"
+                    onClick={() => setMoveOpen((v) => !v)}
+                    disabled={isBulkLoading}
+                    title="메일함으로 이동"
+                  >
+                    <FolderInput className="size-3.5" />
+                    <span className="hidden sm:inline">이동</span>
+                  </Button>
+                  {moveOpen && (
+                    <div className="bg-background absolute top-full right-0 z-20 mt-1 min-w-[140px] rounded-md border shadow-md">
+                      {currentFolderId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onBulkMove(null)
+                            setMoveOpen(false)
+                          }}
+                          className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
+                        >
+                          <Inbox className="text-muted-foreground size-3.5" />
+                          받은편지함으로
+                        </button>
+                      )}
+                      {(folders ?? [])
+                        .filter((f) => f.id !== currentFolderId)
+                        .map((folder) => (
+                          <button
+                            key={folder.id}
+                            type="button"
+                            onClick={() => {
+                              onBulkMove(folder.id)
+                              setMoveOpen(false)
+                            }}
+                            className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
+                          >
+                            <span className={cn("size-2 shrink-0 rounded-full", folder.color)} />
+                            <span className="truncate">{folder.name}</span>
+                          </button>
+                        ))}
+                      {(!folders || folders.length === 0) && !currentFolderId && (
+                        <p className="text-muted-foreground px-3 py-1.5 text-xs">메일함이 없습니다.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
               <Button
                 variant="ghost"
                 size="sm"

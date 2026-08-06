@@ -1,4 +1,4 @@
-import type { Account, Mail } from "@/types/mail"
+import type { Account, Mail, MailFolder } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -15,6 +15,91 @@ export async function fetchMails(cursor?: string): Promise<{ mails: Mail[]; next
   const res = await fetch(url)
   if (!res.ok) return { mails: [], nextCursor: null }
   return res.json()
+}
+
+export async function fetchFolders(): Promise<MailFolder[]> {
+  const res = await fetch("/api/folders")
+  if (!res.ok) return []
+  const data = (await res.json()) as { folders: MailFolder[] }
+  return data.folders
+}
+
+export async function createFolder(name: string): Promise<{ ok: true; folder: MailFolder } | { ok: false; error: string }> {
+  const res = await fetch("/api/folders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { folder?: MailFolder; error?: string }
+  if (!res.ok || !data.folder) return { ok: false, error: data.error ?? "메일함 생성에 실패했습니다." }
+  return { ok: true, folder: data.folder }
+}
+
+export async function deleteFolder(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, { method: "DELETE" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "메일함 삭제에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function fetchFolderMails(folderId: string): Promise<Mail[]> {
+  const res = await fetch(`/api/folders/${encodeURIComponent(folderId)}/mail`)
+  if (!res.ok) return []
+  const data = (await res.json()) as { mails: Mail[] }
+  return data.mails
+}
+
+export async function moveMails(
+  items: { accountId: string; mailId: string }[],
+  folderId: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  if (items.length === 0) return { ok: true }
+  const res = await fetch("/api/mail/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items, folderId }),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "메일 이동에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function fetchTrashMails(cursor?: string): Promise<{ mails: Mail[]; nextCursor: string | null }> {
+  const url = cursor ? `/api/trash?cursor=${encodeURIComponent(cursor)}` : "/api/trash"
+  const res = await fetch(url)
+  if (!res.ok) return { mails: [], nextCursor: null }
+  return res.json()
+}
+
+export async function permanentDeleteFromTrash(accountId: string, mailIds: string[]): Promise<{ ok: boolean; error?: string }> {
+  if (mailIds.length === 0) return { ok: true }
+  const res = await fetch("/api/trash/bulk-delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, mailIds }),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "메일을 영구 삭제하지 못했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function emptyTrash(accountId: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("/api/trash/empty", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId }),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "휴지통을 비우지 못했습니다." }
+  }
+  return { ok: true }
 }
 
 export async function fetchMailDetail(id: string, accountId: string): Promise<Mail | null> {
@@ -63,6 +148,38 @@ export async function deleteMail(id: string, accountId: string): Promise<{ ok: b
     `/api/mail/${encodeURIComponent(id)}?accountId=${encodeURIComponent(accountId)}`,
     { method: "DELETE" },
   )
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "메일 삭제에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function bulkMarkRead(accountId: string, mailIds: string[], read: boolean): Promise<void> {
+  if (mailIds.length === 0) return
+  await fetch("/api/mail/bulk/read", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, mailIds, read }),
+  })
+}
+
+export async function bulkToggleStar(accountId: string, mailIds: string[], starred: boolean): Promise<void> {
+  if (mailIds.length === 0) return
+  await fetch("/api/mail/bulk/star", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, mailIds, starred }),
+  })
+}
+
+export async function bulkDeleteMails(accountId: string, mailIds: string[]): Promise<{ ok: boolean; error?: string }> {
+  if (mailIds.length === 0) return { ok: true }
+  const res = await fetch("/api/mail/bulk-delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, mailIds }),
+  })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     return { ok: false, error: data.error ?? "메일 삭제에 실패했습니다." }

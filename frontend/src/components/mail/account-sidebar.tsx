@@ -1,4 +1,4 @@
-import { Inbox, LogOut, Plus, Sparkles, Trash2 } from "lucide-react"
+import { FolderPlus, Inbox, LogOut, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
@@ -10,6 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { ConnectNaverDialog } from "@/components/mail/connect-naver-dialog"
 import { ConnectDaumDialog } from "@/components/mail/connect-daum-dialog"
 import { ConnectImapDialog } from "@/components/mail/connect-imap-dialog"
@@ -28,7 +30,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { deleteAccount, gmailLoginUrl } from "@/lib/api"
-import type { Account } from "@/types/mail"
+import type { Account, MailFolder } from "@/types/mail"
 
 interface AccountSidebarProps {
   accounts: Account[]
@@ -36,9 +38,17 @@ interface AccountSidebarProps {
   selectedAccountId: string | null
   isInboxView: boolean
   isCleanupView: boolean
+  isTrashView: boolean
+  folders: MailFolder[]
+  selectedFolderId: string | null
+  isFolderView: boolean
   onSelectAccount: (accountId: string | null) => void
   onGoHome: () => void
   onGoCleanup: () => void
+  onGoTrash: () => void
+  onSelectFolder: (folderId: string) => void
+  onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
+  onDeleteFolder: (folderId: string) => void
   onAccountConnected: () => void
   onDeleteAccount: (accountId: string) => void
   onLogout: () => void
@@ -50,9 +60,17 @@ export function AccountSidebar({
   selectedAccountId,
   isInboxView,
   isCleanupView,
+  isTrashView,
+  folders,
+  selectedFolderId,
+  isFolderView,
   onSelectAccount,
   onGoHome,
   onGoCleanup,
+  onGoTrash,
+  onSelectFolder,
+  onCreateFolder,
+  onDeleteFolder,
   onAccountConnected,
   onDeleteAccount,
   onLogout,
@@ -61,6 +79,11 @@ export function AccountSidebar({
   const [pendingDelete, setPendingDelete] = useState<Account | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false)
+  const [newFolderName, setNewFolderName] = useState("")
+  const [createFolderError, setCreateFolderError] = useState<string | null>(null)
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
+  const [pendingDeleteFolder, setPendingDeleteFolder] = useState<MailFolder | null>(null)
   const connectedGmailCount = accounts.filter((a) => a.provider === "gmail").length
   const connectedNaverCount = accounts.filter((a) => a.provider === "naver").length
   const connectedDaumCount = accounts.filter((a) => a.provider === "daum").length
@@ -87,6 +110,22 @@ export function AccountSidebar({
     }
     setPendingDelete(null)
     onDeleteAccount(pendingDelete.id)
+  }
+
+  const handleCreateFolder = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const name = newFolderName.trim()
+    if (!name) return
+    setIsCreatingFolder(true)
+    setCreateFolderError(null)
+    const result = await onCreateFolder(name)
+    setIsCreatingFolder(false)
+    if (!result.ok) {
+      setCreateFolderError(result.error ?? "메일함 생성에 실패했습니다.")
+      return
+    }
+    setIsCreateFolderOpen(false)
+    setNewFolderName("")
   }
 
   return (
@@ -132,6 +171,18 @@ export function AccountSidebar({
                 >
                   <Sparkles />
                   <span>정리하기</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isTrashView}
+                  onClick={() => {
+                    onGoTrash()
+                    closeOnMobile()
+                  }}
+                >
+                  <Trash2 />
+                  <span>휴지통</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -184,6 +235,53 @@ export function AccountSidebar({
                   </SidebarMenuItem>
                 )
               })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <div className="flex items-center justify-between px-2">
+            <SidebarGroupLabel className="px-0">메일함</SidebarGroupLabel>
+            <button
+              type="button"
+              aria-label="새 메일함"
+              onClick={() => {
+                setCreateFolderError(null)
+                setNewFolderName("")
+                setIsCreateFolderOpen(true)
+              }}
+              className="text-muted-foreground hover:text-foreground rounded p-1"
+            >
+              <FolderPlus className="size-3.5" />
+            </button>
+          </div>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {folders.map((folder) => (
+                <SidebarMenuItem key={folder.id} className="group/item">
+                  <SidebarMenuButton
+                    isActive={isFolderView && selectedFolderId === folder.id}
+                    onClick={() => {
+                      onSelectFolder(folder.id)
+                      closeOnMobile()
+                    }}
+                    title={folder.name}
+                  >
+                    <span className={`size-2 shrink-0 rounded-full ${folder.color}`} />
+                    <span className="truncate">{folder.name}</span>
+                  </SidebarMenuButton>
+                  <button
+                    type="button"
+                    aria-label="메일함 삭제"
+                    onClick={() => setPendingDeleteFolder(folder)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 focus-visible:opacity-100"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </SidebarMenuItem>
+              ))}
+              {folders.length === 0 && (
+                <p className="text-muted-foreground px-2 py-1 text-xs">메일함이 없습니다.</p>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -242,6 +340,66 @@ export function AccountSidebar({
             </DialogClose>
             <Button variant="destructive" onClick={handleConfirmDelete} disabled={isDeleting}>
               {isDeleting ? "삭제 중..." : "삭제"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
+        <DialogContent>
+          <form onSubmit={handleCreateFolder}>
+            <DialogHeader>
+              <DialogTitle>새 메일함 만들기</DialogTitle>
+              <DialogDescription>
+                MailRoost 안에서만 사용하는 메일함이에요. 메일 서버에는 반영되지 않아요.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-1.5 py-4">
+              <Label htmlFor="folder-name">메일함 이름</Label>
+              <Input
+                id="folder-name"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                maxLength={40}
+                required
+                autoFocus
+              />
+              {createFolderError && <p className="text-destructive text-sm">{createFolderError}</p>}
+            </div>
+            <DialogFooter>
+              <DialogClose render={<Button type="button" variant="outline" disabled={isCreatingFolder} />}>
+                취소
+              </DialogClose>
+              <Button type="submit" disabled={isCreatingFolder}>
+                {isCreatingFolder ? "만드는 중..." : "만들기"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pendingDeleteFolder !== null}
+        onOpenChange={(open) => { if (!open) setPendingDeleteFolder(null) }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>메일함 삭제</DialogTitle>
+            <DialogDescription>
+              <strong>{pendingDeleteFolder?.name}</strong> 메일함을 삭제합니다. 이 메일함에 있던 메일은
+              받은편지함으로 돌아갑니다.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button type="button" variant="outline" />}>취소</DialogClose>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (pendingDeleteFolder) onDeleteFolder(pendingDeleteFolder.id)
+                setPendingDeleteFolder(null)
+              }}
+            >
+              삭제
             </Button>
           </DialogFooter>
         </DialogContent>

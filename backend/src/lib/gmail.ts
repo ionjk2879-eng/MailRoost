@@ -144,13 +144,14 @@ function mapMessageToMail(msg: GmailMessage, accountId: string): Mail {
   }
 }
 
-export async function listInboxMails(
+async function listMailsByLabel(
   accessToken: string,
   accountId: string,
-  maxResults = 20,
+  labelId: string,
+  maxResults: number,
   pageToken?: string,
 ): Promise<{ mails: Mail[]; nextPageToken?: string }> {
-  const params = new URLSearchParams({ maxResults: String(maxResults), labelIds: "INBOX" })
+  const params = new URLSearchParams({ maxResults: String(maxResults), labelIds: labelId })
   if (pageToken) params.set("pageToken", pageToken)
 
   const listRes = await fetch(`${GMAIL_API_BASE}/messages?${params}`, {
@@ -174,13 +175,49 @@ export async function listInboxMails(
   return { mails: messages.map((m) => mapMessageToMail(m, accountId)), nextPageToken: listJson.nextPageToken }
 }
 
+export async function listInboxMails(
+  accessToken: string,
+  accountId: string,
+  maxResults = 20,
+  pageToken?: string,
+): Promise<{ mails: Mail[]; nextPageToken?: string }> {
+  return listMailsByLabel(accessToken, accountId, "INBOX", maxResults, pageToken)
+}
+
+// 특정 메시지 ID 목록의 메타데이터를 조회 (사용자 정의 메일함 조회용).
+// 서버에서 이미 삭제된 메시지는 조용히 건너뛴다 (표류한 배정 항목).
+export async function fetchMailsByIds(accessToken: string, accountId: string, ids: string[]): Promise<Mail[]> {
+  if (ids.length === 0) return []
+  const messages = await Promise.all(
+    ids.map(async (id) => {
+      const res = await fetch(
+        `${GMAIL_API_BASE}/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      )
+      if (!res.ok) return null
+      return (await res.json()) as GmailMessage
+    }),
+  )
+  return messages.filter((m): m is GmailMessage => m !== null).map((m) => mapMessageToMail(m, accountId))
+}
+
+export async function listTrashMails(
+  accessToken: string,
+  accountId: string,
+  maxResults = 20,
+  pageToken?: string,
+): Promise<{ mails: Mail[]; nextPageToken?: string }> {
+  return listMailsByLabel(accessToken, accountId, "TRASH", maxResults, pageToken)
+}
+
 export async function toggleStar(accessToken: string, messageId: string, starred: boolean): Promise<void> {
   const body = starred ? { addLabelIds: ["STARRED"] } : { removeLabelIds: ["STARRED"] }
-  await fetch(`${GMAIL_API_BASE}/messages/${messageId}/modify`, {
+  const res = await fetch(`${GMAIL_API_BASE}/messages/${messageId}/modify`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   })
+  if (!res.ok) throw new Error(`Gmail 별표 처리 실패: ${res.status}`)
 }
 
 function decodeBase64Url(data: string): string {
@@ -216,11 +253,12 @@ function extractBody(payload: GmailMessagePart | undefined): { text?: string; ht
 }
 
 async function modifyLabels(accessToken: string, messageId: string, body: object): Promise<void> {
-  await fetch(`${GMAIL_API_BASE}/messages/${messageId}/modify`, {
+  const res = await fetch(`${GMAIL_API_BASE}/messages/${messageId}/modify`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   })
+  if (!res.ok) throw new Error(`Gmail 라벨 변경 실패: ${res.status}`)
 }
 
 export async function markAsRead(accessToken: string, messageId: string): Promise<void> {
@@ -232,10 +270,60 @@ export async function markAsUnread(accessToken: string, messageId: string): Prom
 }
 
 export async function trashMail(accessToken: string, messageId: string): Promise<void> {
-  await fetch(`${GMAIL_API_BASE}/messages/${messageId}/trash`, {
+  const res = await fetch(`${GMAIL_API_BASE}/messages/${messageId}/trash`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
   })
+  if (!res.ok) throw new Error(`Gmail 삭제 실패: ${res.status}`)
+}
+
+export async function batchModifyMessages(
+  accessToken: string,
+  ids: string[],
+  body: { addLabelIds?: string[]; removeLabelIds?: string[] },
+): Promise<void> {
+  if (ids.length === 0) return
+  const res = await fetch(`${GMAIL_API_BASE}/messages/batchModify`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, ...body }),
+  })
+  if (!res.ok) throw new Error(`Gmail 일괄 처리 실패: ${res.status}`)
+}
+
+export async function trashMailBulk(accessToken: string, ids: string[]): Promise<void> {
+  await Promise.all(ids.map((id) => trashMail(accessToken, id)))
+}
+
+// 휴지통(TRASH 라벨)에서 완전히 삭제
+export async function batchDeleteMessages(accessToken: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  const res = await fetch(`${GMAIL_API_BASE}/messages/batchDelete`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ ids }),
+  })
+  if (!res.ok) throw new Error(`Gmail 영구 삭제 실패: ${res.status}`)
+}
+
+export async function emptyTrash(accessToken: string): Promise<void> {
+  let pageToken: string | undefined
+  const allIds: string[] = []
+  do {
+    const params = new URLSearchParams({ maxResults: "500", labelIds: "TRASH" })
+    if (pageToken) params.set("pageToken", pageToken)
+    const res = await fetch(`${GMAIL_API_BASE}/messages?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) throw new Error(`Gmail 휴지통 조회 실패: ${res.status}`)
+    const json = (await res.json()) as { messages?: { id: string }[]; nextPageToken?: string }
+    for (const m of json.messages ?? []) allIds.push(m.id)
+    pageToken = json.nextPageToken
+  } while (pageToken)
+
+  for (let i = 0; i < allIds.length; i += 500) {
+    await batchDeleteMessages(accessToken, allIds.slice(i, i + 500))
+  }
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {

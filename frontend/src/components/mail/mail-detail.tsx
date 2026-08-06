@@ -1,11 +1,13 @@
-import { ChevronLeft, MailOpen, Reply, Star, Trash2 } from "lucide-react"
+import { ChevronLeft, FolderInput, Inbox, MailOpen, Reply, Star, Trash2 } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ComposeDialog } from "@/components/mail/compose-dialog"
-import type { Account, Mail } from "@/types/mail"
+import { cn } from "@/lib/utils"
+import type { Account, Mail, MailFolder } from "@/types/mail"
 
 interface MailDetailProps {
   mail: Mail | null
@@ -15,6 +17,9 @@ interface MailDetailProps {
   onToggleStar?: (mailId: string, accountId: string, starred: boolean) => void
   onMarkAsUnread?: (mailId: string, accountId: string) => void
   onDelete?: (mailId: string, accountId: string) => void
+  folders?: MailFolder[]
+  currentFolderId?: string
+  onMove?: (mailId: string, accountId: string, folderId: string | null) => void
 }
 
 function formatFullDate(iso: string): string {
@@ -37,7 +42,32 @@ a{color:#2563eb}
 </style></head><body>${bodyHtml}</body></html>`
 }
 
-export function MailDetail({ mail, accounts, isLoadingBody, onBack, onToggleStar, onMarkAsUnread, onDelete }: MailDetailProps) {
+export function MailDetail({
+  mail,
+  accounts,
+  isLoadingBody,
+  onBack,
+  onToggleStar,
+  onMarkAsUnread,
+  onDelete,
+  folders,
+  currentFolderId,
+  onMove,
+}: MailDetailProps) {
+  const [moveOpen, setMoveOpen] = useState(false)
+  const moveRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!moveOpen) return
+    const handler = (e: MouseEvent) => {
+      if (moveRef.current && !moveRef.current.contains(e.target as Node)) {
+        setMoveOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [moveOpen])
+
   if (!mail) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col">
@@ -92,6 +122,55 @@ export function MailDetail({ mail, accounts, isLoadingBody, onBack, onToggleStar
                 }
               />
             </button>
+            {onMove && (
+              <div ref={moveRef} className="relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  title="메일함으로 이동"
+                  onClick={() => setMoveOpen((v) => !v)}
+                >
+                  <FolderInput className="size-4" />
+                </Button>
+                {moveOpen && (
+                  <div className="bg-background absolute top-full right-0 z-20 mt-1 min-w-[140px] rounded-md border shadow-md">
+                    {currentFolderId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onMove(mail.id, mail.accountId, null)
+                          setMoveOpen(false)
+                        }}
+                        className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
+                      >
+                        <Inbox className="text-muted-foreground size-3.5" />
+                        받은편지함으로
+                      </button>
+                    )}
+                    {(folders ?? [])
+                      .filter((f) => f.id !== currentFolderId)
+                      .map((folder) => (
+                        <button
+                          key={folder.id}
+                          type="button"
+                          onClick={() => {
+                            onMove(mail.id, mail.accountId, folder.id)
+                            setMoveOpen(false)
+                          }}
+                          className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
+                        >
+                          <span className={cn("size-2 shrink-0 rounded-full", folder.color)} />
+                          <span className="truncate">{folder.name}</span>
+                        </button>
+                      ))}
+                    {(!folders || folders.length === 0) && !currentFolderId && (
+                      <p className="text-muted-foreground px-3 py-1.5 text-xs">메일함이 없습니다.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <Button
               variant="ghost"
               size="icon"

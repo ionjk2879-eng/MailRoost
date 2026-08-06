@@ -10,6 +10,13 @@ export interface Account {
   color: string
 }
 
+export interface MailFolder {
+  id: string
+  name: string
+  color: string
+  createdAt: number
+}
+
 export interface Mail {
   id: string
   accountId: string

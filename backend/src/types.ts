@@ -68,7 +68,22 @@ export interface UserRecord {
   email: string
 }
 
+// 사용자 정의 메일함 (앱 내부 전용 — 실제 메일 서버에는 반영되지 않음)
+export interface MailFolder {
+  id: string
+  name: string
+  color: string
+  createdAt: number
+}
+
+export interface MailOrgState {
+  folders: MailFolder[]
+  // key: `${accountId}${mailId}` -> folderId
+  assignments: Record<string, string>
+}
+
 export interface StoredSession {
   userId?: string
   accounts: Record<string, ConnectedAccountRecord>
+  mailOrg?: MailOrgState
 }

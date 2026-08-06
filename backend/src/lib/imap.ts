@@ -216,7 +216,125 @@ function parseHeaderFields(text: string | undefined): { from: string; subject: s
   return { from: headers["from"] ?? "", subject: headers["subject"] ?? "" }
 }
 
+// ── Trash folder discovery ────────────────────────────────────────────────────
+
+const TRASH_NAME_CANDIDATES = [
+  "trash", "deleted items", "deleted messages", "bin", "junk",
+  "휴지통", "지운편지함", "지운 편지함",
+]
+
+// IMAP modified UTF-7 (RFC 3501 5.1.3) decode — 서버가 폴더명을 이 인코딩으로 돌려줄 수 있음
+function decodeImapUtf7(input: string): string {
+  let output = ""
+  let i = 0
+  while (i < input.length) {
+    const ch = input[i]
+    if (ch !== "&") {
+      output += ch
+      i += 1
+      continue
+    }
+    const end = input.indexOf("-", i + 1)
+    const seqEnd = end === -1 ? input.length : end
+    const seq = input.slice(i + 1, seqEnd)
+    if (seq === "") {
+      output += "&"
+    } else {
+      try {
+        const b64 = seq.replace(/,/g, "/")
+        const pad = (4 - (b64.length % 4)) % 4
+        const bin = atob(b64 + "=".repeat(pad))
+        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0))
+        for (let j = 0; j + 1 < bytes.length; j += 2) {
+          output += String.fromCharCode((bytes[j] << 8) | bytes[j + 1])
+        }
+      } catch {
+        // 디코딩 실패 시 원본 유지 (후보 매칭만 못할 뿐 동작에는 지장 없음)
+        output += `&${seq}-`
+      }
+    }
+    i = seqEnd + 1
+  }
+  return output
+}
+
+function findTrashInListLines(lines: string[], requireSpecialUse: boolean): string | null {
+  for (const line of lines) {
+    const match = line.match(/^\*\s+LIST\s+\(([^)]*)\)\s+(?:"[^"]*"|NIL)\s+(.+)$/i)
+    if (!match) continue
+    const attrs = match[1]
+    const rawName = match[2].trim()
+    const name = rawName.startsWith('"') && rawName.endsWith('"') ? rawName.slice(1, -1) : rawName
+    if (/\\Trash/i.test(attrs)) return name
+    if (requireSpecialUse) continue
+    const decoded = decodeImapUtf7(name).toLowerCase()
+    if (TRASH_NAME_CANDIDATES.some((c) => decoded === c)) return name
+  }
+  return null
+}
+
+async function imapFindTrashMailbox(client: ImapClient): Promise<string | null> {
+  const special = await client.command('LIST (SPECIAL-USE) "" "*"')
+  if (special.ok) {
+    const found = findTrashInListLines(special.lines, true)
+    if (found) return found
+  }
+  const plain = await client.command('LIST "" "*"')
+  if (!plain.ok) return null
+  return findTrashInListLines(plain.lines, false)
+}
+
 // ── Core IMAP operations (provider-agnostic) ──────────────────────────────────
+
+async function fetchMailPageFromSelected(
+  client: ImapClient,
+  selectResult: ImapCommandResult,
+  accountId: string,
+  maxResults: number,
+  offset: number,
+): Promise<{ mails: Mail[]; hasMore: boolean }> {
+  let exists = 0
+  for (const line of selectResult.lines) {
+    const match = line.match(/^\*\s+(\d+)\s+EXISTS/i)
+    if (match) exists = Number(match[1])
+  }
+  if (exists === 0) return { mails: [], hasMore: false }
+
+  const end = Math.max(0, exists - offset)
+  if (end < 1) return { mails: [], hasMore: false }
+  const start = Math.max(1, end - maxResults + 1)
+  const hasMore = start > 1
+
+  const fetchResult = await client.command(
+    `FETCH ${start}:${end} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])`,
+  )
+
+  return { mails: mapFetchLinesToMails(fetchResult.lines, accountId), hasMore }
+}
+
+function mapFetchLinesToMails(lines: string[], accountId: string): Mail[] {
+  const mails: Mail[] = []
+  for (const line of lines) {
+    const parsed = parseFetchLine(line)
+    if (!parsed || parsed.uid === undefined) continue
+    const { from, subject } = parseHeaderFields(parsed.literalText)
+    const { name: fromName, email: fromEmail } = parseFromHeader(from)
+    mails.push({
+      id: String(parsed.uid),
+      accountId,
+      fromName,
+      fromEmail,
+      subject: decodeRfc2047(subject) || "(제목 없음)",
+      snippet: "",
+      body: "",
+      category: "primary",
+      receivedAt: parseInternalDate(parsed.internalDate),
+      isRead: parsed.flags.includes("\\Seen"),
+      isStarred: parsed.flags.includes("\\Flagged"),
+    })
+  }
+  return mails
+}
 
 export async function imapListInbox(
   config: ImapConfig,
@@ -227,74 +345,119 @@ export async function imapListInbox(
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    return fetchMailPageFromSelected(client, selectResult, accountId, maxResults, offset)
+  })
+}
 
-    let exists = 0
-    for (const line of selectResult.lines) {
-      const match = line.match(/^\*\s+(\d+)\s+EXISTS/i)
-      if (match) exists = Number(match[1])
-    }
-    if (exists === 0) return { mails: [], hasMore: false }
+export async function imapListTrash(
+  config: ImapConfig,
+  accountId: string,
+  maxResults = 20,
+  offset = 0,
+): Promise<{ mails: Mail[]; hasMore: boolean }> {
+  return withImap(config, async (client) => {
+    const trash = await imapFindTrashMailbox(client)
+    if (!trash) return { mails: [], hasMore: false }
+    const selectResult = await client.command(`SELECT ${quoteImap(trash)}`)
+    if (!selectResult.ok) return { mails: [], hasMore: false }
+    return fetchMailPageFromSelected(client, selectResult, accountId, maxResults, offset)
+  })
+}
 
-    const end = Math.max(0, exists - offset)
-    if (end < 1) return { mails: [], hasMore: false }
-    const start = Math.max(1, end - maxResults + 1)
-    const hasMore = start > 1
-
+// 특정 UID 목록의 메타데이터를 한 번의 연결로 조회 (사용자 정의 메일함 조회용).
+// 실제 메일은 여전히 INBOX에 있음 — 사용자 정의 메일함은 앱 내부 표시 전용이라 서버에서 옮기지 않는다.
+export async function imapFetchByUids(config: ImapConfig, accountId: string, uids: string[]): Promise<Mail[]> {
+  if (uids.length === 0) return []
+  return withImap(config, async (client) => {
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
     const fetchResult = await client.command(
-      `FETCH ${start}:${end} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])`,
+      `UID FETCH ${uids.join(",")} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])`,
     )
-
-    const mails: Mail[] = []
-    for (const line of fetchResult.lines) {
-      const parsed = parseFetchLine(line)
-      if (!parsed || parsed.uid === undefined) continue
-      const { from, subject } = parseHeaderFields(parsed.literalText)
-      const { name: fromName, email: fromEmail } = parseFromHeader(from)
-      mails.push({
-        id: String(parsed.uid),
-        accountId,
-        fromName,
-        fromEmail,
-        subject: decodeRfc2047(subject) || "(제목 없음)",
-        snippet: "",
-        body: "",
-        category: "primary",
-        receivedAt: parseInternalDate(parsed.internalDate),
-        isRead: parsed.flags.includes("\\Seen"),
-        isStarred: parsed.flags.includes("\\Flagged"),
-      })
-    }
-    return { mails, hasMore }
+    return mapFetchLinesToMails(fetchResult.lines, accountId)
   })
 }
 
 export async function imapMarkAsRead(config: ImapConfig, uid: string): Promise<void> {
   await withImap(config, async (client) => {
-    await client.command("SELECT INBOX")
-    await client.command(`UID STORE ${uid} +FLAGS (\\Seen)`)
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    const storeResult = await client.command(`UID STORE ${uid} +FLAGS (\\Seen)`)
+    if (!storeResult.ok) throw new Error("읽음 처리에 실패했습니다.")
   })
 }
 
 export async function imapToggleStar(config: ImapConfig, uid: string, starred: boolean): Promise<void> {
   const flag = starred ? "+FLAGS" : "-FLAGS"
   await withImap(config, async (client) => {
-    await client.command("SELECT INBOX")
-    await client.command(`UID STORE ${uid} ${flag} (\\Flagged)`)
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    const storeResult = await client.command(`UID STORE ${uid} ${flag} (\\Flagged)`)
+    if (!storeResult.ok) throw new Error("별표 처리에 실패했습니다.")
   })
 }
 
 export async function imapMarkAsUnread(config: ImapConfig, uid: string): Promise<void> {
   await withImap(config, async (client) => {
-    await client.command("SELECT INBOX")
-    await client.command(`UID STORE ${uid} -FLAGS (\\Seen)`)
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    const storeResult = await client.command(`UID STORE ${uid} -FLAGS (\\Seen)`)
+    if (!storeResult.ok) throw new Error("읽지않음 처리에 실패했습니다.")
   })
 }
 
+// 삭제 = 휴지통 폴더가 있으면 그쪽으로 이동, 없으면 기존처럼 영구 삭제로 폴백
 export async function imapDeleteMail(config: ImapConfig, uid: string): Promise<void> {
   await withImap(config, async (client) => {
-    await client.command("SELECT INBOX")
-    await client.command(`UID STORE ${uid} +FLAGS (\\Deleted)`)
-    await client.command("EXPUNGE")
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+
+    const trash = await imapFindTrashMailbox(client)
+    if (trash) {
+      const copyResult = await client.command(`UID COPY ${uid} ${quoteImap(trash)}`)
+      if (!copyResult.ok) throw new Error("메일을 휴지통으로 이동하지 못했습니다.")
+    }
+    const storeResult = await client.command(`UID STORE ${uid} +FLAGS (\\Deleted)`)
+    if (!storeResult.ok) throw new Error("메일 삭제에 실패했습니다.")
+    const expungeResult = await client.command("EXPUNGE")
+    if (!expungeResult.ok) throw new Error("메일 삭제에 실패했습니다.")
+  })
+}
+
+// 휴지통에서 완전히 삭제 (영구 삭제)
+export async function imapPermanentDeleteBulk(config: ImapConfig, uids: string[]): Promise<void> {
+  if (uids.length === 0) return
+  await withImap(config, async (client) => {
+    const trash = await imapFindTrashMailbox(client)
+    if (!trash) throw new Error("휴지통 폴더를 찾을 수 없습니다.")
+    const selectResult = await client.command(`SELECT ${quoteImap(trash)}`)
+    if (!selectResult.ok) throw new Error("휴지통을 열 수 없습니다.")
+    const storeResult = await client.command(`UID STORE ${uids.join(",")} +FLAGS (\\Deleted)`)
+    if (!storeResult.ok) throw new Error("메일 영구 삭제에 실패했습니다.")
+    const expungeResult = await client.command("EXPUNGE")
+    if (!expungeResult.ok) throw new Error("메일 영구 삭제에 실패했습니다.")
+  })
+}
+
+// 휴지통 비우기 (전체)
+export async function imapEmptyTrash(config: ImapConfig): Promise<void> {
+  await withImap(config, async (client) => {
+    const trash = await imapFindTrashMailbox(client)
+    if (!trash) return
+    const selectResult = await client.command(`SELECT ${quoteImap(trash)}`)
+    if (!selectResult.ok) return
+
+    let exists = 0
+    for (const line of selectResult.lines) {
+      const match = line.match(/^\*\s+(\d+)\s+EXISTS/i)
+      if (match) exists = Number(match[1])
+    }
+    if (exists === 0) return
+
+    const storeResult = await client.command(`STORE 1:${exists} +FLAGS (\\Deleted)`)
+    if (!storeResult.ok) throw new Error("휴지통 비우기에 실패했습니다.")
+    const expungeResult = await client.command("EXPUNGE")
+    if (!expungeResult.ok) throw new Error("휴지통 비우기에 실패했습니다.")
   })
 }
 
@@ -342,6 +505,49 @@ export async function imapVerify(config: ImapConfig): Promise<void> {
   await withImap(config, async () => {})
 }
 
+// ── Bulk operations (single connection for many UIDs) ────────────────────────
+
+export async function imapMarkAsReadBulk(config: ImapConfig, uids: string[], read: boolean): Promise<void> {
+  if (uids.length === 0) return
+  const flag = read ? "+FLAGS" : "-FLAGS"
+  await withImap(config, async (client) => {
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    const storeResult = await client.command(`UID STORE ${uids.join(",")} ${flag} (\\Seen)`)
+    if (!storeResult.ok) throw new Error("읽음 처리에 실패했습니다.")
+  })
+}
+
+export async function imapToggleStarBulk(config: ImapConfig, uids: string[], starred: boolean): Promise<void> {
+  if (uids.length === 0) return
+  const flag = starred ? "+FLAGS" : "-FLAGS"
+  await withImap(config, async (client) => {
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    const storeResult = await client.command(`UID STORE ${uids.join(",")} ${flag} (\\Flagged)`)
+    if (!storeResult.ok) throw new Error("별표 처리에 실패했습니다.")
+  })
+}
+
+// 삭제 = 휴지통 폴더가 있으면 그쪽으로 이동, 없으면 기존처럼 영구 삭제로 폴백
+export async function imapDeleteMailBulk(config: ImapConfig, uids: string[]): Promise<void> {
+  if (uids.length === 0) return
+  await withImap(config, async (client) => {
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+
+    const trash = await imapFindTrashMailbox(client)
+    if (trash) {
+      const copyResult = await client.command(`UID COPY ${uids.join(",")} ${quoteImap(trash)}`)
+      if (!copyResult.ok) throw new Error("메일을 휴지통으로 이동하지 못했습니다.")
+    }
+    const storeResult = await client.command(`UID STORE ${uids.join(",")} +FLAGS (\\Deleted)`)
+    if (!storeResult.ok) throw new Error("메일 삭제에 실패했습니다.")
+    const expungeResult = await client.command("EXPUNGE")
+    if (!expungeResult.ok) throw new Error("메일 삭제에 실패했습니다.")
+  })
+}
+
 // ── Naver-specific exports ────────────────────────────────────────────────────
 
 export async function verifyNaverCredentials(email: string, appPassword: string): Promise<void> {
@@ -383,6 +589,40 @@ export async function naverGetMailDetail(
   return imapGetMailDetail(naverConfig(email, appPassword), accountId, uid)
 }
 
+export async function naverMarkAsReadBulk(email: string, appPassword: string, uids: string[], read: boolean): Promise<void> {
+  return imapMarkAsReadBulk(naverConfig(email, appPassword), uids, read)
+}
+
+export async function naverToggleStarBulk(email: string, appPassword: string, uids: string[], starred: boolean): Promise<void> {
+  return imapToggleStarBulk(naverConfig(email, appPassword), uids, starred)
+}
+
+export async function naverDeleteMailBulk(email: string, appPassword: string, uids: string[]): Promise<void> {
+  return imapDeleteMailBulk(naverConfig(email, appPassword), uids)
+}
+
+export async function naverListTrash(
+  email: string,
+  appPassword: string,
+  accountId: string,
+  maxResults = 20,
+  offset = 0,
+): Promise<{ mails: Mail[]; hasMore: boolean }> {
+  return imapListTrash(naverConfig(email, appPassword), accountId, maxResults, offset)
+}
+
+export async function naverPermanentDeleteBulk(email: string, appPassword: string, uids: string[]): Promise<void> {
+  return imapPermanentDeleteBulk(naverConfig(email, appPassword), uids)
+}
+
+export async function naverEmptyTrash(email: string, appPassword: string): Promise<void> {
+  return imapEmptyTrash(naverConfig(email, appPassword))
+}
+
+export async function naverFetchByUids(email: string, appPassword: string, accountId: string, uids: string[]): Promise<Mail[]> {
+  return imapFetchByUids(naverConfig(email, appPassword), accountId, uids)
+}
+
 // ── Daum-specific exports ─────────────────────────────────────────────────────
 
 export async function verifyDaumCredentials(email: string, password: string): Promise<void> {
@@ -422,4 +662,38 @@ export async function daumGetMailDetail(
   uid: string,
 ): Promise<Mail> {
   return imapGetMailDetail(daumConfig(email, password), accountId, uid)
+}
+
+export async function daumMarkAsReadBulk(email: string, password: string, uids: string[], read: boolean): Promise<void> {
+  return imapMarkAsReadBulk(daumConfig(email, password), uids, read)
+}
+
+export async function daumToggleStarBulk(email: string, password: string, uids: string[], starred: boolean): Promise<void> {
+  return imapToggleStarBulk(daumConfig(email, password), uids, starred)
+}
+
+export async function daumDeleteMailBulk(email: string, password: string, uids: string[]): Promise<void> {
+  return imapDeleteMailBulk(daumConfig(email, password), uids)
+}
+
+export async function daumListTrash(
+  email: string,
+  password: string,
+  accountId: string,
+  maxResults = 20,
+  offset = 0,
+): Promise<{ mails: Mail[]; hasMore: boolean }> {
+  return imapListTrash(daumConfig(email, password), accountId, maxResults, offset)
+}
+
+export async function daumPermanentDeleteBulk(email: string, password: string, uids: string[]): Promise<void> {
+  return imapPermanentDeleteBulk(daumConfig(email, password), uids)
+}
+
+export async function daumEmptyTrash(email: string, password: string): Promise<void> {
+  return imapEmptyTrash(daumConfig(email, password))
+}
+
+export async function daumFetchByUids(email: string, password: string, accountId: string, uids: string[]): Promise<Mail[]> {
+  return imapFetchByUids(daumConfig(email, password), accountId, uids)
 }
