@@ -1,8 +1,11 @@
-import { Loader2, Star } from "lucide-react"
+import { Check, ChevronDown, Loader2, MailOpen, Minus, Star, Trash2, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Account, Mail } from "@/types/mail"
 import { cn } from "@/lib/utils"
+
+type SelectFilter = "all" | "none" | "read" | "unread" | "starred" | "unstarred"
 
 interface MailListProps {
   mails: Mail[]
@@ -10,6 +13,16 @@ interface MailListProps {
   selectedMailId: string | null
   onSelectMail: (mailId: string) => void
   onToggleStar: (mailId: string, accountId: string, starred: boolean) => void
+  // 다중선택
+  checkedIds: Set<string>
+  onToggleCheck: (mailId: string) => void
+  onSelectByFilter: (filter: SelectFilter) => void
+  onClearChecked: () => void
+  onBulkMarkRead: () => void
+  onBulkMarkUnread: () => void
+  onBulkDelete: () => void
+  isBulkLoading?: boolean
+  // 페이지네이션
   isLoadingMore?: boolean
   hasMore?: boolean
   onLoadMore?: () => void
@@ -25,100 +38,261 @@ function formatTime(iso: string): string {
   })
 }
 
+const FILTER_OPTIONS: { value: SelectFilter; label: string }[] = [
+  { value: "all", label: "전체선택" },
+  { value: "none", label: "선택안함" },
+  { value: "read", label: "읽음" },
+  { value: "unread", label: "읽지않음" },
+  { value: "starred", label: "별표" },
+  { value: "unstarred", label: "별표없음" },
+]
+
 export function MailList({
   mails,
   accounts,
   selectedMailId,
   onSelectMail,
   onToggleStar,
+  checkedIds,
+  onToggleCheck,
+  onSelectByFilter,
+  onClearChecked,
+  onBulkMarkRead,
+  onBulkMarkUnread,
+  onBulkDelete,
+  isBulkLoading,
   isLoadingMore,
   hasMore,
   onLoadMore,
 }: MailListProps) {
+  const [filterOpen, setFilterOpen] = useState(false)
+  const filterRef = useRef<HTMLDivElement>(null)
+
+  const isSelecting = checkedIds.size > 0
+  const allChecked = mails.length > 0 && mails.every((m) => checkedIds.has(m.id))
+  const someChecked = checkedIds.size > 0 && !allChecked
+
+  useEffect(() => {
+    if (!filterOpen) return
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setFilterOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [filterOpen])
+
   return (
-    <ScrollArea className="h-full w-full">
-      <div className="flex w-full min-w-0 flex-col">
-        {mails.length === 0 && (
-          <p className="text-muted-foreground p-6 text-sm">메일이 없습니다.</p>
-        )}
-        {mails.map((mail) => {
-          const account = accounts.find((a) => a.id === mail.accountId)
-          return (
-            <button
-              key={mail.id}
-              type="button"
-              onClick={() => onSelectMail(mail.id)}
-              className={cn(
-                "group flex w-full min-w-0 flex-col items-start gap-1 border-b px-4 py-3 text-left text-sm transition-colors",
-                "hover:bg-accent/50",
-                selectedMailId === mail.id && "bg-accent",
-              )}
-            >
-              <div className="flex w-full min-w-0 items-center gap-2">
-                {account && (
-                  <span
-                    className={cn("size-2 shrink-0 rounded-full", account.color)}
-                    title={
-                      account.provider === "gmail" || account.provider === "naver" || account.provider === "daum"
-                        ? account.email
-                        : account.label
-                    }
-                  />
-                )}
-                <span className={cn("min-w-0 flex-1 truncate", !mail.isRead && "font-semibold")}>
-                  {mail.fromName}
-                </span>
-                <span className="text-muted-foreground ml-auto shrink-0 text-xs">
-                  {formatTime(mail.receivedAt)}
-                </span>
-              </div>
-              <div className="flex w-full min-w-0 items-center gap-2">
-                <span className={cn("min-w-0 flex-1 truncate", !mail.isRead && "font-semibold")}>
-                  {mail.subject}
-                </span>
+    <div className="flex h-full min-h-0 flex-col">
+      {/* 상단 선택 툴바 */}
+      <div className="flex shrink-0 items-center gap-1 border-b px-3 py-1.5">
+        {/* 체크박스 + 드롭다운 */}
+        <div ref={filterRef} className="relative flex items-center">
+          <button
+            type="button"
+            onClick={() => onSelectByFilter(allChecked ? "none" : "all")}
+            className="border-input bg-background hover:bg-accent flex size-5 items-center justify-center rounded-sm border"
+            aria-label={allChecked ? "전체 해제" : "전체 선택"}
+          >
+            {allChecked && <Check className="size-3" />}
+            {someChecked && <Minus className="size-3" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterOpen((v) => !v)}
+            className="hover:bg-accent ml-0.5 flex h-5 w-4 items-center justify-center rounded-sm"
+            aria-label="선택 옵션"
+          >
+            <ChevronDown className="text-muted-foreground size-3" />
+          </button>
+          {filterOpen && (
+            <div className="bg-background absolute top-full left-0 z-20 mt-1 min-w-[120px] rounded-md border shadow-md">
+              {FILTER_OPTIONS.map((opt) => (
                 <button
+                  key={opt.value}
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onToggleStar(mail.id, mail.accountId, !mail.isStarred)
+                  onClick={() => {
+                    onSelectByFilter(opt.value)
+                    setFilterOpen(false)
                   }}
-                  className={cn(
-                    "shrink-0 rounded p-0.5 transition-opacity",
-                    mail.isStarred
-                      ? "opacity-100"
-                      : "opacity-0 group-hover:opacity-40 hover:!opacity-60",
-                  )}
-                  aria-label={mail.isStarred ? "별표 해제" : "별표 추가"}
+                  className="hover:bg-accent flex w-full items-center px-3 py-1.5 text-left text-sm"
                 >
-                  <Star
-                    className={cn(
-                      "size-3.5",
-                      mail.isStarred ? "fill-amber-400 text-amber-400" : "text-muted-foreground",
-                    )}
-                  />
+                  {opt.label}
                 </button>
-              </div>
-              <span className="text-muted-foreground w-full min-w-0 truncate text-xs">
-                {mail.snippet}
-              </span>
-            </button>
-          )
-        })}
-        {hasMore && (
-          <div className="flex justify-center p-4">
-            <Button variant="outline" size="sm" onClick={onLoadMore} disabled={isLoadingMore}>
-              {isLoadingMore ? (
-                <>
-                  <Loader2 className="mr-2 size-3.5 animate-spin" />
-                  불러오는 중...
-                </>
-              ) : (
-                "더 불러오기"
-              )}
-            </Button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 선택 중일 때 액션 버튼 */}
+        {isSelecting ? (
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            <span className="text-muted-foreground ml-1 text-xs">{checkedIds.size}개 선택됨</span>
+            <div className="ml-auto flex items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={onBulkMarkRead}
+                disabled={isBulkLoading}
+                title="읽음 처리"
+              >
+                <MailOpen className="size-3.5" />
+                <span className="hidden sm:inline">읽음</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={onBulkMarkUnread}
+                disabled={isBulkLoading}
+                title="읽지않음 처리"
+              >
+                <MailOpen className="size-3.5 opacity-50" />
+                <span className="hidden sm:inline">읽지않음</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive h-7 gap-1 px-2 text-xs"
+                onClick={onBulkDelete}
+                disabled={isBulkLoading}
+                title="삭제"
+              >
+                <Trash2 className="size-3.5" />
+                <span className="hidden sm:inline">삭제</span>
+              </Button>
+              <button
+                type="button"
+                onClick={onClearChecked}
+                className="text-muted-foreground hover:text-foreground ml-1 flex size-6 items-center justify-center rounded"
+                aria-label="선택 해제"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
           </div>
+        ) : (
+          <div className="flex-1" />
         )}
       </div>
-    </ScrollArea>
+
+      {/* 메일 목록 */}
+      <ScrollArea className="min-h-0 flex-1">
+        <div className="flex w-full min-w-0 flex-col">
+          {mails.length === 0 && (
+            <p className="text-muted-foreground p-6 text-sm">메일이 없습니다.</p>
+          )}
+          {mails.map((mail) => {
+            const account = accounts.find((a) => a.id === mail.accountId)
+            const isChecked = checkedIds.has(mail.id)
+
+            return (
+              <button
+                key={mail.id}
+                type="button"
+                onClick={() => {
+                  if (isSelecting) {
+                    onToggleCheck(mail.id)
+                  } else {
+                    onSelectMail(mail.id)
+                  }
+                }}
+                className={cn(
+                  "group flex w-full min-w-0 flex-col items-start gap-1 border-b px-3 py-3 text-left text-sm transition-colors",
+                  "hover:bg-accent/50",
+                  !isSelecting && selectedMailId === mail.id && "bg-accent",
+                  isChecked && "bg-primary/5",
+                )}
+              >
+                <div className="flex w-full min-w-0 items-center gap-2">
+                  {/* 체크박스 */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onToggleCheck(mail.id)
+                    }}
+                    aria-label={isChecked ? "선택 해제" : "선택"}
+                    className={cn(
+                      "border-input bg-background flex size-4 shrink-0 items-center justify-center rounded-sm border transition-opacity",
+                      isChecked
+                        ? "bg-primary border-primary opacity-100"
+                        : "opacity-0 group-hover:opacity-100",
+                    )}
+                  >
+                    {isChecked && <Check className="text-primary-foreground size-3" />}
+                  </button>
+
+                  {account && (
+                    <span
+                      className={cn("size-2 shrink-0 rounded-full", account.color)}
+                      title={
+                        account.provider === "gmail" || account.provider === "naver" || account.provider === "daum"
+                          ? account.email
+                          : account.label
+                      }
+                    />
+                  )}
+                  <span className={cn("min-w-0 flex-1 truncate", !mail.isRead && "font-semibold")}>
+                    {mail.fromName}
+                  </span>
+                  <span className="text-muted-foreground ml-auto shrink-0 text-xs">
+                    {formatTime(mail.receivedAt)}
+                  </span>
+                </div>
+
+                <div className="flex w-full min-w-0 items-center gap-2 pl-6">
+                  <span className={cn("min-w-0 flex-1 truncate", !mail.isRead && "font-semibold")}>
+                    {mail.subject}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onToggleStar(mail.id, mail.accountId, !mail.isStarred)
+                    }}
+                    className={cn(
+                      "shrink-0 rounded p-0.5 transition-opacity",
+                      mail.isStarred
+                        ? "opacity-100"
+                        : "opacity-0 group-hover:opacity-40 hover:!opacity-60",
+                    )}
+                    aria-label={mail.isStarred ? "별표 해제" : "별표 추가"}
+                  >
+                    <Star
+                      className={cn(
+                        "size-3.5",
+                        mail.isStarred ? "fill-amber-400 text-amber-400" : "text-muted-foreground",
+                      )}
+                    />
+                  </button>
+                </div>
+
+                <span className="text-muted-foreground w-full min-w-0 truncate pl-6 text-xs">
+                  {mail.snippet}
+                </span>
+              </button>
+            )
+          })}
+
+          {hasMore && (
+            <div className="flex justify-center p-4">
+              <Button variant="outline" size="sm" onClick={onLoadMore} disabled={isLoadingMore}>
+                {isLoadingMore ? (
+                  <>
+                    <Loader2 className="mr-2 size-3.5 animate-spin" />
+                    불러오는 중...
+                  </>
+                ) : (
+                  "더 불러오기"
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+    </div>
   )
 }

@@ -45,6 +45,8 @@ function App() {
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [checkedMailIds, setCheckedMailIds] = useState<Set<string>>(new Set())
+  const [isBulkLoading, setIsBulkLoading] = useState(false)
 
   const loadAccountsAndMails = () => {
     return fetchAccounts().then((accounts) => {
@@ -170,6 +172,65 @@ function App() {
     toggleStar(mailId, accountId, starred)
   }
 
+  const handleToggleCheck = (mailId: string) => {
+    setCheckedMailIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(mailId)) next.delete(mailId)
+      else next.add(mailId)
+      return next
+    })
+  }
+
+  const handleSelectByFilter = (filter: "all" | "none" | "read" | "unread" | "starred" | "unstarred") => {
+    switch (filter) {
+      case "all": setCheckedMailIds(new Set(visibleMails.map((m) => m.id))); break
+      case "none": setCheckedMailIds(new Set()); break
+      case "read": setCheckedMailIds(new Set(visibleMails.filter((m) => m.isRead).map((m) => m.id))); break
+      case "unread": setCheckedMailIds(new Set(visibleMails.filter((m) => !m.isRead).map((m) => m.id))); break
+      case "starred": setCheckedMailIds(new Set(visibleMails.filter((m) => m.isStarred).map((m) => m.id))); break
+      case "unstarred": setCheckedMailIds(new Set(visibleMails.filter((m) => !m.isStarred).map((m) => m.id))); break
+    }
+  }
+
+  const handleBulkMarkRead = async () => {
+    const targets = visibleMails.filter((m) => checkedMailIds.has(m.id) && !m.isRead)
+    setRealMails((prev) => prev.map((m) => (checkedMailIds.has(m.id) ? { ...m, isRead: true } : m)))
+    setCheckedMailIds(new Set())
+    if (targets.length > 0) {
+      setIsBulkLoading(true)
+      await Promise.all(targets.map((m) => markAsRead(m.id, m.accountId)))
+      setIsBulkLoading(false)
+    }
+  }
+
+  const handleBulkMarkUnread = async () => {
+    const targets = visibleMails.filter((m) => checkedMailIds.has(m.id) && m.isRead)
+    setRealMails((prev) => prev.map((m) => (checkedMailIds.has(m.id) ? { ...m, isRead: false } : m)))
+    setCheckedMailIds(new Set())
+    if (targets.length > 0) {
+      setIsBulkLoading(true)
+      await Promise.all(targets.map((m) => markAsUnread(m.id, m.accountId)))
+      setIsBulkLoading(false)
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    const targets = visibleMails.filter((m) => checkedMailIds.has(m.id))
+    if (targets.length === 0) return
+    const deletedIds = new Set(targets.map((m) => m.id))
+    setRealMails((prev) => prev.filter((m) => !deletedIds.has(m.id)))
+    setMailDetails((prev) => {
+      const next = { ...prev }
+      for (const id of deletedIds) delete next[id]
+      return next
+    })
+    if (selectedMailId && deletedIds.has(selectedMailId)) setSelectedMailId(null)
+    setCheckedMailIds(new Set())
+    setIsBulkLoading(true)
+    await Promise.all(targets.map((m) => deleteMail(m.id, m.accountId)))
+    setIsBulkLoading(false)
+  }
+
   const handleMarkAsUnread = (mailId: string, accountId: string) => {
     setRealMails((prev) => prev.map((m) => (m.id === mailId && m.accountId === accountId ? { ...m, isRead: false } : m)))
     setMailDetails((prev) => {
@@ -214,6 +275,7 @@ function App() {
     setSelectedCategory(null)
     setSelectedMailId(null)
     setSearchQuery("")
+    setCheckedMailIds(new Set())
   }
 
   const goHome = () => {
@@ -222,6 +284,7 @@ function App() {
     setSelectedCategory(null)
     setSelectedMailId(null)
     setSearchQuery("")
+    setCheckedMailIds(new Set())
   }
 
   const handleLogout = async () => {
@@ -299,6 +362,14 @@ function App() {
           selectedMailId={selectedMailId}
           onSelectMail={handleSelectMail}
           onToggleStar={handleToggleStar}
+          checkedIds={checkedMailIds}
+          onToggleCheck={handleToggleCheck}
+          onSelectByFilter={handleSelectByFilter}
+          onClearChecked={() => setCheckedMailIds(new Set())}
+          onBulkMarkRead={handleBulkMarkRead}
+          onBulkMarkUnread={handleBulkMarkUnread}
+          onBulkDelete={handleBulkDelete}
+          isBulkLoading={isBulkLoading}
           hasMore={!searchQuery && !!nextCursor}
           isLoadingMore={isLoadingMore}
           onLoadMore={handleLoadMore}
