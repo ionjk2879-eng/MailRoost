@@ -144,12 +144,20 @@ function mapMessageToMail(msg: GmailMessage, accountId: string): Mail {
   }
 }
 
-export async function listInboxMails(accessToken: string, accountId: string, maxResults = 20): Promise<Mail[]> {
-  const listRes = await fetch(`${GMAIL_API_BASE}/messages?maxResults=${maxResults}&labelIds=INBOX`, {
+export async function listInboxMails(
+  accessToken: string,
+  accountId: string,
+  maxResults = 20,
+  pageToken?: string,
+): Promise<{ mails: Mail[]; nextPageToken?: string }> {
+  const params = new URLSearchParams({ maxResults: String(maxResults), labelIds: "INBOX" })
+  if (pageToken) params.set("pageToken", pageToken)
+
+  const listRes = await fetch(`${GMAIL_API_BASE}/messages?${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!listRes.ok) throw new Error(`Gmail list failed: ${listRes.status}`)
-  const listJson = (await listRes.json()) as { messages?: { id: string }[] }
+  const listJson = (await listRes.json()) as { messages?: { id: string }[]; nextPageToken?: string }
   const ids = listJson.messages?.map((m) => m.id) ?? []
 
   const messages = await Promise.all(
@@ -163,7 +171,16 @@ export async function listInboxMails(accessToken: string, accountId: string, max
     }),
   )
 
-  return messages.map((m) => mapMessageToMail(m, accountId))
+  return { mails: messages.map((m) => mapMessageToMail(m, accountId)), nextPageToken: listJson.nextPageToken }
+}
+
+export async function toggleStar(accessToken: string, messageId: string, starred: boolean): Promise<void> {
+  const body = starred ? { addLabelIds: ["STARRED"] } : { removeLabelIds: ["STARRED"] }
+  await fetch(`${GMAIL_API_BASE}/messages/${messageId}/modify`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
 }
 
 function decodeBase64Url(data: string): string {

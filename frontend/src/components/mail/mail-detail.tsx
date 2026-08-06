@@ -11,6 +11,7 @@ interface MailDetailProps {
   accounts: Account[]
   isLoadingBody?: boolean
   onBack?: () => void
+  onToggleStar?: (mailId: string, accountId: string, starred: boolean) => void
 }
 
 function formatFullDate(iso: string): string {
@@ -33,7 +34,7 @@ a{color:#2563eb}
 </style></head><body>${bodyHtml}</body></html>`
 }
 
-export function MailDetail({ mail, accounts, isLoadingBody, onBack }: MailDetailProps) {
+export function MailDetail({ mail, accounts, isLoadingBody, onBack, onToggleStar }: MailDetailProps) {
   if (!mail) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col">
@@ -53,9 +54,18 @@ export function MailDetail({ mail, accounts, isLoadingBody, onBack }: MailDetail
         {onBack && <BackButton onBack={onBack} />}
         <div className="flex min-w-0 items-start justify-between gap-4">
           <h2 className="min-w-0 flex-1 text-lg font-semibold break-words">{mail.subject}</h2>
-          {mail.isStarred && (
-            <Star className="size-4 shrink-0 fill-amber-400 text-amber-400" />
-          )}
+          <button
+            type="button"
+            onClick={() => onToggleStar?.(mail.id, mail.accountId, !mail.isStarred)}
+            className="shrink-0 rounded p-1 transition-colors hover:bg-accent"
+            aria-label={mail.isStarred ? "별표 해제" : "별표 추가"}
+          >
+            <Star
+              className={
+                mail.isStarred ? "size-4 fill-amber-400 text-amber-400" : "size-4 text-muted-foreground"
+              }
+            />
+          </button>
         </div>
         <div className="flex min-w-0 items-center gap-3">
           <Avatar className="shrink-0">
@@ -74,7 +84,7 @@ export function MailDetail({ mail, accounts, isLoadingBody, onBack }: MailDetail
             <Badge variant="secondary" className="max-w-[45%] shrink-0 gap-1.5">
               <span className={`size-2 shrink-0 rounded-full ${account.color}`} />
               <span className="truncate">
-                {account.provider === "gmail" || account.provider === "naver"
+                {account.provider === "gmail" || account.provider === "naver" || account.provider === "daum"
                   ? account.email
                   : account.label}
               </span>

@@ -2,9 +2,6 @@ import { connect } from "cloudflare:sockets"
 import type { Mail } from "../types"
 import { decodeRfc2047, parseFromHeader, parseHeaderBlock, parseMimeMessage, sanitizeHtml, stripHtml } from "./mime"
 
-const NAVER_IMAP_HOST = "imap.naver.com"
-const NAVER_IMAP_PORT = 993
-
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
   const out = new Uint8Array(a.length + b.length)
   out.set(a, 0)
@@ -80,16 +77,8 @@ class ImapSocket {
   }
 
   async close(): Promise<void> {
-    try {
-      await this.writer.close()
-    } catch {
-      // 이미 닫혀있으면 무시
-    }
-    try {
-      await this.socket.close()
-    } catch {
-      // 이미 닫혀있으면 무시
-    }
+    try { await this.writer.close() } catch { /* already closed */ }
+    try { await this.socket.close() } catch { /* already closed */ }
   }
 }
 
@@ -136,24 +125,28 @@ function quoteImap(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
 }
 
-async function withNaverImap<T>(
-  email: string,
-  appPassword: string,
-  fn: (client: ImapClient) => Promise<T>,
-): Promise<T> {
+// ── Generic IMAP connection config ──────────────────────────────────────────
+
+export interface ImapConfig {
+  host: string
+  port: number
+  email: string
+  password: string
+  loginErrorMsg?: string
+}
+
+async function withImap<T>(config: ImapConfig, fn: (client: ImapClient) => Promise<T>): Promise<T> {
   const socket = connect(
-    { hostname: NAVER_IMAP_HOST, port: NAVER_IMAP_PORT },
+    { hostname: config.host, port: config.port },
     { secureTransport: "on", allowHalfOpen: false },
   )
   const sock = new ImapSocket(socket)
   const client = new ImapClient(sock)
   try {
     await client.readGreeting()
-    const loginResult = await client.command(`LOGIN ${quoteImap(email)} ${quoteImap(appPassword)}`)
+    const loginResult = await client.command(`LOGIN ${quoteImap(config.email)} ${quoteImap(config.password)}`)
     if (!loginResult.ok) {
-      throw new Error(
-        "네이버 로그인에 실패했습니다. 이메일 또는 앱 비밀번호를 확인해주세요. (일반 로그인 비밀번호가 아니라 네이버 2단계 인증에서 발급받은 앱 비밀번호를 입력해야 합니다.)",
-      )
+      throw new Error(config.loginErrorMsg ?? "IMAP 로그인에 실패했습니다. 이메일 또는 비밀번호를 확인해주세요.")
     }
     return await fn(client)
   } finally {
@@ -161,9 +154,26 @@ async function withNaverImap<T>(
   }
 }
 
-export async function verifyNaverCredentials(email: string, appPassword: string): Promise<void> {
-  await withNaverImap(email, appPassword, async () => {})
-}
+// ── Provider configs ─────────────────────────────────────────────────────────
+
+const naverConfig = (email: string, appPassword: string): ImapConfig => ({
+  host: "imap.naver.com",
+  port: 993,
+  email,
+  password: appPassword,
+  loginErrorMsg:
+    "네이버 로그인에 실패했습니다. 이메일 또는 앱 비밀번호를 확인해주세요. (일반 로그인 비밀번호가 아니라 네이버 2단계 인증에서 발급받은 앱 비밀번호를 입력해야 합니다.)",
+})
+
+const daumConfig = (email: string, password: string): ImapConfig => ({
+  host: "imap.daum.net",
+  port: 993,
+  email,
+  password,
+  loginErrorMsg: "다음 메일 로그인에 실패했습니다. 이메일 또는 비밀번호를 확인해주세요.",
+})
+
+// ── Parsing helpers ───────────────────────────────────────────────────────────
 
 interface ParsedFetchLine {
   uid?: number
@@ -187,18 +197,8 @@ function parseFetchLine(line: string): ParsedFetchLine | null {
 }
 
 const MONTH_NUMBERS: Record<string, string> = {
-  Jan: "01",
-  Feb: "02",
-  Mar: "03",
-  Apr: "04",
-  May: "05",
-  Jun: "06",
-  Jul: "07",
-  Aug: "08",
-  Sep: "09",
-  Oct: "10",
-  Nov: "11",
-  Dec: "12",
+  Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
+  Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
 }
 
 function parseInternalDate(raw: string | undefined): string {
@@ -216,26 +216,32 @@ function parseHeaderFields(text: string | undefined): { from: string; subject: s
   return { from: headers["from"] ?? "", subject: headers["subject"] ?? "" }
 }
 
-export async function naverListInbox(
-  email: string,
-  appPassword: string,
+// ── Core IMAP operations (provider-agnostic) ──────────────────────────────────
+
+export async function imapListInbox(
+  config: ImapConfig,
   accountId: string,
   maxResults = 20,
-): Promise<Mail[]> {
-  return withNaverImap(email, appPassword, async (client) => {
+  offset = 0,
+): Promise<{ mails: Mail[]; hasMore: boolean }> {
+  return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("네이버 받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
 
     let exists = 0
     for (const line of selectResult.lines) {
       const match = line.match(/^\*\s+(\d+)\s+EXISTS/i)
       if (match) exists = Number(match[1])
     }
-    if (exists === 0) return []
+    if (exists === 0) return { mails: [], hasMore: false }
 
-    const start = Math.max(1, exists - maxResults + 1)
+    const end = Math.max(0, exists - offset)
+    if (end < 1) return { mails: [], hasMore: false }
+    const start = Math.max(1, end - maxResults + 1)
+    const hasMore = start > 1
+
     const fetchResult = await client.command(
-      `FETCH ${start}:${exists} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])`,
+      `FETCH ${start}:${end} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])`,
     )
 
     const mails: Mail[] = []
@@ -258,26 +264,29 @@ export async function naverListInbox(
         isStarred: parsed.flags.includes("\\Flagged"),
       })
     }
-    return mails
+    return { mails, hasMore }
   })
 }
 
-export async function naverMarkAsRead(email: string, appPassword: string, uid: string): Promise<void> {
-  await withNaverImap(email, appPassword, async (client) => {
+export async function imapMarkAsRead(config: ImapConfig, uid: string): Promise<void> {
+  await withImap(config, async (client) => {
     await client.command("SELECT INBOX")
     await client.command(`UID STORE ${uid} +FLAGS (\\Seen)`)
   })
 }
 
-export async function naverGetMailDetail(
-  email: string,
-  appPassword: string,
-  accountId: string,
-  uid: string,
-): Promise<Mail> {
-  return withNaverImap(email, appPassword, async (client) => {
+export async function imapToggleStar(config: ImapConfig, uid: string, starred: boolean): Promise<void> {
+  const flag = starred ? "+FLAGS" : "-FLAGS"
+  await withImap(config, async (client) => {
+    await client.command("SELECT INBOX")
+    await client.command(`UID STORE ${uid} ${flag} (\\Flagged)`)
+  })
+}
+
+export async function imapGetMailDetail(config: ImapConfig, accountId: string, uid: string): Promise<Mail> {
+  return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("네이버 받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
 
     const fetchResult = await client.command(`UID FETCH ${uid} (UID FLAGS INTERNALDATE BODY.PEEK[])`)
     const line = fetchResult.lines.find((l) => /^\*\s+\d+\s+FETCH/i.test(l))
@@ -312,4 +321,74 @@ export async function naverGetMailDetail(
       isStarred: parsed.flags.includes("\\Flagged"),
     }
   })
+}
+
+export async function imapVerify(config: ImapConfig): Promise<void> {
+  await withImap(config, async () => {})
+}
+
+// ── Naver-specific exports ────────────────────────────────────────────────────
+
+export async function verifyNaverCredentials(email: string, appPassword: string): Promise<void> {
+  await imapVerify(naverConfig(email, appPassword))
+}
+
+export async function naverListInbox(
+  email: string,
+  appPassword: string,
+  accountId: string,
+  maxResults = 20,
+  offset = 0,
+): Promise<{ mails: Mail[]; hasMore: boolean }> {
+  return imapListInbox(naverConfig(email, appPassword), accountId, maxResults, offset)
+}
+
+export async function naverMarkAsRead(email: string, appPassword: string, uid: string): Promise<void> {
+  return imapMarkAsRead(naverConfig(email, appPassword), uid)
+}
+
+export async function naverToggleStar(email: string, appPassword: string, uid: string, starred: boolean): Promise<void> {
+  return imapToggleStar(naverConfig(email, appPassword), uid, starred)
+}
+
+export async function naverGetMailDetail(
+  email: string,
+  appPassword: string,
+  accountId: string,
+  uid: string,
+): Promise<Mail> {
+  return imapGetMailDetail(naverConfig(email, appPassword), accountId, uid)
+}
+
+// ── Daum-specific exports ─────────────────────────────────────────────────────
+
+export async function verifyDaumCredentials(email: string, password: string): Promise<void> {
+  await imapVerify(daumConfig(email, password))
+}
+
+export async function daumListInbox(
+  email: string,
+  password: string,
+  accountId: string,
+  maxResults = 20,
+  offset = 0,
+): Promise<{ mails: Mail[]; hasMore: boolean }> {
+  return imapListInbox(daumConfig(email, password), accountId, maxResults, offset)
+}
+
+export async function daumMarkAsRead(email: string, password: string, uid: string): Promise<void> {
+  return imapMarkAsRead(daumConfig(email, password), uid)
+}
+
+export async function daumToggleStar(email: string, password: string, uid: string, starred: boolean): Promise<void> {
+  return imapToggleStar(daumConfig(email, password), uid, starred)
+}
+
+export async function daumGetMailDetail(
+  email: string,
+  password: string,
+  accountId: string,
+  uid: string,
+): Promise<Mail> {
+  return imapGetMailDetail(daumConfig(email, password), accountId, uid)
 }

@@ -11,6 +11,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { ConnectNaverDialog } from "@/components/mail/connect-naver-dialog"
+import { ConnectDaumDialog } from "@/components/mail/connect-daum-dialog"
+import { ConnectImapDialog } from "@/components/mail/connect-imap-dialog"
 import {
   Sidebar,
   SidebarContent,
@@ -57,6 +59,8 @@ export function AccountSidebar({
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const connectedGmailCount = accounts.filter((a) => a.provider === "gmail").length
   const connectedNaverCount = accounts.filter((a) => a.provider === "naver").length
+  const connectedDaumCount = accounts.filter((a) => a.provider === "daum").length
+  const connectedImapCount = accounts.filter((a) => a.provider === "imap").length
   const hasRealAccounts = accounts.some((a) => a.id.includes(":"))
   const totalUnread = Object.values(unreadCountByAccount).reduce(
     (sum, count) => sum + count,
@@ -180,6 +184,14 @@ export function AccountSidebar({
         </Button>
         <ConnectNaverDialog
           label={connectedNaverCount > 0 ? "네이버 계정 추가" : "네이버 계정 연결"}
+          onConnected={onAccountConnected}
+        />
+        <ConnectDaumDialog
+          label={connectedDaumCount > 0 ? "다음 계정 추가" : "다음 메일 연결"}
+          onConnected={onAccountConnected}
+        />
+        <ConnectImapDialog
+          label={connectedImapCount > 0 ? "IMAP 계정 추가" : "IMAP 계정 연결"}
           onConnected={onAccountConnected}
         />
         {hasRealAccounts && (

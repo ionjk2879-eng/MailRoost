@@ -46,7 +46,22 @@ export interface NaverAccountRecord {
   appPassword: string
 }
 
-export type ConnectedAccountRecord = GmailAccountRecord | NaverAccountRecord
+export interface DaumAccountRecord {
+  provider: "daum"
+  email: string
+  password: string
+}
+
+export interface ImapAccountRecord {
+  provider: "imap"
+  host: string
+  port: number
+  email: string
+  password: string
+  label: string
+}
+
+export type ConnectedAccountRecord = GmailAccountRecord | NaverAccountRecord | DaumAccountRecord | ImapAccountRecord
 
 export interface UserRecord {
   id: string
