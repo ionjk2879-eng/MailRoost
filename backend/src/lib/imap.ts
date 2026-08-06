@@ -262,6 +262,13 @@ export async function naverListInbox(
   })
 }
 
+export async function naverMarkAsRead(email: string, appPassword: string, uid: string): Promise<void> {
+  await withNaverImap(email, appPassword, async (client) => {
+    await client.command("SELECT INBOX")
+    await client.command(`UID STORE ${uid} +FLAGS (\\Seen)`)
+  })
+}
+
 export async function naverGetMailDetail(
   email: string,
   appPassword: string,

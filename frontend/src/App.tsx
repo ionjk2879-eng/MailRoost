@@ -13,7 +13,7 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/s
 import { useIsMobile } from "@/hooks/use-mobile"
 import { HomeView } from "@/components/home/home-view"
 import { LandingView } from "@/components/home/landing-view"
-import { fetchAccounts, fetchCurrentUser, fetchMailDetail, fetchMails, logout } from "@/lib/api"
+import { fetchAccounts, fetchCurrentUser, fetchMailDetail, fetchMails, logout, markAsRead } from "@/lib/api"
 import type { Account, Mail, MailCategory } from "@/types/mail"
 
 function isRealAccountId(accountId: string): boolean {
@@ -49,6 +49,18 @@ function App() {
       })
       .finally(() => setIsBootstrapping(false))
   }, [])
+
+  // 탭이 보일 때만 60초마다 자동 새로고침
+  useEffect(() => {
+    if (!currentUser) return
+    const poll = () => { if (!document.hidden) loadAccountsAndMails() }
+    const interval = setInterval(poll, 60_000)
+    document.addEventListener("visibilitychange", poll)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener("visibilitychange", poll)
+    }
+  }, [currentUser])
 
   const accounts = realAccounts
   const allMails = realMails
@@ -110,6 +122,16 @@ function App() {
   const selectedMail = selectedMailStub
     ? (mailDetails[selectedMailStub.id] ?? selectedMailStub)
     : null
+
+  const handleSelectMail = (mailId: string | null) => {
+    setSelectedMailId(mailId)
+    if (!mailId) return
+    const mail = allMails.find((m) => m.id === mailId)
+    if (mail && !mail.isRead) {
+      setRealMails((prev) => prev.map((m) => (m.id === mailId ? { ...m, isRead: true } : m)))
+      markAsRead(mailId, mail.accountId)
+    }
+  }
 
   const goToInbox = (accountId: string | null) => {
     setView("inbox")
@@ -177,7 +199,7 @@ function App() {
           mails={visibleMails}
           accounts={accounts}
           selectedMailId={selectedMailId}
-          onSelectMail={setSelectedMailId}
+          onSelectMail={handleSelectMail}
         />
       </div>
     </div>

@@ -1,7 +1,7 @@
 import type { Env, GmailAccountRecord, Mail, MailCategory } from "../types"
 import { decodeRfc2047, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
 
-const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.modify"
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
 export function buildAuthUrl(clientId: string, redirectUri: string, state: string): string {
@@ -196,6 +196,17 @@ function extractBody(payload: GmailMessagePart | undefined): { text?: string; ht
     return payload.mimeType === "text/html" ? { html: raw } : { text: raw }
   }
   return {}
+}
+
+export async function markAsRead(accessToken: string, messageId: string): Promise<void> {
+  await fetch(`${GMAIL_API_BASE}/messages/${messageId}/modify`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ removeLabelIds: ["UNREAD"] }),
+  })
 }
 
 export async function getMailDetail(accessToken: string, accountId: string, messageId: string): Promise<Mail> {

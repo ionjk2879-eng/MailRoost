@@ -2,8 +2,8 @@ import { Hono } from "hono"
 import type { Account, ConnectedAccountRecord, Env, Mail, StoredSession } from "../types"
 import { getUserAccounts, getUserById, saveUserAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
-import { ensureFreshToken, getMailDetail, listInboxMails } from "../lib/gmail"
-import { naverGetMailDetail, naverListInbox } from "../lib/imap"
+import { ensureFreshToken, getMailDetail, listInboxMails, markAsRead as gmailMarkAsRead } from "../lib/gmail"
+import { naverGetMailDetail, naverListInbox, naverMarkAsRead } from "../lib/imap"
 import { readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
 const api = new Hono<{ Bindings: Env }>()
@@ -132,6 +132,31 @@ api.get("/mail", async (c) => {
 
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   return c.json(results)
+})
+
+api.patch("/mail/:id/read", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  const accountId = c.req.query("accountId")
+  const mailId = c.req.param("id")
+  if (!sessionId || !accountId) return c.json({ error: "bad request" }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const record = accountMap[accountId]
+  if (!record) return c.json({ error: "not found" }, 404)
+
+  if (record.provider === "naver") {
+    await naverMarkAsRead(record.email, record.appPassword, mailId)
+    return c.json({ ok: true })
+  }
+
+  const fresh = await ensureFreshToken(c.env, record)
+  if (fresh.accessToken !== record.accessToken) {
+    accountMap[accountId] = fresh
+    await persistAccounts(c.env, sessionId, session, accountMap)
+  }
+  await gmailMarkAsRead(fresh.accessToken, mailId)
+  return c.json({ ok: true })
 })
 
 api.get("/mail/:id", async (c) => {

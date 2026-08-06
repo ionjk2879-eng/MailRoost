@@ -30,6 +30,13 @@ export async function fetchCurrentUser(): Promise<{ id: string; email: string } 
   return res.json()
 }
 
+export async function markAsRead(id: string, accountId: string): Promise<void> {
+  await fetch(
+    `/api/mail/${encodeURIComponent(id)}/read?accountId=${encodeURIComponent(accountId)}`,
+    { method: "PATCH" },
+  )
+}
+
 export async function logout(): Promise<void> {
   await fetch("/auth/logout", { method: "POST" })
 }
