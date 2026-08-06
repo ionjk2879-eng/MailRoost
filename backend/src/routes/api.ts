@@ -343,22 +343,27 @@ api.get("/folders/:id/mail", async (c) => {
       const record = accountMap[accountId]
       if (!record) return []
 
-      if (record.provider === "naver") {
-        return naverFetchByUids(record.email, record.appPassword, accountId, mailIds)
-      }
-      if (record.provider === "daum") {
-        return daumFetchByUids(record.email, record.password, accountId, mailIds)
-      }
-      if (record.provider === "imap") {
-        return imapFetchByUids({ host: record.host, port: record.port, email: record.email, password: record.password }, accountId, mailIds)
-      }
+      try {
+        if (record.provider === "naver") {
+          return await naverFetchByUids(record.email, record.appPassword, accountId, mailIds)
+        }
+        if (record.provider === "daum") {
+          return await daumFetchByUids(record.email, record.password, accountId, mailIds)
+        }
+        if (record.provider === "imap") {
+          return await imapFetchByUids({ host: record.host, port: record.port, email: record.email, password: record.password }, accountId, mailIds)
+        }
 
-      const fresh = await ensureFreshToken(c.env, record)
-      if (fresh.accessToken !== record.accessToken) {
-        accountMap[accountId] = fresh
-        accountsChanged = true
+        const fresh = await ensureFreshToken(c.env, record)
+        if (fresh.accessToken !== record.accessToken) {
+          accountMap[accountId] = fresh
+          accountsChanged = true
+        }
+        return await gmailFetchByIds(fresh.accessToken, accountId, mailIds)
+      } catch (err) {
+        console.error(`[folder-mail] account ${accountId} failed, skipping:`, err)
+        return []
       }
-      return gmailFetchByIds(fresh.accessToken, accountId, mailIds)
     }),
   )
 
@@ -524,31 +529,38 @@ api.get("/mail", async (c) => {
     orgChanged = true
   }
 
-  // 계정별로 병렬 조회 (직렬로 하면 계정 수만큼 지연이 누적됨)
+  // 계정별로 병렬 조회 (직렬로 하면 계정 수만큼 지연이 누적됨).
+  // 계정 하나가 실패해도(네트워크 문제 등) 나머지 계정 결과까지 통째로 날아가면 안 되므로
+  // 계정별로 에러를 잡아서 그 계정만 빈 결과로 건너뛴다.
   const perAccountResults = await Promise.all(
     accountIds.map(async (accountId) => {
       const record = accountMap[accountId]
       if (!record) return null
 
-      const cursorState = cursorMap[accountId] ?? {}
+      try {
+        const cursorState = cursorMap[accountId] ?? {}
 
-      if (record.provider === "naver") {
-        const offset = cursorState.offset ?? 0
-        const { mails, hasMore } = await naverListInbox(record.email, record.appPassword, accountId, IMAP_PAGE, offset)
-        return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
+        if (record.provider === "naver") {
+          const offset = cursorState.offset ?? 0
+          const { mails, hasMore } = await naverListInbox(record.email, record.appPassword, accountId, IMAP_PAGE, offset)
+          return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
+        }
+
+        if (record.provider === "daum" || record.provider === "imap") {
+          const offset = cursorState.offset ?? 0
+          const { mails, hasMore } = await fetchImapMails(accountId, record, IMAP_PAGE, offset)
+          return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
+        }
+
+        const fresh = await ensureFreshToken(c.env, record)
+        const updatedRecord = fresh.accessToken !== record.accessToken ? fresh : undefined
+        const pageToken = cursorState.pageToken
+        const { mails, nextPageToken } = await listInboxMails(fresh.accessToken, accountId, GMAIL_PAGE, pageToken)
+        return { accountId, mails, cursor: nextPageToken ? { pageToken: nextPageToken } : undefined, updatedRecord }
+      } catch (err) {
+        console.error(`[mail] account ${accountId} failed, skipping:`, err)
+        return null
       }
-
-      if (record.provider === "daum" || record.provider === "imap") {
-        const offset = cursorState.offset ?? 0
-        const { mails, hasMore } = await fetchImapMails(accountId, record, IMAP_PAGE, offset)
-        return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
-      }
-
-      const fresh = await ensureFreshToken(c.env, record)
-      const updatedRecord = fresh.accessToken !== record.accessToken ? fresh : undefined
-      const pageToken = cursorState.pageToken
-      const { mails, nextPageToken } = await listInboxMails(fresh.accessToken, accountId, GMAIL_PAGE, pageToken)
-      return { accountId, mails, cursor: nextPageToken ? { pageToken: nextPageToken } : undefined, updatedRecord }
     }),
   )
 
@@ -594,33 +606,40 @@ api.get("/trash", async (c) => {
   const IMAP_PAGE = 50
   const GMAIL_PAGE = 50
 
+  // 계정 하나가 실패해도 나머지 계정의 휴지통 결과까지 통째로 사라지면 안 되므로
+  // 계정별로 에러를 잡아서 그 계정만 건너뛴다.
   const perAccountResults = await Promise.all(
     accountIds.map(async (accountId) => {
       const record = accountMap[accountId]
       if (!record) return null
 
-      const cursorState = cursorMap[accountId] ?? {}
+      try {
+        const cursorState = cursorMap[accountId] ?? {}
 
-      if (record.provider === "naver") {
-        const offset = cursorState.offset ?? 0
-        const { mails, hasMore } = await naverListTrash(record.email, record.appPassword, accountId, IMAP_PAGE, offset)
-        console.log(`[trash] provider=naver accountId=${accountId} count=${mails.length}`)
-        return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
+        if (record.provider === "naver") {
+          const offset = cursorState.offset ?? 0
+          const { mails, hasMore } = await naverListTrash(record.email, record.appPassword, accountId, IMAP_PAGE, offset)
+          console.log(`[trash] provider=naver accountId=${accountId} count=${mails.length}`)
+          return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
+        }
+
+        if (record.provider === "daum" || record.provider === "imap") {
+          const offset = cursorState.offset ?? 0
+          const { mails, hasMore } = await fetchImapTrash(accountId, record, IMAP_PAGE, offset)
+          console.log(`[trash] provider=${record.provider} accountId=${accountId} count=${mails.length}`)
+          return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
+        }
+
+        const fresh = await ensureFreshToken(c.env, record)
+        const updatedRecord = fresh.accessToken !== record.accessToken ? fresh : undefined
+        const pageToken = cursorState.pageToken
+        const { mails, nextPageToken } = await gmailListTrash(fresh.accessToken, accountId, GMAIL_PAGE, pageToken)
+        console.log(`[trash] provider=gmail accountId=${accountId} count=${mails.length}`)
+        return { accountId, mails, cursor: nextPageToken ? { pageToken: nextPageToken } : undefined, updatedRecord }
+      } catch (err) {
+        console.error(`[trash] account ${accountId} failed, skipping:`, err)
+        return null
       }
-
-      if (record.provider === "daum" || record.provider === "imap") {
-        const offset = cursorState.offset ?? 0
-        const { mails, hasMore } = await fetchImapTrash(accountId, record, IMAP_PAGE, offset)
-        console.log(`[trash] provider=${record.provider} accountId=${accountId} count=${mails.length}`)
-        return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
-      }
-
-      const fresh = await ensureFreshToken(c.env, record)
-      const updatedRecord = fresh.accessToken !== record.accessToken ? fresh : undefined
-      const pageToken = cursorState.pageToken
-      const { mails, nextPageToken } = await gmailListTrash(fresh.accessToken, accountId, GMAIL_PAGE, pageToken)
-      console.log(`[trash] provider=gmail accountId=${accountId} count=${mails.length}`)
-      return { accountId, mails, cursor: nextPageToken ? { pageToken: nextPageToken } : undefined, updatedRecord }
     }),
   )
 
