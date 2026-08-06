@@ -12,8 +12,8 @@ import {
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { HomeView } from "@/components/home/home-view"
+import { LandingView } from "@/components/home/landing-view"
 import { fetchAccounts, fetchMailDetail, fetchMails, logout } from "@/lib/api"
-import { mockAccounts, mockMails } from "@/lib/mock-data"
 import type { Account, Mail, MailCategory } from "@/types/mail"
 
 function isRealAccountId(accountId: string): boolean {
@@ -44,26 +44,8 @@ function App() {
     loadAccountsAndMails().finally(() => setIsBootstrapping(false))
   }, [])
 
-  const isGmailConnected = realAccounts.some((a) => a.provider === "gmail")
-  const isNaverConnected = realAccounts.some((a) => a.provider === "naver")
-
-  const accounts = useMemo(() => {
-    const mockFiltered = mockAccounts.filter((a) => {
-      if (a.provider === "gmail") return !isGmailConnected
-      if (a.provider === "naver") return !isNaverConnected
-      return true
-    })
-    return [...realAccounts, ...mockFiltered]
-  }, [realAccounts, isGmailConnected, isNaverConnected])
-
-  const allMails = useMemo(() => {
-    const mockFiltered = mockMails.filter((m) => {
-      if (m.accountId.startsWith("acc-gmail")) return !isGmailConnected
-      if (m.accountId.startsWith("acc-naver")) return !isNaverConnected
-      return true
-    })
-    return [...realMails, ...mockFiltered]
-  }, [realMails, isGmailConnected, isNaverConnected])
+  const accounts = realAccounts
+  const allMails = realMails
 
   const unreadCountByAccount = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -167,6 +149,10 @@ function App() {
         <Loader2 className="text-muted-foreground size-6 animate-spin" />
       </div>
     )
+  }
+
+  if (realAccounts.length === 0) {
+    return <LandingView onConnected={loadAccountsAndMails} />
   }
 
   const mailListPane = (

@@ -18,9 +18,10 @@ import { connectNaverAccount } from "@/lib/api"
 interface ConnectNaverDialogProps {
   label: string
   onConnected: () => void
+  buttonClassName?: string
 }
 
-export function ConnectNaverDialog({ label, onConnected }: ConnectNaverDialogProps) {
+export function ConnectNaverDialog({ label, onConnected, buttonClassName }: ConnectNaverDialogProps) {
   const [open, setOpen] = useState(false)
   const [email, setEmail] = useState("")
   const [appPassword, setAppPassword] = useState("")
@@ -47,7 +48,7 @@ export function ConnectNaverDialog({ label, onConnected }: ConnectNaverDialogPro
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button variant="outline" size="sm" className="w-full justify-start gap-2" />
+          <Button variant="outline" size="sm" className={buttonClassName ?? "w-full justify-start gap-2"} />
         }
       >
         <Plus className="size-4" />
