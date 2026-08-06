@@ -81,6 +81,13 @@ auth.get("/gmail/callback", async (c) => {
       await saveUser(c.env, user)
     }
     userId = user.id
+
+    // 기존 게스트 세션에 연동 계정이 있으면 유저 계정으로 이전
+    if (Object.keys(session.accounts).length > 0) {
+      const existing = await getUserAccounts(c.env, userId)
+      await saveUserAccounts(c.env, userId, { ...existing, ...session.accounts })
+    }
+
     await writeSession(c.env, sessionId, { userId, accounts: {} })
   }
 
