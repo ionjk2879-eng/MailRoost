@@ -1,4 +1,4 @@
-import { Inbox, LogOut, Plus, Trash2 } from "lucide-react"
+import { Inbox, LogOut, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
@@ -35,8 +35,10 @@ interface AccountSidebarProps {
   unreadCountByAccount: Record<string, number>
   selectedAccountId: string | null
   isInboxView: boolean
+  isCleanupView: boolean
   onSelectAccount: (accountId: string | null) => void
   onGoHome: () => void
+  onGoCleanup: () => void
   onAccountConnected: () => void
   onDeleteAccount: (accountId: string) => void
   onLogout: () => void
@@ -47,8 +49,10 @@ export function AccountSidebar({
   unreadCountByAccount,
   selectedAccountId,
   isInboxView,
+  isCleanupView,
   onSelectAccount,
   onGoHome,
+  onGoCleanup,
   onAccountConnected,
   onDeleteAccount,
   onLogout,
@@ -117,6 +121,18 @@ export function AccountSidebar({
                 {totalUnread > 0 && (
                   <SidebarMenuBadge>{totalUnread}</SidebarMenuBadge>
                 )}
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isCleanupView}
+                  onClick={() => {
+                    onGoCleanup()
+                    closeOnMobile()
+                  }}
+                >
+                  <Sparkles />
+                  <span>정리하기</span>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>

@@ -5,6 +5,7 @@ import { CategoryTabs } from "@/components/mail/category-tabs"
 import { ComposeDialog } from "@/components/mail/compose-dialog"
 import { MailDetail } from "@/components/mail/mail-detail"
 import { MailList } from "@/components/mail/mail-list"
+import { CleanupView } from "@/components/cleanup/cleanup-view"
 import {
   ResizableHandle,
   ResizablePanel,
@@ -35,7 +36,7 @@ function App() {
   const isMobile = useIsMobile()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [view, setView] = useState<"home" | "inbox">("home")
+  const [view, setView] = useState<"home" | "inbox" | "cleanup">("home")
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [selectedMailId, setSelectedMailId] = useState<string | null>(null)
@@ -47,7 +48,6 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("")
   const [checkedMailIds, setCheckedMailIds] = useState<Set<string>>(new Set())
   const [isBulkLoading, setIsBulkLoading] = useState(false)
-  const [isSelectingAll, setIsSelectingAll] = useState(false)
 
   const loadAccountsAndMails = () => {
     return fetchAccounts().then((accounts) => {
@@ -270,32 +270,29 @@ function App() {
     }
   }
 
-  const handleSelectAll = async () => {
-    if (isSelectingAll) return
-    setIsSelectingAll(true)
-    try {
-      let cursor = nextCursor
-      let accumulated = [...realMails]
-      while (cursor) {
-        const { mails, nextCursor: newCursor } = await fetchMails(cursor)
-        const existingIds = new Set(accumulated.map((m) => `${m.accountId}:${m.id}`))
-        const fresh = mails.filter((m) => !existingIds.has(`${m.accountId}:${m.id}`))
-        accumulated = [...accumulated, ...fresh]
-        cursor = newCursor
-      }
-      setRealMails(accumulated)
-      setNextCursor(null)
-      // select all that match current filters
-      const allVisible = selectedAccountId
-        ? accumulated.filter((m) => m.accountId === selectedAccountId)
-        : accumulated
-      const filtered = selectedCategory
-        ? allVisible.filter((m) => m.category === selectedCategory)
-        : allVisible
-      setCheckedMailIds(new Set(filtered.map((m) => m.id)))
-    } finally {
-      setIsSelectingAll(false)
-    }
+  const handleMarkAllRead = async (accountId?: string) => {
+    const targets = realMails.filter((m) => !m.isRead && (accountId === undefined || m.accountId === accountId))
+    setRealMails((prev) => prev.map((m) => {
+      if (!m.isRead && (accountId === undefined || m.accountId === accountId)) return { ...m, isRead: true }
+      return m
+    }))
+    await Promise.all(targets.map((m) => markAsRead(m.id, m.accountId)))
+  }
+
+  const handleDeleteBeforeDate = async (cutoff: Date, accountId?: string) => {
+    const targets = realMails.filter((m) => {
+      const match = accountId === undefined || m.accountId === accountId
+      return match && new Date(m.receivedAt) < cutoff
+    })
+    const deletedIds = new Set(targets.map((m) => m.id))
+    setRealMails((prev) => prev.filter((m) => !deletedIds.has(m.id)))
+    setMailDetails((prev) => {
+      const next = { ...prev }
+      for (const id of deletedIds) delete next[id]
+      return next
+    })
+    if (selectedMailId && deletedIds.has(selectedMailId)) setSelectedMailId(null)
+    await Promise.all(targets.map((m) => deleteMail(m.id, m.accountId)))
   }
 
   const goToInbox = (accountId: string | null) => {
@@ -313,6 +310,12 @@ function App() {
     setSelectedCategory(null)
     setSelectedMailId(null)
     setSearchQuery("")
+    setCheckedMailIds(new Set())
+  }
+
+  const goToCleanup = () => {
+    setView("cleanup")
+    setSelectedMailId(null)
     setCheckedMailIds(new Set())
   }
 
@@ -402,8 +405,6 @@ function App() {
           hasMore={!searchQuery && !!nextCursor}
           isLoadingMore={isLoadingMore}
           onLoadMore={handleLoadMore}
-          onSelectAll={handleSelectAll}
-          isSelectingAll={isSelectingAll}
         />
       </div>
     </div>
@@ -428,8 +429,10 @@ function App() {
         unreadCountByAccount={unreadCountByAccount}
         selectedAccountId={selectedAccountId}
         isInboxView={view === "inbox"}
+        isCleanupView={view === "cleanup"}
         onSelectAccount={goToInbox}
         onGoHome={goHome}
+        onGoCleanup={goToCleanup}
         onAccountConnected={loadAccountsAndMails}
         onDeleteAccount={handleDeleteAccount}
         onLogout={handleLogout}
@@ -440,18 +443,18 @@ function App() {
           <span className="min-w-0 flex-1 truncate text-sm font-medium">
             {view === "home"
               ? "홈"
-              : selectedAccountId
-                ? (() => {
-                    const account = accounts.find((a) => a.id === selectedAccountId)
-                    return account?.provider === "gmail" || account?.provider === "naver" || account?.provider === "daum"
-                      ? account.email
-                      : account?.label
-                  })()
-                : "전체 받은편지함"}
+              : view === "cleanup"
+                ? "정리하기"
+                : selectedAccountId
+                  ? (() => {
+                      const account = accounts.find((a) => a.id === selectedAccountId)
+                      return account?.provider === "gmail" || account?.provider === "naver" || account?.provider === "daum"
+                        ? account.email
+                        : account?.label
+                    })()
+                  : "전체 받은편지함"}
           </span>
-          {view === "inbox" && (
-            <ComposeDialog accounts={accounts} />
-          )}
+          {view === "inbox" && <ComposeDialog accounts={accounts} />}
         </header>
         {view === "home" ? (
           <HomeView
@@ -460,6 +463,15 @@ function App() {
             unreadCountByAccount={unreadCountByAccount}
             onSelectAccount={goToInbox}
           />
+        ) : view === "cleanup" ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <CleanupView
+              accounts={accounts}
+              mails={allMails}
+              onMarkAllRead={handleMarkAllRead}
+              onDeleteBeforeDate={handleDeleteBeforeDate}
+            />
+          </div>
         ) : isMobile ? (
           <div className="min-h-0 flex-1">
             {selectedMailId ? mailDetailPane : mailListPane}
