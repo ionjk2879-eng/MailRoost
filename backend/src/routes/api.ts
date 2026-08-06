@@ -164,8 +164,8 @@ api.get("/mail", async (c) => {
 
     const cursorState = cursorMap[accountId] ?? {}
 
-    const IMAP_PAGE = 999
-    const GMAIL_PAGE = 100
+    const IMAP_PAGE = 50
+    const GMAIL_PAGE = 50
 
     if (record.provider === "naver") {
       const offset = cursorState.offset ?? 0
