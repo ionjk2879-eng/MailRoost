@@ -161,6 +161,20 @@ export async function permanentDeleteFromTrash(accountId: string, mailIds: strin
   return { ok: true }
 }
 
+export async function restoreFromTrash(accountId: string, mailIds: string[]): Promise<{ ok: boolean; error?: string }> {
+  if (mailIds.length === 0) return { ok: true }
+  const res = await fetch("/api/trash/restore", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, mailIds }),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "메일을 복구하지 못했습니다." }
+  }
+  return { ok: true }
+}
+
 export async function emptyTrash(accountId: string): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch("/api/trash/empty", {
     method: "POST",

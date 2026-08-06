@@ -341,6 +341,11 @@ export async function batchDeleteMessages(accessToken: string, ids: string[]): P
   if (!res.ok) throw new Error(`Gmail 영구 삭제 실패: ${res.status}`)
 }
 
+// 휴지통에서 받은편지함으로 복구 (TRASH 라벨 제거 + INBOX 라벨 추가)
+export async function restoreFromTrashBulk(accessToken: string, ids: string[]): Promise<void> {
+  await batchModifyMessages(accessToken, ids, { addLabelIds: ["INBOX"], removeLabelIds: ["TRASH"] })
+}
+
 export async function emptyTrash(accessToken: string): Promise<void> {
   let pageToken: string | undefined
   const allIds: string[] = []

@@ -43,6 +43,7 @@ import {
   renameFolder as apiRenameFolder,
   reorderAccounts as apiReorderAccounts,
   reorderFolders as apiReorderFolders,
+  restoreFromTrash,
   toggleStar,
   updateRule as apiUpdateRule,
 } from "@/lib/api"
@@ -630,6 +631,33 @@ function App() {
     }
   }
 
+  const handleRestoreFromTrash = async (targets: Mail[]) => {
+    if (targets.length === 0) return
+    const restoredIds = new Set(targets.map((m) => m.id))
+    setTrashMails((prev) => prev.filter((m) => !restoredIds.has(m.id)))
+
+    const groups = groupIdsByAccount(targets)
+    const outcomes = await Promise.all(
+      [...groups.entries()].map(async ([accountId, ids]) => ({
+        accountId,
+        ids,
+        result: await restoreFromTrash(accountId, ids),
+      })),
+    )
+
+    const failed = outcomes.filter((o) => !o.result.ok)
+    if (failed.length > 0) {
+      const failedTargets = targets.filter((m) =>
+        failed.some((f) => f.accountId === m.accountId && f.ids.includes(m.id)),
+      )
+      setTrashMails((prev) => [...prev, ...failedTargets])
+      showError(failed[0].result.error ?? "일부 메일을 복구하지 못했습니다.")
+    }
+
+    // 복구된 메일이 받은편지함에 다시 보이도록 새로고침
+    if (failed.length < outcomes.length) loadAccountsAndMails()
+  }
+
   const handleLogout = async () => {
     await logout()
     setCurrentUser(null)
@@ -899,6 +927,7 @@ function App() {
               onLoadMore={handleLoadMoreTrash}
               onEmptyAccount={handleEmptyTrashAccount}
               onDeleteSelected={handleDeleteFromTrash}
+              onRestoreSelected={handleRestoreFromTrash}
             />
           </div>
         ) : view === "folder" || view === "archive" ? (

@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Loader2, Minus, Trash2 } from "lucide-react"
+import { AlertTriangle, Check, Loader2, Minus, RotateCcw, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -14,6 +14,7 @@ interface TrashViewProps {
   onLoadMore: () => void
   onEmptyAccount: (accountId: string) => Promise<void>
   onDeleteSelected: (mails: Mail[]) => Promise<void>
+  onRestoreSelected: (mails: Mail[]) => Promise<void>
 }
 
 function formatTime(iso: string): string {
@@ -41,11 +42,13 @@ export function TrashView({
   onLoadMore,
   onEmptyAccount,
   onDeleteSelected,
+  onRestoreSelected,
 }: TrashViewProps) {
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
   const [emptyingAccountId, setEmptyingAccountId] = useState<string | null>(null)
   const [confirmEmptyId, setConfirmEmptyId] = useState<string | null>(null)
   const [isDeletingSelected, setIsDeletingSelected] = useState(false)
+  const [isRestoringSelected, setIsRestoringSelected] = useState(false)
 
   const allChecked = mails.length > 0 && mails.every((m) => checkedIds.has(m.id))
   const someChecked = checkedIds.size > 0 && !allChecked
@@ -77,6 +80,15 @@ export function TrashView({
     setCheckedIds(new Set())
     await onDeleteSelected(targets)
     setIsDeletingSelected(false)
+  }
+
+  const handleRestoreSelected = async () => {
+    const targets = mails.filter((m) => checkedIds.has(m.id))
+    if (targets.length === 0) return
+    setIsRestoringSelected(true)
+    setCheckedIds(new Set())
+    await onRestoreSelected(targets)
+    setIsRestoringSelected(false)
   }
 
   return (
@@ -143,16 +155,28 @@ export function TrashView({
         {checkedIds.size > 0 ? (
           <>
             <span className="text-muted-foreground text-xs">{checkedIds.size}개 선택됨</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-destructive hover:text-destructive ml-auto h-7 gap-1 px-2 text-xs"
-              onClick={handleDeleteSelected}
-              disabled={isDeletingSelected}
-            >
-              <Trash2 className="size-3.5" />
-              영구 삭제
-            </Button>
+            <div className="ml-auto flex items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={handleRestoreSelected}
+                disabled={isRestoringSelected || isDeletingSelected}
+              >
+                <RotateCcw className="size-3.5" />
+                복구
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive h-7 gap-1 px-2 text-xs"
+                onClick={handleDeleteSelected}
+                disabled={isDeletingSelected || isRestoringSelected}
+              >
+                <Trash2 className="size-3.5" />
+                영구 삭제
+              </Button>
+            </div>
           </>
         ) : (
           <span className="text-muted-foreground text-xs">메일함</span>

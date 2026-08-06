@@ -16,6 +16,7 @@ import {
   toggleStar as gmailToggleStar,
   trashMail as gmailTrash,
   trashMailBulk as gmailTrashBulk,
+  restoreFromTrashBulk as gmailRestoreFromTrash,
   sendGmailMessage,
 } from "../lib/gmail"
 import {
@@ -30,6 +31,7 @@ import {
   daumMarkAsReadBulk,
   daumMarkAsUnread,
   daumPermanentDeleteBulk,
+  daumRestoreFromTrashBulk,
   daumToggleStar,
   daumToggleStarBulk,
   imapDeleteMail,
@@ -43,6 +45,7 @@ import {
   imapMarkAsReadBulk,
   imapMarkAsUnread,
   imapPermanentDeleteBulk,
+  imapRestoreFromTrashBulk,
   imapToggleStar,
   imapToggleStarBulk,
   naverDeleteMail,
@@ -56,6 +59,7 @@ import {
   naverMarkAsReadBulk,
   naverMarkAsUnread,
   naverPermanentDeleteBulk,
+  naverRestoreFromTrashBulk,
   naverToggleStar,
   naverToggleStarBulk,
 } from "../lib/imap"
@@ -693,6 +697,50 @@ api.post("/trash/bulk-delete", async (c) => {
     await persistAccounts(c.env, sessionId, session, accountMap)
   }
   await gmailBatchDelete(fresh.accessToken, mailIds)
+  return c.json({ ok: true })
+})
+
+api.post("/trash/restore", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req.json<{ accountId?: string; mailIds?: string[] }>().catch(() => null)
+  const accountId = body?.accountId
+  const mailIds = body?.mailIds
+  if (!accountId || !mailIds?.length) return c.json({ error: "bad request" }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const record = accountMap[accountId]
+  if (!record) return c.json({ error: "not found" }, 404)
+
+  if (record.provider === "naver") {
+    await naverRestoreFromTrashBulk(record.email, record.appPassword, mailIds)
+  } else if (record.provider === "daum") {
+    await daumRestoreFromTrashBulk(record.email, record.password, mailIds)
+  } else if (record.provider === "imap") {
+    await imapRestoreFromTrashBulk({ host: record.host, port: record.port, email: record.email, password: record.password }, mailIds)
+  } else {
+    const fresh = await ensureFreshToken(c.env, record)
+    if (fresh.accessToken !== record.accessToken) {
+      accountMap[accountId] = fresh
+      await persistAccounts(c.env, sessionId, session, accountMap)
+    }
+    await gmailRestoreFromTrash(fresh.accessToken, mailIds)
+  }
+
+  // 복구된 메일에 사용자 정의 메일함 배정이 남아있으면 정리한다 (실제로는 받은편지함으로 돌아왔으므로)
+  const org = await resolveMailOrg(c.env, session)
+  let orgChanged = false
+  for (const mailId of mailIds) {
+    const key = assignmentKey(accountId, mailId)
+    if (key in org.assignments) {
+      delete org.assignments[key]
+      orgChanged = true
+    }
+  }
+  if (orgChanged) await persistMailOrg(c.env, sessionId, session, org)
+
   return c.json({ ok: true })
 })
 

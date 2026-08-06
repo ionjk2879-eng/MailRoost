@@ -448,6 +448,23 @@ export async function imapPermanentDeleteBulk(config: ImapConfig, uids: string[]
   })
 }
 
+// 휴지통에서 받은편지함으로 복구
+export async function imapRestoreFromTrashBulk(config: ImapConfig, uids: string[]): Promise<void> {
+  if (uids.length === 0) return
+  await withImap(config, async (client) => {
+    const trash = await imapFindTrashMailbox(client)
+    if (!trash) throw new Error("휴지통 폴더를 찾을 수 없습니다.")
+    const selectResult = await client.command(`SELECT ${quoteImap(trash)}`)
+    if (!selectResult.ok) throw new Error("휴지통을 열 수 없습니다.")
+    const copyResult = await client.command(`UID COPY ${uids.join(",")} INBOX`)
+    if (!copyResult.ok) throw new Error("받은편지함으로 복구하지 못했습니다.")
+    const storeResult = await client.command(`UID STORE ${uids.join(",")} +FLAGS (\\Deleted)`)
+    if (!storeResult.ok) throw new Error("휴지통에서 제거하지 못했습니다.")
+    const expungeResult = await client.command("EXPUNGE")
+    if (!expungeResult.ok) throw new Error("휴지통에서 제거하지 못했습니다.")
+  })
+}
+
 // 휴지통 비우기 (전체)
 export async function imapEmptyTrash(config: ImapConfig): Promise<void> {
   await withImap(config, async (client) => {
@@ -624,6 +641,10 @@ export async function naverPermanentDeleteBulk(email: string, appPassword: strin
   return imapPermanentDeleteBulk(naverConfig(email, appPassword), uids)
 }
 
+export async function naverRestoreFromTrashBulk(email: string, appPassword: string, uids: string[]): Promise<void> {
+  return imapRestoreFromTrashBulk(naverConfig(email, appPassword), uids)
+}
+
 export async function naverEmptyTrash(email: string, appPassword: string): Promise<void> {
   return imapEmptyTrash(naverConfig(email, appPassword))
 }
@@ -697,6 +718,10 @@ export async function daumListTrash(
 
 export async function daumPermanentDeleteBulk(email: string, password: string, uids: string[]): Promise<void> {
   return imapPermanentDeleteBulk(daumConfig(email, password), uids)
+}
+
+export async function daumRestoreFromTrashBulk(email: string, password: string, uids: string[]): Promise<void> {
+  return imapRestoreFromTrashBulk(daumConfig(email, password), uids)
 }
 
 export async function daumEmptyTrash(email: string, password: string): Promise<void> {
