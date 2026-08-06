@@ -286,30 +286,39 @@ export function MailList({
                   }
                 }}
                 className={cn(
-                  "group flex w-full min-w-0 flex-col items-start gap-1 border-b px-3 py-3 text-left text-sm transition-colors",
+                  "group flex w-full min-w-0 flex-col items-start gap-1 border-b border-l-2 border-l-transparent px-3 py-3 text-left text-sm transition-colors",
                   "hover:bg-accent/50",
+                  !mail.isRead && "border-l-primary bg-primary/[0.04]",
                   !isSelecting && selectedMailId === mail.id && "bg-accent",
                   isChecked && "bg-primary/5",
                 )}
               >
                 <div className="flex w-full min-w-0 items-center gap-2">
-                  {/* 체크박스 */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onToggleCheck(mail.id)
-                    }}
-                    aria-label={isChecked ? "선택 해제" : "선택"}
-                    className={cn(
-                      "border-input bg-background flex size-4 shrink-0 items-center justify-center rounded-sm border transition-opacity",
-                      isChecked
-                        ? "bg-primary border-primary opacity-100"
-                        : "opacity-0 group-hover:opacity-100",
+                  {/* 체크박스 (평소엔 안읽음 표시, 호버/선택 시 체크박스로 전환) */}
+                  <div className="relative flex size-4 shrink-0 items-center justify-center">
+                    {!mail.isRead && !isChecked && (
+                      <span
+                        className="bg-primary absolute size-2 rounded-full transition-opacity group-hover:opacity-0"
+                        aria-hidden="true"
+                      />
                     )}
-                  >
-                    {isChecked && <Check className="text-primary-foreground size-3" />}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onToggleCheck(mail.id)
+                      }}
+                      aria-label={isChecked ? "선택 해제" : "선택"}
+                      className={cn(
+                        "border-input bg-background absolute inset-0 flex items-center justify-center rounded-sm border transition-opacity",
+                        isChecked
+                          ? "bg-primary border-primary opacity-100"
+                          : "opacity-0 group-hover:opacity-100",
+                      )}
+                    >
+                      {isChecked && <Check className="text-primary-foreground size-3" />}
+                    </button>
+                  </div>
 
                   {account && (
                     <span
