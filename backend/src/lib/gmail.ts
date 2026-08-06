@@ -144,6 +144,58 @@ function mapMessageToMail(msg: GmailMessage, accountId: string): Mail {
   }
 }
 
+// Gmail의 batch API로 여러 메시지를 "한 번의 HTTP 요청"으로 조회한다.
+// 메시지 개수만큼 fetch()를 날리면 Cloudflare Workers의 "요청당 서브리퀘스트 개수" 한도를
+// 쉽게 넘어버려서 (계정이 여러 개거나 페이지가 크면) 전체 요청이 그냥 500으로 죽는다.
+const GMAIL_BATCH_CHUNK_SIZE = 90 // Gmail batch API 자체 한도(100)에 여유를 두고 나눈다
+
+async function batchGetMessages(accessToken: string, ids: string[]): Promise<GmailMessage[]> {
+  if (ids.length === 0) return []
+  if (ids.length > GMAIL_BATCH_CHUNK_SIZE) {
+    const chunks: string[][] = []
+    for (let i = 0; i < ids.length; i += GMAIL_BATCH_CHUNK_SIZE) chunks.push(ids.slice(i, i + GMAIL_BATCH_CHUNK_SIZE))
+    const results = await Promise.all(chunks.map((chunk) => batchGetMessages(accessToken, chunk)))
+    return results.flat()
+  }
+
+  const boundary = `batch_${crypto.randomUUID()}`
+  const body =
+    ids
+      .map((id, i) => {
+        const path = `/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`
+        return `--${boundary}\r\nContent-Type: application/http\r\nContent-ID: <item${i}>\r\n\r\nGET ${path}\r\n\r\n`
+      })
+      .join("") + `--${boundary}--`
+
+  const res = await fetch("https://gmail.googleapis.com/batch/gmail/v1", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": `multipart/mixed; boundary=${boundary}`,
+    },
+    body,
+  })
+  if (!res.ok) throw new Error(`Gmail batch fetch failed: ${res.status}`)
+  const text = await res.text()
+
+  const responseBoundaryMatch = (res.headers.get("Content-Type") ?? "").match(/boundary=(?:"([^"]+)"|([^;]+))/)
+  const responseBoundary = responseBoundaryMatch ? (responseBoundaryMatch[1] ?? responseBoundaryMatch[2]) : boundary
+
+  const messages: GmailMessage[] = []
+  for (const section of text.split(`--${responseBoundary}`)) {
+    const jsonStart = section.indexOf("{")
+    const jsonEnd = section.lastIndexOf("}")
+    if (jsonStart === -1 || jsonEnd === -1) continue
+    try {
+      const parsed = JSON.parse(section.slice(jsonStart, jsonEnd + 1)) as GmailMessage
+      if (parsed.id) messages.push(parsed)
+    } catch {
+      // 파싱 실패한 파트는 건너뛴다 (한 메시지가 개별적으로 404 등을 반환한 경우 등)
+    }
+  }
+  return messages
+}
+
 async function listMailsByLabel(
   accessToken: string,
   accountId: string,
@@ -161,16 +213,7 @@ async function listMailsByLabel(
   const listJson = (await listRes.json()) as { messages?: { id: string }[]; nextPageToken?: string }
   const ids = listJson.messages?.map((m) => m.id) ?? []
 
-  const messages = await Promise.all(
-    ids.map(async (id) => {
-      const res = await fetch(
-        `${GMAIL_API_BASE}/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
-        { headers: { Authorization: `Bearer ${accessToken}` } },
-      )
-      if (!res.ok) throw new Error(`Gmail message fetch failed: ${res.status}`)
-      return (await res.json()) as GmailMessage
-    }),
-  )
+  const messages = await batchGetMessages(accessToken, ids)
 
   return { mails: messages.map((m) => mapMessageToMail(m, accountId)), nextPageToken: listJson.nextPageToken }
 }
@@ -187,18 +230,8 @@ export async function listInboxMails(
 // 특정 메시지 ID 목록의 메타데이터를 조회 (사용자 정의 메일함 조회용).
 // 서버에서 이미 삭제된 메시지는 조용히 건너뛴다 (표류한 배정 항목).
 export async function fetchMailsByIds(accessToken: string, accountId: string, ids: string[]): Promise<Mail[]> {
-  if (ids.length === 0) return []
-  const messages = await Promise.all(
-    ids.map(async (id) => {
-      const res = await fetch(
-        `${GMAIL_API_BASE}/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
-        { headers: { Authorization: `Bearer ${accessToken}` } },
-      )
-      if (!res.ok) return null
-      return (await res.json()) as GmailMessage
-    }),
-  )
-  return messages.filter((m): m is GmailMessage => m !== null).map((m) => mapMessageToMail(m, accountId))
+  const messages = await batchGetMessages(accessToken, ids)
+  return messages.map((m) => mapMessageToMail(m, accountId))
 }
 
 export async function listTrashMails(
