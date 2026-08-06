@@ -872,6 +872,7 @@ function App() {
               mails={allMails}
               onMarkAllRead={handleMarkAllRead}
               onDeleteBeforeDate={handleDeleteBeforeDate}
+              onEmptyTrashAccount={handleEmptyTrashAccount}
               folders={folders}
               rules={rules}
               onCreateRule={handleCreateRule}
