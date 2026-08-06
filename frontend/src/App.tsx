@@ -25,6 +25,7 @@ import {
   createRule as apiCreateRule,
   deleteFolder as apiDeleteFolder,
   deleteRule as apiDeleteRule,
+  emptyAllTrash,
   emptyTrash,
   fetchAccounts,
   fetchCurrentUser,
@@ -599,6 +600,12 @@ function App() {
     setTrashMails((prev) => prev.filter((m) => m.accountId !== accountId))
   }
 
+  const handleEmptyAllTrash = async (): Promise<{ ok: boolean; error?: string }> => {
+    const result = await emptyAllTrash()
+    if (result.ok) setTrashMails([])
+    return result
+  }
+
   const handleDeleteFromTrash = async (targets: Mail[]) => {
     if (targets.length === 0) return
     const deletedIds = new Set(targets.map((m) => m.id))
@@ -873,6 +880,7 @@ function App() {
               onMarkAllRead={handleMarkAllRead}
               onDeleteBeforeDate={handleDeleteBeforeDate}
               onEmptyTrashAccount={handleEmptyTrashAccount}
+              onEmptyAllTrash={handleEmptyAllTrash}
               folders={folders}
               rules={rules}
               onCreateRule={handleCreateRule}

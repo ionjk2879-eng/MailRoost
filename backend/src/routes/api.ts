@@ -731,6 +731,50 @@ api.post("/trash/empty", async (c) => {
   return c.json({ ok: true })
 })
 
+api.post("/trash/empty-all", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const accountIds = Object.keys(accountMap)
+
+  let accountsChanged = false
+
+  // 계정별로 병렬 처리하되, 하나가 실패해도 나머지 계정은 계속 비워지도록 에러를 개별로 잡는다.
+  const results = await Promise.all(
+    accountIds.map(async (accountId) => {
+      const record = accountMap[accountId]
+      if (!record) return { accountId, ok: true }
+      try {
+        if (record.provider === "naver") {
+          await naverEmptyTrash(record.email, record.appPassword)
+        } else if (record.provider === "daum") {
+          await daumEmptyTrash(record.email, record.password)
+        } else if (record.provider === "imap") {
+          await imapEmptyTrash({ host: record.host, port: record.port, email: record.email, password: record.password })
+        } else {
+          const fresh = await ensureFreshToken(c.env, record)
+          if (fresh.accessToken !== record.accessToken) {
+            accountMap[accountId] = fresh
+            accountsChanged = true
+          }
+          await gmailEmptyTrash(fresh.accessToken)
+        }
+        return { accountId, ok: true }
+      } catch (err) {
+        console.error(`[trash-empty-all] account ${accountId} failed:`, err)
+        return { accountId, ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }),
+  )
+
+  if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
+
+  const failed = results.filter((r) => !r.ok)
+  return c.json({ ok: failed.length === 0, failedAccountIds: failed.map((f) => f.accountId) })
+})
+
 api.patch("/mail/:id/read", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   const accountId = c.req.query("accountId")

@@ -15,6 +15,7 @@ interface CleanupViewProps {
   onMarkAllRead: (accountId?: string) => Promise<void>
   onDeleteBeforeDate: (cutoff: Date, accountId?: string) => Promise<void>
   onEmptyTrashAccount: (accountId: string) => Promise<void>
+  onEmptyAllTrash: () => Promise<{ ok: boolean; error?: string }>
   folders: MailFolder[]
   rules: AutoClassifyRule[]
   onCreateRule: (
@@ -43,7 +44,11 @@ function MailboxManageTab({
   onMarkAllRead,
   onDeleteBeforeDate,
   onEmptyTrashAccount,
-}: Pick<CleanupViewProps, "accounts" | "mails" | "onMarkAllRead" | "onDeleteBeforeDate" | "onEmptyTrashAccount">) {
+  onEmptyAllTrash,
+}: Pick<
+  CleanupViewProps,
+  "accounts" | "mails" | "onMarkAllRead" | "onDeleteBeforeDate" | "onEmptyTrashAccount" | "onEmptyAllTrash"
+>) {
   const [subTab, setSubTab] = useState<MailboxSubTab>("manage")
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [cutoffDate, setCutoffDate] = useState("")
@@ -52,6 +57,9 @@ function MailboxManageTab({
   const [confirmClear, setConfirmClear] = useState<string | null>(null)
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState<string | null>(null)
   const [emptyingTrashAccountId, setEmptyingTrashAccountId] = useState<string | null>(null)
+  const [confirmEmptyAllTrash, setConfirmEmptyAllTrash] = useState(false)
+  const [isEmptyingAllTrash, setIsEmptyingAllTrash] = useState(false)
+  const [emptyAllTrashError, setEmptyAllTrashError] = useState<string | null>(null)
 
   const mailsByAccount = (accountId: string) =>
     mails.filter((m) => m.accountId === accountId)
@@ -91,6 +99,15 @@ function MailboxManageTab({
     setEmptyingTrashAccountId(null)
   }
 
+  const handleEmptyAllTrash = async () => {
+    setConfirmEmptyAllTrash(false)
+    setEmptyAllTrashError(null)
+    setIsEmptyingAllTrash(true)
+    const result = await onEmptyAllTrash()
+    setIsEmptyingAllTrash(false)
+    if (!result.ok) setEmptyAllTrashError(result.error ?? "휴지통을 비우지 못했습니다.")
+  }
+
   const handleDeleteByDate = async () => {
     if (!cutoffDate) return
     setIsDeleting(true)
@@ -128,7 +145,30 @@ function MailboxManageTab({
 
       {/* 메일함 관리 */}
       {subTab === "manage" && (
-        <div className="overflow-hidden rounded-lg border">
+        <div className="space-y-4">
+          <div className="border-destructive/30 flex items-center justify-between rounded-lg border p-4">
+            <div>
+              <p className="font-medium">전체 계정 휴지통 비우기</p>
+              <p className="text-muted-foreground text-sm">
+                연결된 모든 계정의 휴지통을 계정마다 따로 들어가지 않고 한 번에 영구 삭제합니다.
+              </p>
+              {emptyAllTrashError && <p className="text-destructive mt-1 text-sm">{emptyAllTrashError}</p>}
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="shrink-0"
+              disabled={accounts.length === 0 || isEmptyingAllTrash}
+              onClick={() => setConfirmEmptyAllTrash(true)}
+            >
+              {isEmptyingAllTrash ? (
+                <><Loader2 className="mr-2 size-3.5 animate-spin" />비우는 중...</>
+              ) : (
+                "전체 휴지통 비우기"
+              )}
+            </Button>
+          </div>
+          <div className="overflow-hidden rounded-lg border">
           <table className="w-full text-sm">
             <thead className="bg-muted/50">
               <tr>
@@ -209,6 +249,7 @@ function MailboxManageTab({
               )}
             </tbody>
           </table>
+        </div>
         </div>
       )}
 
@@ -349,6 +390,23 @@ function MailboxManageTab({
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setConfirmEmptyTrash(null)}>취소</Button>
               <Button variant="destructive" size="sm" onClick={() => handleEmptyTrash(confirmEmptyTrash)}>비우기</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 전체 계정 휴지통 비우기 확인 다이얼로그 */}
+      {confirmEmptyAllTrash && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background rounded-lg border p-6 shadow-xl max-w-sm w-full mx-4">
+            <h3 className="font-semibold mb-2">전체 계정 휴지통 비우기</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              연결된 <strong>{accounts.length}개 계정</strong>의 휴지통에 있는 메일을 전부 영구 삭제합니다.
+              이 작업은 되돌릴 수 없습니다.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setConfirmEmptyAllTrash(false)}>취소</Button>
+              <Button variant="destructive" size="sm" onClick={handleEmptyAllTrash}>전체 비우기</Button>
             </div>
           </div>
         </div>
@@ -514,6 +572,7 @@ export function CleanupView({
   onMarkAllRead,
   onDeleteBeforeDate,
   onEmptyTrashAccount,
+  onEmptyAllTrash,
   folders,
   rules,
   onCreateRule,
@@ -561,6 +620,7 @@ export function CleanupView({
             onMarkAllRead={onMarkAllRead}
             onDeleteBeforeDate={onDeleteBeforeDate}
             onEmptyTrashAccount={onEmptyTrashAccount}
+            onEmptyAllTrash={onEmptyAllTrash}
           />
         )}
 

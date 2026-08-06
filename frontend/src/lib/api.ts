@@ -174,6 +174,19 @@ export async function emptyTrash(accountId: string): Promise<{ ok: boolean; erro
   return { ok: true }
 }
 
+export async function emptyAllTrash(): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("/api/trash/empty-all", { method: "POST" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "휴지통을 비우지 못했습니다." }
+  }
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; failedAccountIds?: string[] }
+  if (data.ok === false) {
+    return { ok: false, error: `일부 계정 휴지통을 비우지 못했습니다 (${data.failedAccountIds?.length ?? 0}개).` }
+  }
+  return { ok: true }
+}
+
 export async function fetchMailDetail(id: string, accountId: string): Promise<Mail | null> {
   const res = await fetch(`/api/mail/${encodeURIComponent(id)}?accountId=${encodeURIComponent(accountId)}`)
   if (!res.ok) return null
