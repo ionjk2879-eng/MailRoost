@@ -1,4 +1,4 @@
-import { Loader2, Search, X } from "lucide-react"
+import { Loader2, RefreshCw, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AccountSidebar } from "@/components/mail/account-sidebar"
 import { CategoryTabs } from "@/components/mail/category-tabs"
@@ -7,6 +7,7 @@ import { MailDetail } from "@/components/mail/mail-detail"
 import { MailList } from "@/components/mail/mail-list"
 import { CleanupView } from "@/components/cleanup/cleanup-view"
 import { TrashView } from "@/components/trash/trash-view"
+import { Button } from "@/components/ui/button"
 import {
   ResizableHandle,
   ResizablePanel,
@@ -14,6 +15,7 @@ import {
 } from "@/components/ui/resizable"
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { cn } from "@/lib/utils"
 import { HomeView } from "@/components/home/home-view"
 import { LandingView } from "@/components/home/landing-view"
 import {
@@ -34,6 +36,7 @@ import {
   markAsUnread,
   moveMails,
   permanentDeleteFromTrash,
+  renameFolder as apiRenameFolder,
   toggleStar,
 } from "@/lib/api"
 import type { Account, Mail, MailCategory, MailFolder } from "@/types/mail"
@@ -77,6 +80,7 @@ function App() {
   const [checkedMailIds, setCheckedMailIds] = useState<Set<string>>(new Set())
   const [isBulkLoading, setIsBulkLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // 삭제 요청이 아직 서버에 반영되지 않은 사이 폴링이 되살리는 것을 막기 위한 tombstone
   const deletedKeysRef = useRef<Set<string>>(new Set())
@@ -502,6 +506,25 @@ function App() {
     loadAccountsAndMails()
   }
 
+  const handleRenameFolder = async (folderId: string, name: string): Promise<{ ok: boolean; error?: string }> => {
+    const result = await apiRenameFolder(folderId, name)
+    if (!result.ok) return { ok: false, error: result.error }
+    setFolders((prev) => prev.map((f) => (f.id === folderId ? result.folder : f)))
+    return { ok: true }
+  }
+
+  const handleManualRefresh = async () => {
+    if (isRefreshing) return
+    setIsRefreshing(true)
+    try {
+      if (view === "trash") await loadTrash()
+      else if (view === "folder" && selectedFolderId) await loadFolderMails(selectedFolderId)
+      else await loadAccountsAndMails()
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
   const handleEmptyTrashAccount = async (accountId: string) => {
     const result = await emptyTrash(accountId)
     if (!result.ok) {
@@ -703,6 +726,7 @@ function App() {
         onGoTrash={goToTrash}
         onSelectFolder={goToFolder}
         onCreateFolder={handleCreateFolder}
+        onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
         onAccountConnected={loadAccountsAndMails}
         onDeleteAccount={handleDeleteAccount}
@@ -729,6 +753,18 @@ function App() {
                         })()
                       : "전체 받은편지함"}
           </span>
+          {(view === "inbox" || view === "trash" || view === "folder") && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              title="새로고침"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+            >
+              <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} />
+            </Button>
+          )}
           {view === "inbox" && <ComposeDialog accounts={accounts} />}
         </header>
         {view === "home" ? (

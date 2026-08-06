@@ -237,7 +237,7 @@ function MailboxManageTab({
               <select
                 value={cutoffAccountId}
                 onChange={(e) => setCutoffAccountId(e.target.value)}
-                className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm focus:outline-none"
               >
                 <option value="all">전체 계정</option>
                 {accounts.map((a) => {
@@ -256,7 +256,7 @@ function MailboxManageTab({
                 value={cutoffDate}
                 onChange={(e) => setCutoffDate(e.target.value)}
                 max={new Date().toISOString().split("T")[0]}
-                className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm focus:outline-none"
               />
             </div>
             {cutoffDate && (

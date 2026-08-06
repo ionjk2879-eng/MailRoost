@@ -102,7 +102,7 @@ export function ComposeDialog({
                 value={accountId}
                 onChange={(e) => setAccountId(e.target.value)}
                 required
-                className="border-input bg-background ring-offset-background focus:ring-ring h-9 w-full rounded-md border px-3 py-1 text-sm focus:ring-2 focus:ring-offset-2 focus:outline-none"
+                className="border-input bg-background h-9 w-full rounded-md border px-3 py-1 text-sm focus:outline-none"
               >
                 {sendableAccounts.map((a) => (
                   <option key={a.id} value={a.id}>
@@ -142,7 +142,7 @@ export function ComposeDialog({
                 onChange={(e) => setBody(e.target.value)}
                 required
                 rows={8}
-                className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[160px] w-full resize-y rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                className="border-input bg-background placeholder:text-muted-foreground flex min-h-[160px] w-full resize-y rounded-md border px-3 py-2 text-sm focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
               />
             </div>
             {error && <p className="text-destructive text-sm">{error}</p>}

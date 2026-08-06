@@ -35,6 +35,20 @@ export async function createFolder(name: string): Promise<{ ok: true; folder: Ma
   return { ok: true, folder: data.folder }
 }
 
+export async function renameFolder(
+  id: string,
+  name: string,
+): Promise<{ ok: true; folder: MailFolder } | { ok: false; error: string }> {
+  const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { folder?: MailFolder; error?: string }
+  if (!res.ok || !data.folder) return { ok: false, error: data.error ?? "메일함 이름 변경에 실패했습니다." }
+  return { ok: true, folder: data.folder }
+}
+
 export async function deleteFolder(id: string): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, { method: "DELETE" })
   if (!res.ok) {

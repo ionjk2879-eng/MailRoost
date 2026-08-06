@@ -16,4 +16,11 @@ app.route("/api", api)
 
 app.notFound((c) => c.env.ASSETS.fetch(c.req.raw))
 
+// 라우트에서 던진 에러를 그대로 삼키지 않고 프런트가 읽을 수 있는 JSON으로 전달한다.
+// (이게 없으면 실패 이유가 뭐든 프런트에는 뭉뚱그려진 "실패했습니다"만 보임)
+app.onError((err, c) => {
+  console.error(err)
+  return c.json({ error: err.message }, 500)
+})
+
 export default app

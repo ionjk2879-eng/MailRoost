@@ -255,6 +255,30 @@ api.delete("/folders/:id", async (c) => {
   return c.json({ ok: true })
 })
 
+api.patch("/folders/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const folderId = c.req.param("id")
+  const body = await c.req.json<{ name?: string }>().catch(() => null)
+  const name = body?.name?.trim()
+  if (!name) return c.json({ error: "메일함 이름을 입력해주세요." }, 400)
+  if (name.length > 40) return c.json({ error: "메일함 이름이 너무 깁니다." }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+
+  const folder = org.folders.find((f) => f.id === folderId)
+  if (!folder) return c.json({ error: "메일함을 찾을 수 없습니다." }, 404)
+  if (org.folders.some((f) => f.id !== folderId && f.name === name)) {
+    return c.json({ error: "이미 같은 이름의 메일함이 있습니다." }, 400)
+  }
+
+  folder.name = name
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ folder })
+})
+
 api.get("/folders/:id/mail", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ mails: [] })

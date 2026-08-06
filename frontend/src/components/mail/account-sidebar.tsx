@@ -1,4 +1,4 @@
-import { FolderPlus, Inbox, LogOut, Plus, Sparkles, Trash2 } from "lucide-react"
+import { FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import {
@@ -48,6 +48,7 @@ interface AccountSidebarProps {
   onGoTrash: () => void
   onSelectFolder: (folderId: string) => void
   onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
+  onRenameFolder: (folderId: string, name: string) => Promise<{ ok: boolean; error?: string }>
   onDeleteFolder: (folderId: string) => void
   onAccountConnected: () => void
   onDeleteAccount: (accountId: string) => void
@@ -70,6 +71,7 @@ export function AccountSidebar({
   onGoTrash,
   onSelectFolder,
   onCreateFolder,
+  onRenameFolder,
   onDeleteFolder,
   onAccountConnected,
   onDeleteAccount,
@@ -84,6 +86,10 @@ export function AccountSidebar({
   const [createFolderError, setCreateFolderError] = useState<string | null>(null)
   const [isCreatingFolder, setIsCreatingFolder] = useState(false)
   const [pendingDeleteFolder, setPendingDeleteFolder] = useState<MailFolder | null>(null)
+  const [pendingRenameFolder, setPendingRenameFolder] = useState<MailFolder | null>(null)
+  const [renameValue, setRenameValue] = useState("")
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const [isRenaming, setIsRenaming] = useState(false)
   const connectedGmailCount = accounts.filter((a) => a.provider === "gmail").length
   const connectedNaverCount = accounts.filter((a) => a.provider === "naver").length
   const connectedDaumCount = accounts.filter((a) => a.provider === "daum").length
@@ -126,6 +132,22 @@ export function AccountSidebar({
     }
     setIsCreateFolderOpen(false)
     setNewFolderName("")
+  }
+
+  const handleRenameFolder = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!pendingRenameFolder) return
+    const name = renameValue.trim()
+    if (!name) return
+    setIsRenaming(true)
+    setRenameError(null)
+    const result = await onRenameFolder(pendingRenameFolder.id, name)
+    setIsRenaming(false)
+    if (!result.ok) {
+      setRenameError(result.error ?? "메일함 이름 변경에 실패했습니다.")
+      return
+    }
+    setPendingRenameFolder(null)
   }
 
   return (
@@ -269,14 +291,28 @@ export function AccountSidebar({
                     <span className={`size-2 shrink-0 rounded-full ${folder.color}`} />
                     <span className="truncate">{folder.name}</span>
                   </SidebarMenuButton>
-                  <button
-                    type="button"
-                    aria-label="메일함 삭제"
-                    onClick={() => setPendingDeleteFolder(folder)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 focus-visible:opacity-100"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
+                  <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover/item:opacity-100 focus-within:opacity-100">
+                    <button
+                      type="button"
+                      aria-label="메일함 이름 변경"
+                      onClick={() => {
+                        setRenameError(null)
+                        setRenameValue(folder.name)
+                        setPendingRenameFolder(folder)
+                      }}
+                      className="hover:text-foreground rounded p-0.5"
+                    >
+                      <Pencil className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="메일함 삭제"
+                      onClick={() => setPendingDeleteFolder(folder)}
+                      className="hover:text-destructive rounded p-0.5"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </div>
                 </SidebarMenuItem>
               ))}
               {folders.length === 0 && (
@@ -372,6 +408,39 @@ export function AccountSidebar({
               </DialogClose>
               <Button type="submit" disabled={isCreatingFolder}>
                 {isCreatingFolder ? "만드는 중..." : "만들기"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pendingRenameFolder !== null}
+        onOpenChange={(open) => { if (!open) setPendingRenameFolder(null) }}
+      >
+        <DialogContent>
+          <form onSubmit={handleRenameFolder}>
+            <DialogHeader>
+              <DialogTitle>메일함 이름 변경</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-1.5 py-4">
+              <Label htmlFor="folder-rename">메일함 이름</Label>
+              <Input
+                id="folder-rename"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                maxLength={40}
+                required
+                autoFocus
+              />
+              {renameError && <p className="text-destructive text-sm">{renameError}</p>}
+            </div>
+            <DialogFooter>
+              <DialogClose render={<Button type="button" variant="outline" disabled={isRenaming} />}>
+                취소
+              </DialogClose>
+              <Button type="submit" disabled={isRenaming}>
+                {isRenaming ? "변경 중..." : "변경"}
               </Button>
             </DialogFooter>
           </form>
