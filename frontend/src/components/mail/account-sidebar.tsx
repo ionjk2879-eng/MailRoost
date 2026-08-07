@@ -1,4 +1,4 @@
-import { Archive, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, Trash2 } from "lucide-react"
+import { Archive, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2 } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -80,6 +80,7 @@ interface AccountSidebarProps {
   isCleanupView: boolean
   isTrashView: boolean
   isArchiveView: boolean
+  isMemoView: boolean
   folders: MailFolder[]
   selectedFolderId: string | null
   isFolderView: boolean
@@ -88,6 +89,7 @@ interface AccountSidebarProps {
   onGoCleanup: () => void
   onGoTrash: () => void
   onGoArchive: () => void
+  onGoMemo: () => void
   onSelectFolder: (folderId: string) => void
   onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
   onRenameFolder: (folderId: string, name: string) => Promise<{ ok: boolean; error?: string }>
@@ -107,6 +109,7 @@ export function AccountSidebar({
   isCleanupView,
   isTrashView,
   isArchiveView,
+  isMemoView,
   folders,
   selectedFolderId,
   isFolderView,
@@ -115,6 +118,7 @@ export function AccountSidebar({
   onGoCleanup,
   onGoTrash,
   onGoArchive,
+  onGoMemo,
   onSelectFolder,
   onCreateFolder,
   onRenameFolder,
@@ -267,6 +271,18 @@ export function AccountSidebar({
                 >
                   <Trash2 />
                   <span>휴지통</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isMemoView}
+                  onClick={() => {
+                    onGoMemo()
+                    closeOnMobile()
+                  }}
+                >
+                  <StickyNote />
+                  <span>메모</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

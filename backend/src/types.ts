@@ -87,6 +87,14 @@ export interface AutoClassifyRule {
   createdAt: number
 }
 
+// 사이트 자체 메모 (앱 내부 전용 — 메일 서버와 무관)
+export interface MemoItem {
+  id: string
+  content: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface MailOrgState {
   folders: MailFolder[]
   // key: assignmentKey(accountId, mailId) in lib/mailOrg.ts -> folderId
@@ -102,4 +110,5 @@ export interface StoredSession {
   userId?: string
   accounts: Record<string, ConnectedAccountRecord>
   mailOrg?: MailOrgState
+  memos?: MemoItem[]
 }

@@ -1,12 +1,13 @@
-import { Loader2, RefreshCw, Search, X } from "lucide-react"
+import { Loader2, Pencil, RefreshCw, Search, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AccountSidebar } from "@/components/mail/account-sidebar"
 import { CategoryTabs } from "@/components/mail/category-tabs"
-import { ComposeDialog } from "@/components/mail/compose-dialog"
+import { COMPOSE_SUPPORTED, ComposeView } from "@/components/mail/compose-view"
 import { MailDetail } from "@/components/mail/mail-detail"
 import { MailList } from "@/components/mail/mail-list"
 import { CleanupView } from "@/components/cleanup/cleanup-view"
 import { TrashView } from "@/components/trash/trash-view"
+import { MemoView } from "@/components/memo/memo-view"
 import { Button } from "@/components/ui/button"
 import {
   ResizableHandle,
@@ -22,8 +23,10 @@ import {
   bulkDeleteMails,
   bulkMarkRead,
   createFolder as apiCreateFolder,
+  createMemo,
   createRule as apiCreateRule,
   deleteFolder as apiDeleteFolder,
+  deleteMemo,
   deleteRule as apiDeleteRule,
   emptyAllTrash,
   emptyTrash,
@@ -33,6 +36,7 @@ import {
   fetchFolders,
   fetchMailDetail,
   fetchMails,
+  fetchMemos,
   fetchRules,
   fetchTrashMails,
   logout,
@@ -45,10 +49,11 @@ import {
   reorderFolders as apiReorderFolders,
   restoreFromTrash,
   toggleStar,
+  updateMemo,
   updateRule as apiUpdateRule,
 } from "@/lib/api"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { Account, AutoClassifyRule, Mail, MailCategory, MailFolder } from "@/types/mail"
+import type { Account, AutoClassifyRule, Mail, MailCategory, MailFolder, MemoItem } from "@/types/mail"
 
 function isRealAccountId(accountId: string): boolean {
   return accountId.includes(":")
@@ -68,7 +73,7 @@ function App() {
   const isMobile = useIsMobile()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder" | "archive">("home")
+  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder" | "archive" | "memo">("home")
   const [trashMails, setTrashMails] = useState<Mail[]>([])
   const [trashCursor, setTrashCursor] = useState<string | null>(null)
   const [isTrashLoading, setIsTrashLoading] = useState(false)
@@ -78,6 +83,8 @@ function App() {
   const [folderMails, setFolderMails] = useState<Mail[]>([])
   const [isFolderLoading, setIsFolderLoading] = useState(false)
   const [rules, setRules] = useState<AutoClassifyRule[]>([])
+  const [memos, setMemos] = useState<MemoItem[]>([])
+  const [composeState, setComposeState] = useState<{ accountId?: string; to?: string; subject?: string } | null>(null)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [selectedMailId, setSelectedMailId] = useState<string | null>(null)
@@ -131,6 +138,7 @@ function App() {
             loadAccountsAndMails(),
             fetchFolders().then(setFolders),
             fetchRules().then(setRules),
+            fetchMemos().then(setMemos),
           ])
         }
       })
@@ -151,6 +159,7 @@ function App() {
 
   const accounts = realAccounts
   const allMails = realMails
+  const sendableAccounts = accounts.filter((a) => COMPOSE_SUPPORTED.includes(a.provider))
 
   const unreadCountByAccount = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -222,6 +231,7 @@ function App() {
     : null
 
   const handleSelectMail = (mailId: string | null) => {
+    setComposeState(null)
     setSelectedMailId(mailId)
     if (!mailId) return
     const mail = allMails.find((m) => m.id === mailId) ?? folderMails.find((m) => m.id === mailId)
@@ -450,6 +460,7 @@ function App() {
     setSelectedMailId(null)
     setSearchQuery("")
     setCheckedMailIds(new Set())
+    setComposeState(null)
   }
 
   const goHome = () => {
@@ -459,12 +470,21 @@ function App() {
     setSelectedMailId(null)
     setSearchQuery("")
     setCheckedMailIds(new Set())
+    setComposeState(null)
   }
 
   const goToCleanup = () => {
     setView("cleanup")
     setSelectedMailId(null)
     setCheckedMailIds(new Set())
+    setComposeState(null)
+  }
+
+  const goToMemo = () => {
+    setView("memo")
+    setSelectedMailId(null)
+    setCheckedMailIds(new Set())
+    setComposeState(null)
   }
 
   const loadTrash = () => {
@@ -481,6 +501,7 @@ function App() {
     setView("trash")
     setSelectedMailId(null)
     setCheckedMailIds(new Set())
+    setComposeState(null)
     loadTrash()
   }
 
@@ -512,6 +533,7 @@ function App() {
     setSelectedFolderId(folderId)
     setSelectedMailId(null)
     setCheckedMailIds(new Set())
+    setComposeState(null)
     loadFolderMails(folderId)
   }
 
@@ -522,6 +544,7 @@ function App() {
     setSelectedFolderId(ARCHIVE_FOLDER_ID)
     setSelectedMailId(null)
     setCheckedMailIds(new Set())
+    setComposeState(null)
     loadFolderMails(ARCHIVE_FOLDER_ID)
   }
 
@@ -588,6 +611,52 @@ function App() {
       if (removed) setRules((prev) => [...prev, removed])
       showError(result.error ?? "규칙 삭제에 실패했습니다.")
     }
+  }
+
+  const handleCreateMemo = async (): Promise<string | null> => {
+    const result = await createMemo("")
+    if (!result.ok) {
+      showError(result.error ?? "메모 생성에 실패했습니다.")
+      return null
+    }
+    setMemos((prev) => [result.memo, ...prev])
+    return result.memo.id
+  }
+
+  const handleUpdateMemoContent = (id: string, content: string) => {
+    const now = Date.now()
+    setMemos((prev) => prev.map((m) => (m.id === id ? { ...m, content, updatedAt: now } : m)))
+    updateMemo(id, content)
+  }
+
+  const handleDeleteMemo = async (id: string) => {
+    const removed = memos.find((m) => m.id === id)
+    setMemos((prev) => prev.filter((m) => m.id !== id))
+    const result = await deleteMemo(id)
+    if (!result.ok) {
+      if (removed) setMemos((prev) => [removed, ...prev])
+      showError(result.error ?? "메모 삭제에 실패했습니다.")
+    }
+  }
+
+  const handleOpenCompose = () => {
+    setComposeState({})
+    setSelectedMailId(null)
+  }
+
+  const handleReply = (mail: Mail) => {
+    setComposeState({
+      accountId: mail.accountId,
+      to: mail.fromEmail,
+      subject: mail.subject.startsWith("Re:") ? mail.subject : `Re: ${mail.subject}`,
+    })
+  }
+
+  const handleCancelCompose = () => setComposeState(null)
+
+  const handleComposeSent = () => {
+    setComposeState(null)
+    loadAccountsAndMails()
   }
 
   const handleManualRefresh = async () => {
@@ -681,6 +750,7 @@ function App() {
     setFolderMails([])
     setSelectedFolderId(null)
     setRules([])
+    setMemos([])
     goHome()
   }
 
@@ -781,7 +851,17 @@ function App() {
     </div>
   )
 
-  const mailDetailPane = (
+  const mailDetailPane = composeState ? (
+    <ComposeView
+      accounts={accounts}
+      defaultAccountId={composeState.accountId}
+      defaultTo={composeState.to}
+      defaultSubject={composeState.subject}
+      onBack={isMobile ? handleCancelCompose : undefined}
+      onCancel={handleCancelCompose}
+      onSent={handleComposeSent}
+    />
+  ) : (
     <MailDetail
       mail={selectedMail}
       accounts={accounts}
@@ -791,6 +871,7 @@ function App() {
       onMarkAsUnread={handleMarkAsUnread}
       onDelete={handleDeleteMail}
       onArchive={(mailId, accountId) => handleMoveMailFromInbox(mailId, accountId, ARCHIVE_FOLDER_ID)}
+      onReply={handleReply}
       folders={folders}
       onMove={handleMoveMailFromInbox}
     />
@@ -818,7 +899,17 @@ function App() {
     />
   )
 
-  const folderDetailPane = (
+  const folderDetailPane = composeState ? (
+    <ComposeView
+      accounts={accounts}
+      defaultAccountId={composeState.accountId}
+      defaultTo={composeState.to}
+      defaultSubject={composeState.subject}
+      onBack={isMobile ? handleCancelCompose : undefined}
+      onCancel={handleCancelCompose}
+      onSent={handleComposeSent}
+    />
+  ) : (
     <MailDetail
       mail={selectedMail}
       accounts={accounts}
@@ -832,6 +923,7 @@ function App() {
           ? undefined
           : (mailId, accountId) => handleMoveMailFromFolder(mailId, accountId, ARCHIVE_FOLDER_ID)
       }
+      onReply={handleReply}
       folders={folders}
       currentFolderId={selectedFolderId ?? undefined}
       onMove={handleMoveMailFromFolder}
@@ -848,6 +940,7 @@ function App() {
         isCleanupView={view === "cleanup"}
         isTrashView={view === "trash"}
         isArchiveView={view === "archive"}
+        isMemoView={view === "memo"}
         folders={folders}
         selectedFolderId={selectedFolderId}
         isFolderView={view === "folder"}
@@ -856,6 +949,7 @@ function App() {
         onGoCleanup={goToCleanup}
         onGoTrash={goToTrash}
         onGoArchive={goToArchive}
+        onGoMemo={goToMemo}
         onSelectFolder={goToFolder}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}
@@ -878,7 +972,9 @@ function App() {
                   ? "휴지통"
                   : view === "archive"
                     ? "보관함"
-                    : view === "folder"
+                    : view === "memo"
+                      ? "메모"
+                      : view === "folder"
                       ? (folders.find((f) => f.id === selectedFolderId)?.name ?? "메일함")
                       : selectedAccountId
                       ? (() => {
@@ -901,7 +997,12 @@ function App() {
               <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} />
             </Button>
           )}
-          {view === "inbox" && <ComposeDialog accounts={accounts} />}
+          {view === "inbox" && sendableAccounts.length > 0 && (
+            <Button size="sm" className="gap-2" onClick={handleOpenCompose}>
+              <Pencil className="size-4" />
+              메일 쓰기
+            </Button>
+          )}
         </header>
         {view === "home" ? (
           <HomeView
@@ -940,6 +1041,13 @@ function App() {
               onRestoreSelected={handleRestoreFromTrash}
             />
           </div>
+        ) : view === "memo" ? (
+          <MemoView
+            memos={memos}
+            onCreate={handleCreateMemo}
+            onUpdateContent={handleUpdateMemoContent}
+            onDelete={handleDeleteMemo}
+          />
         ) : view === "folder" || view === "archive" ? (
           isFolderLoading && folderMails.length === 0 ? (
             <div className="flex flex-1 items-center justify-center">
@@ -947,7 +1055,7 @@ function App() {
             </div>
           ) : isMobile ? (
             <div className="min-h-0 flex-1">
-              {selectedMailId ? folderDetailPane : folderListPane}
+              {selectedMailId || composeState ? folderDetailPane : folderListPane}
             </div>
           ) : (
             <ResizablePanelGroup orientation="horizontal" className="flex-1">
@@ -962,7 +1070,7 @@ function App() {
           )
         ) : isMobile ? (
           <div className="min-h-0 flex-1">
-            {selectedMailId ? mailDetailPane : mailListPane}
+            {selectedMailId || composeState ? mailDetailPane : mailListPane}
           </div>
         ) : (
           <ResizablePanelGroup orientation="horizontal" className="flex-1">

@@ -1,4 +1,4 @@
-import type { Account, AutoClassifyRule, Mail, MailFolder } from "@/types/mail"
+import type { Account, AutoClassifyRule, Mail, MailFolder, MemoItem } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -299,6 +299,46 @@ export async function sendMail(
   })
   const data = (await res.json().catch(() => ({}))) as { error?: string }
   if (!res.ok) return { ok: false, error: data.error ?? "메일 전송에 실패했습니다." }
+  return { ok: true }
+}
+
+export async function fetchMemos(): Promise<MemoItem[]> {
+  const res = await fetch("/api/memos")
+  if (!res.ok) return []
+  const data = (await res.json()) as { memos: MemoItem[] }
+  return data.memos
+}
+
+export async function createMemo(content: string): Promise<{ ok: true; memo: MemoItem } | { ok: false; error: string }> {
+  const res = await fetch("/api/memos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { memo?: MemoItem; error?: string }
+  if (!res.ok || !data.memo) return { ok: false, error: data.error ?? "메모 생성에 실패했습니다." }
+  return { ok: true, memo: data.memo }
+}
+
+export async function updateMemo(id: string, content: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/memos/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "메모 저장에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function deleteMemo(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/memos/${encodeURIComponent(id)}`, { method: "DELETE" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "메모 삭제에 실패했습니다." }
+  }
   return { ok: true }
 }
 

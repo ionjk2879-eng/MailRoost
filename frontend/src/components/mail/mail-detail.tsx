@@ -5,7 +5,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ComposeDialog } from "@/components/mail/compose-dialog"
 import { cn } from "@/lib/utils"
 import type { Account, Mail, MailFolder } from "@/types/mail"
 
@@ -18,6 +17,7 @@ interface MailDetailProps {
   onMarkAsUnread?: (mailId: string, accountId: string) => void
   onDelete?: (mailId: string, accountId: string) => void
   onArchive?: (mailId: string, accountId: string) => void
+  onReply?: (mail: Mail) => void
   folders?: MailFolder[]
   currentFolderId?: string
   onMove?: (mailId: string, accountId: string, folderId: string | null) => void
@@ -52,6 +52,7 @@ export function MailDetail({
   onMarkAsUnread,
   onDelete,
   onArchive,
+  onReply,
   folders,
   currentFolderId,
   onMove,
@@ -90,17 +91,17 @@ export function MailDetail({
         <div className="flex min-w-0 items-start justify-between gap-4">
           <h2 className="min-w-0 flex-1 text-lg font-semibold break-words">{mail.subject}</h2>
           <div className="flex shrink-0 items-center gap-1">
-            <ComposeDialog
-              accounts={accounts}
-              defaultAccountId={mail.accountId}
-              defaultTo={mail.fromEmail}
-              defaultSubject={mail.subject.startsWith("Re:") ? mail.subject : `Re: ${mail.subject}`}
-              trigger={
-                <Button variant="ghost" size="icon" className="size-8" title="답장">
-                  <Reply className="size-4" />
-                </Button>
-              }
-            />
+            {onReply && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="답장"
+                onClick={() => onReply(mail)}
+              >
+                <Reply className="size-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"

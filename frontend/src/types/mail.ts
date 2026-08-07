@@ -29,6 +29,13 @@ export interface AutoClassifyRule {
   createdAt: number
 }
 
+export interface MemoItem {
+  id: string
+  content: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface Mail {
   id: string
   accountId: string

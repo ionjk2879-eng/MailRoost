@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Env, ImapAccountRecord, Mail, MailFolder, MailOrgState, StoredSession } from "../types"
+import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Env, ImapAccountRecord, Mail, MailFolder, MailOrgState, MemoItem, StoredSession } from "../types"
 import { getUserAccounts, getUserById, saveUserAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import {
@@ -64,6 +64,7 @@ import {
   naverToggleStarBulk,
 } from "../lib/imap"
 import { applyOrder, assignmentKey, emptyMailOrgState, getUserMailOrg, normalizeMailOrgState, parseAssignmentKey, saveUserMailOrg } from "../lib/mailOrg"
+import { getUserMemos, saveUserMemos } from "../lib/memo"
 import { naverSendMail, daumSendMail } from "../lib/smtp"
 import { readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
@@ -134,6 +135,25 @@ async function persistMailOrg(
     await saveUserMailOrg(env, session.userId, state)
   } else {
     session.mailOrg = state
+    await writeSession(env, sessionId, session)
+  }
+}
+
+async function resolveMemos(env: Env, session: StoredSession): Promise<MemoItem[]> {
+  if (session.userId) return getUserMemos(env, session.userId)
+  return session.memos ?? []
+}
+
+async function persistMemos(
+  env: Env,
+  sessionId: string,
+  session: StoredSession,
+  memos: MemoItem[],
+): Promise<void> {
+  if (session.userId) {
+    await saveUserMemos(env, session.userId, memos)
+  } else {
+    session.memos = memos
     await writeSession(env, sessionId, session)
   }
 }
@@ -376,6 +396,64 @@ api.get("/folders/:id/mail", async (c) => {
   const mails = perAccountResults.flat()
   mails.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   return c.json({ mails })
+})
+
+// ── 메모 (앱 내부 전용, 메일 서버와 무관) ────────────────────────────────────────
+
+api.get("/memos", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ memos: [] })
+  const session = await readSession(c.env, sessionId)
+  const memos = await resolveMemos(c.env, session)
+  return c.json({ memos })
+})
+
+api.post("/memos", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req.json<{ content?: string }>().catch(() => null)
+  const content = body?.content ?? ""
+
+  const session = await readSession(c.env, sessionId)
+  const memos = await resolveMemos(c.env, session)
+
+  const now = Date.now()
+  const memo: MemoItem = { id: crypto.randomUUID(), content, createdAt: now, updatedAt: now }
+  memos.unshift(memo)
+  await persistMemos(c.env, sessionId, session, memos)
+  return c.json({ memo })
+})
+
+api.patch("/memos/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const memoId = c.req.param("id")
+  const body = await c.req.json<{ content?: string }>().catch(() => null)
+  if (body?.content === undefined) return c.json({ error: "bad request" }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const memos = await resolveMemos(c.env, session)
+  const memo = memos.find((m) => m.id === memoId)
+  if (!memo) return c.json({ error: "메모를 찾을 수 없습니다." }, 404)
+
+  memo.content = body.content
+  memo.updatedAt = Date.now()
+  await persistMemos(c.env, sessionId, session, memos)
+  return c.json({ memo })
+})
+
+api.delete("/memos/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const memoId = c.req.param("id")
+  const session = await readSession(c.env, sessionId)
+  const memos = await resolveMemos(c.env, session)
+  const next = memos.filter((m) => m.id !== memoId)
+  await persistMemos(c.env, sessionId, session, next)
+  return c.json({ ok: true })
 })
 
 // ── 자동분류 규칙 ──────────────────────────────────────────────────────────────
