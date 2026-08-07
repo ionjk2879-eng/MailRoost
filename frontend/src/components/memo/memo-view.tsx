@@ -62,24 +62,22 @@ function MemoCard({
   }
 
   return (
-    <div className="bg-card flex h-56 flex-col rounded-lg border p-3 shadow-sm">
-      <div className="flex items-start justify-between gap-2">
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={handleChange}
-          placeholder="메모를 입력하세요..."
-          className="placeholder:text-muted-foreground min-h-0 flex-1 resize-none bg-transparent text-sm outline-none"
-        />
-        <button
-          type="button"
-          aria-label="메모 삭제"
-          onClick={() => onDelete(memo.id)}
-          className="text-muted-foreground hover:text-destructive -mt-1 -mr-1 shrink-0 rounded p-1"
-        >
-          <X className="size-3.5" />
-        </button>
-      </div>
+    <div className="bg-card group relative flex h-72 flex-col rounded-lg border p-3 shadow-sm">
+      <button
+        type="button"
+        aria-label="메모 삭제"
+        onClick={() => onDelete(memo.id)}
+        className="text-muted-foreground hover:text-destructive absolute top-2 right-2 rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+      >
+        <X className="size-3.5" />
+      </button>
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={handleChange}
+        placeholder="메모를 입력하세요..."
+        className="placeholder:text-muted-foreground min-h-0 flex-1 resize-none bg-transparent pr-6 text-sm outline-none"
+      />
       <p className="text-muted-foreground mt-2 shrink-0 text-xs">수정됨 {formatRelativeTime(updatedAt)}</p>
     </div>
   )
