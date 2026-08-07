@@ -506,6 +506,7 @@ api.get("/mail", async (c) => {
   const accountIds = accountIdParam ? [accountIdParam] : Object.keys(accountMap)
 
   const results: Mail[] = []
+  const failedAccountIds: string[] = []
   let accountsChanged = false
   let orgChanged = false
 
@@ -563,13 +564,17 @@ api.get("/mail", async (c) => {
         return { accountId, mails, cursor: nextPageToken ? { pageToken: nextPageToken } : undefined, updatedRecord }
       } catch (err) {
         console.error(`[mail] account ${accountId} failed, skipping:`, err)
-        return null
+        return { accountId, failed: true }
       }
     }),
   )
 
   for (const result of perAccountResults) {
     if (!result) continue
+    if ('failed' in result && result.failed) {
+      failedAccountIds.push(result.accountId)
+      continue
+    }
     if (org.rules.length > 0) {
       for (const mail of result.mails) classifyIfNew(result.accountId, mail)
     }
@@ -586,7 +591,7 @@ api.get("/mail", async (c) => {
 
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   const nextCursor = Object.keys(nextCursorMap).length > 0 ? encodeCursor(nextCursorMap) : null
-  return c.json({ mails: results, nextCursor })
+  return c.json({ mails: results, nextCursor, failedAccountIds })
 })
 
 // ── Trash ──────────────────────────────────────────────────────────────────────

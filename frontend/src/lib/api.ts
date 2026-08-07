@@ -10,10 +10,10 @@ export async function fetchAccounts(): Promise<Account[]> {
   return res.json()
 }
 
-export async function fetchMails(cursor?: string): Promise<{ mails: Mail[]; nextCursor: string | null }> {
+export async function fetchMails(cursor?: string): Promise<{ mails: Mail[]; nextCursor: string | null; failedAccountIds: string[] }> {
   const url = cursor ? `/api/mail?cursor=${encodeURIComponent(cursor)}` : "/api/mail"
   const res = await fetch(url)
-  if (!res.ok) return { mails: [], nextCursor: null }
+  if (!res.ok) return { mails: [], nextCursor: null, failedAccountIds: [] }
   return res.json()
 }
 

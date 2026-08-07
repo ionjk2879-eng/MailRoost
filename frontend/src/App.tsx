@@ -90,6 +90,7 @@ function App() {
   const [checkedMailIds, setCheckedMailIds] = useState<Set<string>>(new Set())
   const [isBulkLoading, setIsBulkLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [failedAccountIds, setFailedAccountIds] = useState<string[]>([])
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   // 삭제 요청이 아직 서버에 반영되지 않은 사이 폴링이 되살리는 것을 막기 위한 tombstone
@@ -105,9 +106,18 @@ function App() {
 
   const loadAccountsAndMails = () => {
     // 계정 목록과 메일 목록을 동시에 요청 (순차 요청 시 왕복 지연이 두 배로 누적됨)
-    return Promise.all([fetchAccounts(), fetchMails()]).then(([accounts, { mails, nextCursor: cursor }]) => {
+    return Promise.all([fetchAccounts(), fetchMails()]).then(([accounts, { mails, nextCursor: cursor, failedAccountIds: failed }]) => {
       setRealAccounts(accounts)
-      setRealMails(filterOutDeleted(mails))
+      setFailedAccountIds(failed ?? [])
+      const failedSet = new Set(failed ?? [])
+      setRealMails((prev) => {
+        const freshMails = filterOutDeleted(mails)
+        if (failedSet.size === 0) return freshMails
+        // 실패한 계정의 기존 메일은 그대로 유지하고 성공한 계정 메일만 교체
+        const kept = prev.filter((m) => failedSet.has(m.accountId))
+        const freshIds = new Set(freshMails.map((m) => `${m.accountId}:${m.id}`))
+        return [...freshMails, ...kept.filter((m) => !freshIds.has(`${m.accountId}:${m.id}`))]
+      })
       setNextCursor(cursor)
     })
   }
@@ -966,6 +976,18 @@ function App() {
           </ResizablePanelGroup>
         )}
       </SidebarInset>
+      {failedAccountIds.length > 0 && (() => {
+        const failedAccounts = realAccounts.filter((a) => failedAccountIds.includes(a.id))
+        const hasImapOrNaver = failedAccounts.some((a) => a.provider === "naver" || a.provider === "daum" || a.provider === "imap")
+        if (!hasImapOrNaver) return null
+        const names = failedAccounts.map((a) => a.email ?? a.label).join(", ")
+        return (
+          <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 max-w-sm w-full mx-4 rounded-md bg-amber-500 px-4 py-2.5 text-sm text-white shadow-lg">
+            <p className="font-medium">{names} — 일시적 연결 오류</p>
+            <p className="mt-0.5 text-amber-100">사이트 문제가 아니라 메일 서버가 잠시 응답하지 않는 것으로, 시간이 지나면 자동으로 복구됩니다.</p>
+          </div>
+        )
+      })()}
       {errorMessage && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
           {errorMessage}
