@@ -317,15 +317,31 @@ async function fetchMailPageFromSelected(
   const fetchResult = await client.command(
     `FETCH ${start}:${end} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])`,
   )
+  // 이 명령이 실패했는데도 그냥 넘어가면, 그 구간의 메일들이 조용히 통째로 빈 결과로 취급되어
+  // "더 보기"가 앞으로만 진행하는 이 페이지네이션 구조상 다시는 화면에 나타나지 않게 된다.
+  if (!fetchResult.ok) throw new Error(`메일 목록 조회에 실패했습니다 (${fetchResult.statusLine}).`)
 
-  return { mails: mapFetchLinesToMails(fetchResult.lines, accountId), hasMore }
+  const mails = mapFetchLinesToMails(fetchResult.lines, accountId)
+  const expected = end - start + 1
+  if (mails.length < expected) {
+    console.error(
+      `[imap] range ${start}:${end} expected ${expected} messages but parsed only ${mails.length} ` +
+        `(raw lines=${fetchResult.lines.length}) — some messages may have been dropped during parsing`,
+    )
+  }
+
+  return { mails, hasMore }
 }
 
 function mapFetchLinesToMails(lines: string[], accountId: string): Mail[] {
   const mails: Mail[] = []
   for (const line of lines) {
+    if (!/^\*\s+\d+\s+FETCH/i.test(line)) continue
     const parsed = parseFetchLine(line)
-    if (!parsed || parsed.uid === undefined) continue
+    if (!parsed || parsed.uid === undefined) {
+      console.error(`[imap] failed to parse FETCH line, skipping message: ${line.slice(0, 300)}`)
+      continue
+    }
     const { from, subject } = parseHeaderFields(parsed.literalText)
     const { name: fromName, email: fromEmail } = parseFromHeader(from)
     mails.push({
