@@ -1,5 +1,5 @@
 import { AlertTriangle, Loader2 } from "lucide-react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -368,12 +368,14 @@ function MailboxManageTab({
 }
 
 function AutoClassifyTab({
+  mails,
   folders,
   rules,
   onCreateRule,
   onToggleRule,
   onDeleteRule,
 }: {
+  mails: Mail[]
   folders: MailFolder[]
   rules: AutoClassifyRule[]
   onCreateRule: (
@@ -388,6 +390,22 @@ function AutoClassifyTab({
   const folderOptions = [{ id: ARCHIVE_FOLDER_ID, name: "보관함" }, ...folders]
   const [field, setField] = useState<"from" | "subject">("from")
   const [keyword, setKeyword] = useState("")
+
+  // 현재 로드된 메일에서 보낸사람/제목 자동완성 후보를 뽑는다 — 직접 입력도 그대로 가능하다.
+  const senderOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const m of mails) {
+      if (!m.fromEmail || seen.has(m.fromEmail)) continue
+      seen.set(m.fromEmail, m.fromName && m.fromName !== m.fromEmail ? `${m.fromName} <${m.fromEmail}>` : m.fromEmail)
+    }
+    return [...seen.entries()].map(([value, label]) => ({ value, label }))
+  }, [mails])
+
+  const subjectOptions = useMemo(() => {
+    const seen = new Set<string>()
+    for (const m of mails) if (m.subject) seen.add(m.subject)
+    return [...seen].slice(0, 200)
+  }, [mails])
   // "folder:<id>" 또는 "category:<name>" 형태로 인코딩해 하나의 select로 둘 다 고른다.
   const [destination, setDestination] = useState(`folder:${folderOptions[0].id}`)
   const [error, setError] = useState<string | null>(null)
@@ -438,7 +456,18 @@ function AutoClassifyTab({
           </div>
           <div className="min-w-[140px] flex-1 space-y-1.5">
             <label className="text-muted-foreground text-xs">포함 키워드</label>
-            <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="예: 뉴스레터" required />
+            <Input
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder={field === "from" ? "예: fantia.jp (직접 입력 또는 목록에서 선택)" : "예: 뉴스레터"}
+              list="rule-keyword-options"
+              required
+            />
+            <datalist id="rule-keyword-options">
+              {field === "from"
+                ? senderOptions.map((s) => <option key={s.value} value={s.value} label={s.label} />)
+                : subjectOptions.map((s) => <option key={s} value={s} />)}
+            </datalist>
           </div>
           <div className="space-y-1.5">
             <label className="text-muted-foreground text-xs">동작</label>
@@ -595,6 +624,7 @@ export function CleanupView({
 
         {mainTab === "auto" && (
           <AutoClassifyTab
+            mails={mails}
             folders={folders}
             rules={rules}
             onCreateRule={onCreateRule}
