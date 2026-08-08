@@ -1,6 +1,6 @@
 import { connect } from "cloudflare:sockets"
 import type { Mail } from "../types"
-import { decodeRfc2047, parseFromHeader, parseHeaderBlock, parseMimeMessage, sanitizeHtml, stripHtml } from "./mime"
+import { decodeRfc2047, extractMimeAttachment, listMimeAttachments, parseFromHeader, parseHeaderBlock, parseMimeMessage, sanitizeHtml, stripHtml } from "./mime"
 
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
   const out = new Uint8Array(a.length + b.length)
@@ -487,7 +487,12 @@ export async function imapEmptyTrash(config: ImapConfig): Promise<void> {
   })
 }
 
-export async function imapGetMailDetail(config: ImapConfig, accountId: string, uid: string): Promise<Mail> {
+// 메일 원문(RFC822) 전체를 UID로 조회. 상세보기와 첨부파일 다운로드가 공유해서 쓴다
+// (Workers는 요청 간 상태를 유지하지 않으므로 첨부파일을 받을 때도 매번 다시 조회해야 한다).
+async function imapFetchRawByUid(
+  config: ImapConfig,
+  uid: string,
+): Promise<{ raw: string; flags: string[]; internalDate?: string } | null> {
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
@@ -495,36 +500,54 @@ export async function imapGetMailDetail(config: ImapConfig, accountId: string, u
     const fetchResult = await client.command(`UID FETCH ${uid} (UID FLAGS INTERNALDATE BODY.PEEK[])`)
     const line = fetchResult.lines.find((l) => /^\*\s+\d+\s+FETCH/i.test(l))
     const parsed = line ? parseFetchLine(line) : null
-    if (!parsed || !parsed.literalText) throw new Error("메일을 찾을 수 없습니다.")
-
-    const raw = parsed.literalText
-    const { headerBlock } = (() => {
-      const idx = raw.search(/\n\n/)
-      return { headerBlock: idx === -1 ? raw : raw.slice(0, idx) }
-    })()
-    const headers = parseHeaderBlock(headerBlock)
-    const { name: fromName, email: fromEmail } = parseFromHeader(headers["from"] ?? "")
-    const subject = decodeRfc2047(headers["subject"] ?? "") || "(제목 없음)"
-
-    const { text, html } = parseMimeMessage(raw)
-    const bodyHtml = html ? sanitizeHtml(html) : undefined
-    const body = text || (html ? stripHtml(html) : "")
-
-    return {
-      id: uid,
-      accountId,
-      fromName,
-      fromEmail,
-      subject,
-      snippet: body.slice(0, 200),
-      body,
-      bodyHtml,
-      category: "primary",
-      receivedAt: parseInternalDate(parsed.internalDate),
-      isRead: parsed.flags.includes("\\Seen"),
-      isStarred: parsed.flags.includes("\\Flagged"),
-    }
+    if (!parsed || !parsed.literalText) return null
+    return { raw: parsed.literalText, flags: parsed.flags, internalDate: parsed.internalDate }
   })
+}
+
+export async function imapGetMailDetail(config: ImapConfig, accountId: string, uid: string): Promise<Mail> {
+  const fetched = await imapFetchRawByUid(config, uid)
+  if (!fetched) throw new Error("메일을 찾을 수 없습니다.")
+  const { raw, flags, internalDate } = fetched
+
+  const { headerBlock } = (() => {
+    const idx = raw.search(/\n\n/)
+    return { headerBlock: idx === -1 ? raw : raw.slice(0, idx) }
+  })()
+  const headers = parseHeaderBlock(headerBlock)
+  const { name: fromName, email: fromEmail } = parseFromHeader(headers["from"] ?? "")
+  const subject = decodeRfc2047(headers["subject"] ?? "") || "(제목 없음)"
+
+  const { text, html } = parseMimeMessage(raw)
+  const bodyHtml = html ? sanitizeHtml(html) : undefined
+  const body = text || (html ? stripHtml(html) : "")
+  const attachments = listMimeAttachments(raw)
+
+  return {
+    id: uid,
+    accountId,
+    fromName,
+    fromEmail,
+    subject,
+    snippet: body.slice(0, 200),
+    body,
+    bodyHtml,
+    category: "primary",
+    receivedAt: parseInternalDate(internalDate),
+    isRead: flags.includes("\\Seen"),
+    isStarred: flags.includes("\\Flagged"),
+    attachments: attachments.length > 0 ? attachments : undefined,
+  }
+}
+
+export async function imapGetAttachment(
+  config: ImapConfig,
+  uid: string,
+  attachmentId: string,
+): Promise<{ bytes: Uint8Array; mimeType: string; filename: string } | null> {
+  const fetched = await imapFetchRawByUid(config, uid)
+  if (!fetched) return null
+  return extractMimeAttachment(fetched.raw, attachmentId)
 }
 
 export async function imapVerify(config: ImapConfig): Promise<void> {
@@ -653,6 +676,15 @@ export async function naverFetchByUids(email: string, appPassword: string, accou
   return imapFetchByUids(naverConfig(email, appPassword), accountId, uids)
 }
 
+export async function naverGetAttachment(
+  email: string,
+  appPassword: string,
+  uid: string,
+  attachmentId: string,
+): Promise<{ bytes: Uint8Array; mimeType: string; filename: string } | null> {
+  return imapGetAttachment(naverConfig(email, appPassword), uid, attachmentId)
+}
+
 // ── Daum-specific exports ─────────────────────────────────────────────────────
 
 export async function verifyDaumCredentials(email: string, password: string): Promise<void> {
@@ -730,4 +762,13 @@ export async function daumEmptyTrash(email: string, password: string): Promise<v
 
 export async function daumFetchByUids(email: string, password: string, accountId: string, uids: string[]): Promise<Mail[]> {
   return imapFetchByUids(daumConfig(email, password), accountId, uids)
+}
+
+export async function daumGetAttachment(
+  email: string,
+  password: string,
+  uid: string,
+  attachmentId: string,
+): Promise<{ bytes: Uint8Array; mimeType: string; filename: string } | null> {
+  return imapGetAttachment(daumConfig(email, password), uid, attachmentId)
 }

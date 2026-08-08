@@ -17,6 +17,13 @@ export interface Account {
   color: string
 }
 
+export interface MailAttachment {
+  id: string
+  filename: string
+  mimeType: string
+  size: number
+}
+
 export interface Mail {
   id: string
   accountId: string
@@ -30,6 +37,7 @@ export interface Mail {
   receivedAt: string
   isRead: boolean
   isStarred: boolean
+  attachments?: MailAttachment[]
 }
 
 export interface GmailAccountRecord {

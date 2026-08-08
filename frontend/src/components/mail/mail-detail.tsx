@@ -1,10 +1,11 @@
-import { Archive, ChevronLeft, FolderInput, Inbox, MailOpen, Reply, Star, Trash2 } from "lucide-react"
+import { Archive, ChevronLeft, Download, FolderInput, Inbox, MailOpen, Paperclip, Reply, Star, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { attachmentDownloadUrl } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { Account, Mail, MailFolder } from "@/types/mail"
 
@@ -32,6 +33,12 @@ function formatFullDate(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   })
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 
 function buildIframeDoc(bodyHtml: string): string {
@@ -220,6 +227,23 @@ export function MailDetail({
             </Badge>
           )}
         </div>
+        {mail.attachments && mail.attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {mail.attachments.map((attachment) => (
+              <a
+                key={attachment.id}
+                href={attachmentDownloadUrl(mail.id, mail.accountId, attachment)}
+                download={attachment.filename}
+                className="border-input hover:bg-accent flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors"
+              >
+                <Paperclip className="text-muted-foreground size-3.5 shrink-0" />
+                <span className="max-w-[160px] truncate">{attachment.filename}</span>
+                <span className="text-muted-foreground shrink-0">{formatFileSize(attachment.size)}</span>
+                <Download className="text-muted-foreground size-3.5 shrink-0" />
+              </a>
+            ))}
+          </div>
+        )}
       </div>
       <Separator />
       <div className="min-h-0 flex-1 overflow-hidden">

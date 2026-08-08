@@ -1,4 +1,4 @@
-import type { Env, GmailAccountRecord, Mail, MailCategory } from "../types"
+import type { Env, GmailAccountRecord, Mail, MailAttachment, MailCategory } from "../types"
 import { decodeRfc2047, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
 
 // gmail.modify로는 라벨 변경/휴지통 이동까지만 되고 영구 삭제(batchDelete)는 403이 난다.
@@ -95,7 +95,8 @@ interface GmailHeader {
 
 interface GmailMessagePart {
   mimeType?: string
-  body?: { data?: string; size?: number }
+  filename?: string
+  body?: { data?: string; size?: number; attachmentId?: string }
   parts?: GmailMessagePart[]
 }
 
@@ -255,11 +256,14 @@ export async function toggleStar(accessToken: string, messageId: string, starred
   if (!res.ok) throw new Error(`Gmail 별표 처리 실패: ${res.status}`)
 }
 
-function decodeBase64Url(data: string): string {
+function decodeBase64UrlToBytes(data: string): Uint8Array {
   const base64 = data.replace(/-/g, "+").replace(/_/g, "/")
   const binary = atob(base64)
-  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
-  return new TextDecoder("utf-8").decode(bytes)
+  return Uint8Array.from(binary, (c) => c.charCodeAt(0))
+}
+
+function decodeBase64Url(data: string): string {
+  return new TextDecoder("utf-8").decode(decodeBase64UrlToBytes(data))
 }
 
 function findPart(part: GmailMessagePart, mimeType: string): GmailMessagePart | undefined {
@@ -271,6 +275,20 @@ function findPart(part: GmailMessagePart, mimeType: string): GmailMessagePart | 
     }
   }
   return undefined
+}
+
+// 파일명이 있고 attachmentId가 붙은 파트만 첨부파일로 취급한다 (본문 text/html 파트는 filename이 없다).
+function collectAttachments(part: GmailMessagePart | undefined, out: MailAttachment[]): void {
+  if (!part) return
+  if (part.filename && part.body?.attachmentId) {
+    out.push({
+      id: part.body.attachmentId,
+      filename: decodeRfc2047(part.filename),
+      mimeType: part.mimeType || "application/octet-stream",
+      size: part.body.size ?? 0,
+    })
+  }
+  if (part.parts) for (const child of part.parts) collectAttachments(child, out)
 }
 
 function extractBody(payload: GmailMessagePart | undefined): { text?: string; html?: string } {
@@ -419,5 +437,23 @@ export async function getMailDetail(accessToken: string, accountId: string, mess
   const { text, html } = extractBody(msg.payload)
   mail.bodyHtml = html ? sanitizeHtml(html) : undefined
   mail.body = text || (html ? stripHtml(html) : "") || mail.snippet
+  const attachments: MailAttachment[] = []
+  collectAttachments(msg.payload, attachments)
+  if (attachments.length > 0) mail.attachments = attachments
   return mail
+}
+
+export async function getAttachment(
+  accessToken: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<{ bytes: Uint8Array } | null> {
+  const res = await fetch(`${GMAIL_API_BASE}/messages/${messageId}/attachments/${attachmentId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`Gmail 첨부파일 조회 실패: ${res.status}`)
+  const json = (await res.json()) as { data?: string }
+  if (!json.data) return null
+  return { bytes: decodeBase64UrlToBytes(json.data) }
 }

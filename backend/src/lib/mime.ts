@@ -163,3 +163,111 @@ export function parseMimeMessage(raw: string): { text?: string; html?: string } 
   const { headerBlock, bodyBlock } = splitHeaderAndBody(raw)
   return extractFromPart(parseHeaderBlock(headerBlock), bodyBlock)
 }
+
+// ── 첨부파일 ───────────────────────────────────────────────────────────────────
+
+export interface MimeAttachmentMeta {
+  id: string
+  filename: string
+  mimeType: string
+  size: number
+}
+
+interface AttachmentPartInternal {
+  filename: string
+  mimeType: string
+  transferEncoding: string
+  rawBody: string
+}
+
+// RFC 2231 확장 파라미터(filename*=UTF-8''%ED...)와 RFC 2047 encoded-word, 일반 따옴표 문자열을 모두 처리한다.
+function extractFilename(disposition: string, typeParams: Record<string, string>): string | undefined {
+  const starMatch = disposition.match(/filename\*\s*=\s*([^;]+)/i)
+  if (starMatch) {
+    const parts = starMatch[1].trim().split("'")
+    if (parts.length === 3) {
+      try {
+        return decodeURIComponent(parts[2])
+      } catch {
+        // 디코딩 실패 시 다른 후보로 폴백
+      }
+    }
+  }
+  const plainMatch = disposition.match(/filename\s*=\s*("([^"]*)"|[^;]+)/i)
+  if (plainMatch) {
+    const raw = (plainMatch[2] ?? plainMatch[1]).trim()
+    if (raw) return decodeRfc2047(raw)
+  }
+  if (typeParams["filename"]) return decodeRfc2047(typeParams["filename"])
+  if (typeParams["name"]) return decodeRfc2047(typeParams["name"])
+  return undefined
+}
+
+function decodeAttachmentBytes(body: string, transferEncoding: string): Uint8Array {
+  const encoding = transferEncoding.toLowerCase()
+  if (encoding === "base64") return decodeBase64ToBytes(body)
+  if (encoding === "quoted-printable") return decodeQuotedPrintableToBytes(body)
+  return new TextEncoder().encode(body)
+}
+
+function collectAttachmentParts(
+  headers: Record<string, string>,
+  body: string,
+  parts: AttachmentPartInternal[],
+): void {
+  const { type, params } = parseContentType(headers["content-type"])
+  const transferEncoding = headers["content-transfer-encoding"] || "7bit"
+  const disposition = headers["content-disposition"] || ""
+
+  if (type.startsWith("multipart/") && params.boundary) {
+    const delimiter = `--${params.boundary}`
+    for (const segment of body.split(delimiter)) {
+      const trimmed = segment.replace(/^\r?\n/, "")
+      if (!trimmed || trimmed.startsWith("--") || !HEADER_LINE_START.test(trimmed)) continue
+      const { headerBlock, bodyBlock } = splitHeaderAndBody(trimmed)
+      collectAttachmentParts(parseHeaderBlock(headerBlock), bodyBlock, parts)
+    }
+    return
+  }
+
+  const filename = extractFilename(disposition, params)
+  const isAttachment = /attachment/i.test(disposition) || (!!filename && type !== "text/plain" && type !== "text/html")
+  if (!isAttachment) return
+
+  parts.push({
+    filename: filename ?? "첨부파일",
+    mimeType: type || "application/octet-stream",
+    transferEncoding,
+    rawBody: body.replace(/\r?\n$/, ""),
+  })
+}
+
+// raw RFC822 메시지에서 첨부파일 메타데이터(파일명/타입/크기)만 뽑아낸다. 목록/상세 조회에서 사용.
+export function listMimeAttachments(raw: string): MimeAttachmentMeta[] {
+  const { headerBlock, bodyBlock } = splitHeaderAndBody(raw)
+  const parts: AttachmentPartInternal[] = []
+  collectAttachmentParts(parseHeaderBlock(headerBlock), bodyBlock, parts)
+  return parts.map((p, i) => ({
+    id: String(i),
+    filename: p.filename,
+    mimeType: p.mimeType,
+    size: decodeAttachmentBytes(p.rawBody, p.transferEncoding).length,
+  }))
+}
+
+// listMimeAttachments가 매긴 id(파트 순서 인덱스)로 실제 바이트를 뽑아낸다. 다운로드 시 raw 메시지를 다시 조회해 호출.
+export function extractMimeAttachment(
+  raw: string,
+  id: string,
+): { bytes: Uint8Array; mimeType: string; filename: string } | null {
+  const { headerBlock, bodyBlock } = splitHeaderAndBody(raw)
+  const parts: AttachmentPartInternal[] = []
+  collectAttachmentParts(parseHeaderBlock(headerBlock), bodyBlock, parts)
+  const part = parts[Number(id)]
+  if (!part) return null
+  return {
+    bytes: decodeAttachmentBytes(part.rawBody, part.transferEncoding),
+    mimeType: part.mimeType,
+    filename: part.filename,
+  }
+}

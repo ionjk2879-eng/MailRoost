@@ -8,6 +8,7 @@ import {
   emptyTrash as gmailEmptyTrash,
   ensureFreshToken,
   fetchMailsByIds as gmailFetchByIds,
+  getAttachment as gmailGetAttachment,
   getMailDetail,
   listInboxMails,
   listTrashMails as gmailListTrash,
@@ -24,6 +25,7 @@ import {
   daumDeleteMailBulk,
   daumEmptyTrash,
   daumFetchByUids,
+  daumGetAttachment,
   daumGetMailDetail,
   daumListInbox,
   daumListTrash,
@@ -38,6 +40,7 @@ import {
   imapDeleteMailBulk,
   imapEmptyTrash,
   imapFetchByUids,
+  imapGetAttachment,
   imapGetMailDetail,
   imapListInbox,
   imapListTrash,
@@ -52,6 +55,7 @@ import {
   naverDeleteMailBulk,
   naverEmptyTrash,
   naverFetchByUids,
+  naverGetAttachment,
   naverGetMailDetail,
   naverListInbox,
   naverListTrash,
@@ -1132,6 +1136,55 @@ api.get("/mail/:id", async (c) => {
     await persistAccounts(c.env, sessionId, session, accountMap)
   }
   return c.json(await getMailDetail(fresh.accessToken, accountId, mailId))
+})
+
+api.get("/mail/:id/attachment/:attachmentId", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  const accountId = c.req.query("accountId")
+  const mailId = c.req.param("id")
+  const attachmentId = c.req.param("attachmentId")
+  if (!sessionId || !accountId) return c.json({ error: "bad request" }, 400)
+
+  // Gmail attachments.get 응답에는 파일명/타입이 없어서, 이미 상세보기에서 받아둔 메타데이터를
+  // 프론트엔드가 쿼리로 실어보낸다. IMAP 계열은 raw 메시지를 다시 파싱하므로 정확한 값을 직접 얻는다.
+  const fallbackFilename = c.req.query("filename") || "attachment"
+  const fallbackMimeType = c.req.query("mimeType") || "application/octet-stream"
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const record = accountMap[accountId]
+  if (!record) return c.json({ error: "not found" }, 404)
+
+  let result: { bytes: Uint8Array; mimeType: string; filename: string } | null = null
+
+  if (record.provider === "naver") {
+    result = await naverGetAttachment(record.email, record.appPassword, mailId, attachmentId)
+  } else if (record.provider === "daum") {
+    result = await daumGetAttachment(record.email, record.password, mailId, attachmentId)
+  } else if (record.provider === "imap") {
+    result = await imapGetAttachment(
+      { host: record.host, port: record.port, email: record.email, password: record.password },
+      mailId,
+      attachmentId,
+    )
+  } else {
+    const fresh = await ensureFreshToken(c.env, record)
+    if (fresh.accessToken !== record.accessToken) {
+      accountMap[accountId] = fresh
+      await persistAccounts(c.env, sessionId, session, accountMap)
+    }
+    const gmailResult = await gmailGetAttachment(fresh.accessToken, mailId, attachmentId)
+    result = gmailResult ? { ...gmailResult, mimeType: fallbackMimeType, filename: fallbackFilename } : null
+  }
+
+  if (!result) return c.json({ error: "첨부파일을 찾을 수 없습니다." }, 404)
+
+  return new Response(new Blob([result.bytes]), {
+    headers: {
+      "Content-Type": result.mimeType || fallbackMimeType,
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.filename || fallbackFilename)}`,
+    },
+  })
 })
 
 api.delete("/mail/:id", async (c) => {
