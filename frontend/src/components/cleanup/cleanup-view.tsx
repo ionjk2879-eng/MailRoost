@@ -775,6 +775,9 @@ function QuickReplyTab({
   )
 }
 
+// backend/src/lib/scheduledSend.ts의 MAX_RETRIES와 맞춘 표시용 값.
+const SCHEDULED_MAX_RETRIES = 5
+
 function ScheduledMailTab({
   accounts,
   scheduledMails,
@@ -802,6 +805,11 @@ function ScheduledMailTab({
               {accountLabel(m.accountId)} → {m.to}
             </p>
             <p className="text-primary mt-1 text-xs">{new Date(m.sendAt).toLocaleString()}에 발송 예정</p>
+            {!!m.retryCount && (
+              <p className="text-destructive mt-0.5 text-xs">
+                발송 실패로 재시도 중 ({m.retryCount}/{SCHEDULED_MAX_RETRIES}회)
+              </p>
+            )}
           </div>
           <Button
             variant="ghost"

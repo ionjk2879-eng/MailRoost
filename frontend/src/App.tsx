@@ -8,6 +8,7 @@ import { MailList } from "@/components/mail/mail-list"
 import { CleanupView, SHORTCUTS } from "@/components/cleanup/cleanup-view"
 import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
+import { NotificationBell } from "@/components/notifications/notification-bell"
 import { Button } from "@/components/ui/button"
 import {
   ResizableHandle,
@@ -31,6 +32,7 @@ import {
   deleteMemo,
   deleteQuickReply,
   deleteRule as apiDeleteRule,
+  dismissNotification,
   emptyAllTrash,
   emptyTrash,
   fetchAccounts,
@@ -40,13 +42,16 @@ import {
   fetchMailDetail,
   fetchMails,
   fetchMemos,
+  fetchNotifications,
   fetchQuickReplies,
   fetchRules,
   fetchScheduledMails,
   fetchTrashMails,
   logout,
+  markAllNotificationsRead,
   markAsRead,
   markAsUnread,
+  markNotificationRead,
   moveMails,
   permanentDeleteFromTrash,
   renameFolder as apiRenameFolder,
@@ -61,7 +66,7 @@ import {
   updateRule as apiUpdateRule,
 } from "@/lib/api"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { Account, AutoClassifyRule, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
+import type { Account, AppNotification, AutoClassifyRule, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
 
 function isRealAccountId(accountId: string): boolean {
   return accountId.includes(":")
@@ -94,6 +99,7 @@ function App() {
   const [memos, setMemos] = useState<MemoItem[]>([])
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
   const [scheduledMails, setScheduledMails] = useState<ScheduledMail[]>([])
+  const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [composeState, setComposeState] = useState<{
     accountId?: string
     to?: string
@@ -163,6 +169,7 @@ function App() {
             fetchMemos().then(setMemos),
             fetchQuickReplies().then(setQuickReplies),
             fetchScheduledMails().then(setScheduledMails),
+            fetchNotifications().then(setNotifications),
           ])
         }
       })
@@ -174,6 +181,19 @@ function App() {
     if (!currentUser) return
     const poll = () => { if (!document.hidden) loadAccountsAndMails() }
     const interval = setInterval(poll, 20_000)
+    document.addEventListener("visibilitychange", poll)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener("visibilitychange", poll)
+    }
+  }, [currentUser])
+
+  // 예약발송 재시도/실패 알림은 cron이 백그라운드에서 쌓으므로 1분마다 폴링해서 반영한다
+  // (cron 주기와 동일하게 맞춤).
+  useEffect(() => {
+    if (!currentUser) return
+    const poll = () => { if (!document.hidden) fetchNotifications().then(setNotifications) }
+    const interval = setInterval(poll, 60_000)
     document.addEventListener("visibilitychange", poll)
     return () => {
       clearInterval(interval)
@@ -749,6 +769,21 @@ function App() {
     }
   }
 
+  const handleMarkNotificationRead = (id: string) => {
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+    markNotificationRead(id)
+  }
+
+  const handleMarkAllNotificationsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+    markAllNotificationsRead()
+  }
+
+  const handleDismissNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id))
+    dismissNotification(id)
+  }
+
   const handleUpdateSignature = async (accountId: string, signature: string): Promise<{ ok: boolean; error?: string }> => {
     const result = await updateAccountSignature(accountId, signature)
     if (!result.ok) return { ok: false, error: result.error }
@@ -995,6 +1030,7 @@ function App() {
     setMemos([])
     setQuickReplies([])
     setScheduledMails([])
+    setNotifications([])
     goHome()
   }
 
@@ -1266,6 +1302,12 @@ function App() {
               <RefreshCw className={cn("size-4", isRefreshing && "animate-spin")} />
             </Button>
           )}
+          <NotificationBell
+            notifications={notifications}
+            onMarkRead={handleMarkNotificationRead}
+            onMarkAllRead={handleMarkAllNotificationsRead}
+            onDismiss={handleDismissNotification}
+          />
           {view === "inbox" && sendableAccounts.length > 0 && (
             <Button size="sm" className="gap-2" onClick={handleOpenCompose}>
               <Pencil className="size-4" />

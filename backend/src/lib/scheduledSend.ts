@@ -1,9 +1,13 @@
-import type { ConnectedAccountRecord, Env, ScheduledMail } from "../types"
+import type { AppNotification, ConnectedAccountRecord, Env, ScheduledMail } from "../types"
 import { getUserAccounts, saveUserAccounts } from "./auth"
 import { resolveForwardedAttachments, sendViaRecord } from "./mailSend"
 import type { OutgoingAttachment } from "./mime"
-import { deleteScheduledMail, listAllScheduledMails } from "./scheduledMail"
+import { saveNotification } from "./notifications"
+import { deleteScheduledMail, listAllScheduledMails, saveScheduledMail } from "./scheduledMail"
 import { readSession, writeSession } from "./session"
+
+// 이 횟수만큼 실패하면 더 재시도하지 않고 예약을 포기한다 (cron이 매분 도니까 최대 5분 안에 결론남).
+const MAX_RETRIES = 5
 
 async function loadAccountsForMail(env: Env, mail: ScheduledMail): Promise<Record<string, ConnectedAccountRecord>> {
   if (mail.userId) return getUserAccounts(env, mail.userId)
@@ -27,8 +31,45 @@ async function saveAccountsForMail(
   }
 }
 
+function buildNotification(mail: ScheduledMail, type: AppNotification["type"], message: string): AppNotification {
+  return {
+    id: crypto.randomUUID(),
+    userId: mail.userId,
+    sessionId: mail.sessionId,
+    type,
+    message,
+    scheduledMailId: mail.id,
+    createdAt: Date.now(),
+    read: false,
+  }
+}
+
+// 재시도 한도에 도달하지 않았으면 retryCount를 올리고 재시도 알림을 남긴다.
+// 도달했으면 예약을 지우고 최종 실패 알림을 남긴다.
+async function handleFailure(env: Env, mail: ScheduledMail, reason: string): Promise<void> {
+  const retryCount = (mail.retryCount ?? 0) + 1
+  const label = mail.subject || "(제목 없음)"
+
+  if (retryCount >= MAX_RETRIES) {
+    await deleteScheduledMail(env, mail.id)
+    await saveNotification(
+      env,
+      buildNotification(mail, "scheduled-failed", `"${label}" 예약발송이 ${MAX_RETRIES}번 실패해 취소되었습니다. (${reason})`),
+    )
+    console.error(`[scheduled] giving up on ${mail.id} after ${retryCount} attempts: ${reason}`)
+    return
+  }
+
+  await saveScheduledMail(env, { ...mail, retryCount })
+  await saveNotification(
+    env,
+    buildNotification(mail, "scheduled-retry", `"${label}" 예약발송 실패 (${retryCount}/${MAX_RETRIES}회) — 잠시 후 다시 시도합니다. (${reason})`),
+  )
+  console.error(`[scheduled] attempt ${retryCount}/${MAX_RETRIES} failed for ${mail.id}: ${reason}`)
+}
+
 // cron이 매분 호출한다. 도래한(sendAt <= now) 예약 메일을 찾아 실제로 발송하고 지운다.
-// 개별 항목이 실패해도(계정 토큰 만료 등) 나머지는 계속 처리하고, 실패한 건은 다음 실행에서 재시도한다.
+// 개별 항목이 실패해도(계정 토큰 만료 등) 나머지는 계속 처리하고, 실패한 건은 MAX_RETRIES까지 재시도한다.
 export async function processDueScheduledMails(env: Env, now: number): Promise<void> {
   const all = await listAllScheduledMails(env)
   const due = all.filter((m) => m.sendAt <= now)
@@ -38,8 +79,7 @@ export async function processDueScheduledMails(env: Env, now: number): Promise<v
       const accountMap = await loadAccountsForMail(env, mail)
       const record = accountMap[mail.accountId]
       if (!record) {
-        console.error(`[scheduled] account ${mail.accountId} not found for scheduled mail ${mail.id}, dropping`)
-        await deleteScheduledMail(env, mail.id)
+        await handleFailure(env, mail, "보내는 계정을 찾을 수 없습니다.")
         continue
       }
 
@@ -60,7 +100,8 @@ export async function processDueScheduledMails(env: Env, now: number): Promise<v
 
       await deleteScheduledMail(env, mail.id)
     } catch (err) {
-      console.error(`[scheduled] failed to send scheduled mail ${mail.id}, will retry next run:`, err)
+      const reason = err instanceof Error ? err.message : String(err)
+      await handleFailure(env, mail, reason)
     }
   }
 }

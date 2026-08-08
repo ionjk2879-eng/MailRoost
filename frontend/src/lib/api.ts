@@ -1,4 +1,4 @@
-import type { Account, AutoClassifyRule, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
+import type { Account, AppNotification, AutoClassifyRule, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -365,6 +365,40 @@ export async function cancelScheduledMail(id: string): Promise<{ ok: boolean; er
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     return { ok: false, error: data.error ?? "예약발송 취소에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function fetchNotifications(): Promise<AppNotification[]> {
+  const res = await fetch("/api/notifications")
+  if (!res.ok) return []
+  const data = (await res.json()) as { notifications: AppNotification[] }
+  return data.notifications
+}
+
+export async function markNotificationRead(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/notifications/${encodeURIComponent(id)}/read`, { method: "PATCH" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "알림 확인 처리에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function markAllNotificationsRead(): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("/api/notifications/read-all", { method: "POST" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "알림 확인 처리에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function dismissNotification(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/notifications/${encodeURIComponent(id)}`, { method: "DELETE" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "알림 삭제에 실패했습니다." }
   }
   return { ok: true }
 }

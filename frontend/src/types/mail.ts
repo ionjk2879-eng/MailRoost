@@ -91,4 +91,16 @@ export interface ScheduledMail {
   forwardedAttachments?: ForwardedAttachmentRef[]
   sendAt: number
   createdAt: number
+  retryCount?: number
+}
+
+// 사이트 내부 알림함 전용 — 일반 새 메일 도착 알림은 여기 없고, 예약발송 재시도/최종
+// 실패처럼 놓치기 쉬운 백그라운드 이벤트만 온다.
+export interface AppNotification {
+  id: string
+  type: "scheduled-retry" | "scheduled-failed"
+  message: string
+  scheduledMailId?: string
+  createdAt: number
+  read: boolean
 }

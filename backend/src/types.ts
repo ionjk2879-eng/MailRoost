@@ -158,6 +158,21 @@ export interface ScheduledMail {
   forwardedAttachments?: ForwardedAttachmentRef[]
   sendAt: number
   createdAt: number
+  // 발송 실패 후 재시도한 횟수. MAX_RETRIES(lib/scheduledSend.ts)에 도달하면 포기하고 실패 알림을 남긴다.
+  retryCount?: number
+}
+
+// 사이트 내부 알림함 전용 — 일반 새 메일 도착은 여기 포함되지 않고, 예약발송
+// 재시도/최종 실패처럼 사용자가 바로 확인하지 않으면 놓치기 쉬운 백그라운드 이벤트만 쌓인다.
+export interface AppNotification {
+  id: string
+  userId?: string
+  sessionId?: string
+  type: "scheduled-retry" | "scheduled-failed"
+  message: string
+  scheduledMailId?: string
+  createdAt: number
+  read: boolean
 }
 
 export interface StoredSession {
