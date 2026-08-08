@@ -12,6 +12,8 @@ interface MailListProps {
   accounts: Account[]
   selectedMailId: string | null
   onSelectMail: (mailId: string) => void
+  // J/K 키보드 탐색 포커스 (열려있는 메일과는 별개)
+  focusedMailId?: string | null
   onToggleStar: (mailId: string, accountId: string, starred: boolean) => void
   // 다중선택
   checkedIds: Set<string>
@@ -58,6 +60,7 @@ export function MailList({
   accounts,
   selectedMailId,
   onSelectMail,
+  focusedMailId,
   onToggleStar,
   checkedIds,
   onToggleCheck,
@@ -310,6 +313,7 @@ export function MailList({
             return (
               <button
                 key={mail.id}
+                id={`mail-row-${mail.id}`}
                 type="button"
                 onMouseDown={(e) => {
                   if (e.shiftKey) e.preventDefault()
@@ -323,6 +327,8 @@ export function MailList({
                   !mail.isRead && "border-l-primary bg-primary/[0.04]",
                   !isSelecting && selectedMailId === mail.id && "border-l-primary bg-accent",
                   isChecked && "bg-primary/5",
+                  // J/K 키보드 포커스 표시 (열려있는 메일과 별개로 표시되어야 하므로 ring을 씀)
+                  focusedMailId === mail.id && "ring-primary/50 ring-2 ring-inset",
                 )}
               >
                 <div className="flex w-full min-w-0 items-center gap-2">

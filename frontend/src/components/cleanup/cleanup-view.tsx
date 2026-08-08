@@ -35,7 +35,7 @@ interface CleanupViewProps {
   onDeleteRule: (ruleId: string) => void
 }
 
-const SHORTCUTS = [
+export const SHORTCUTS = [
   { keys: "J / K", desc: "다음 / 이전 메일" },
   { keys: "Enter", desc: "메일 열기" },
   { keys: "Backspace", desc: "메일 삭제" },

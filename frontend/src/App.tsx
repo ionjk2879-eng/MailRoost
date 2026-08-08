@@ -5,7 +5,7 @@ import { CategoryTabs } from "@/components/mail/category-tabs"
 import { COMPOSE_SUPPORTED, ComposeView } from "@/components/mail/compose-view"
 import { MailDetail } from "@/components/mail/mail-detail"
 import { MailList } from "@/components/mail/mail-list"
-import { CleanupView } from "@/components/cleanup/cleanup-view"
+import { CleanupView, SHORTCUTS } from "@/components/cleanup/cleanup-view"
 import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
 import { Button } from "@/components/ui/button"
@@ -97,6 +97,9 @@ function App() {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [selectedMailId, setSelectedMailId] = useState<string | null>(null)
+  // J/K 키보드 탐색 포커스 (열려있는 메일과는 별개)
+  const [focusedMailId, setFocusedMailId] = useState<string | null>(null)
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
   const [realAccounts, setRealAccounts] = useState<Account[]>([])
   const [realMails, setRealMails] = useState<Mail[]>([])
   const [mailDetails, setMailDetails] = useState<Record<string, Mail>>({})
@@ -503,6 +506,7 @@ function App() {
     setSelectedAccountId(accountId)
     setSelectedCategory(null)
     setSelectedMailId(null)
+    setFocusedMailId(null)
     setSearchQuery("")
     setCheckedMailIds(new Set())
     setComposeState(null)
@@ -513,6 +517,7 @@ function App() {
     setSelectedAccountId(null)
     setSelectedCategory(null)
     setSelectedMailId(null)
+    setFocusedMailId(null)
     setSearchQuery("")
     setCheckedMailIds(new Set())
     setComposeState(null)
@@ -521,6 +526,7 @@ function App() {
   const goToCleanup = () => {
     setView("cleanup")
     setSelectedMailId(null)
+    setFocusedMailId(null)
     setCheckedMailIds(new Set())
     setComposeState(null)
   }
@@ -528,6 +534,7 @@ function App() {
   const goToMemo = () => {
     setView("memo")
     setSelectedMailId(null)
+    setFocusedMailId(null)
     setCheckedMailIds(new Set())
     setComposeState(null)
   }
@@ -545,6 +552,7 @@ function App() {
   const goToTrash = () => {
     setView("trash")
     setSelectedMailId(null)
+    setFocusedMailId(null)
     setCheckedMailIds(new Set())
     setComposeState(null)
     loadTrash()
@@ -577,6 +585,7 @@ function App() {
     setView("folder")
     setSelectedFolderId(folderId)
     setSelectedMailId(null)
+    setFocusedMailId(null)
     setCheckedMailIds(new Set())
     setComposeState(null)
     loadFolderMails(folderId)
@@ -588,6 +597,7 @@ function App() {
     setView("archive")
     setSelectedFolderId(ARCHIVE_FOLDER_ID)
     setSelectedMailId(null)
+    setFocusedMailId(null)
     setCheckedMailIds(new Set())
     setComposeState(null)
     loadFolderMails(ARCHIVE_FOLDER_ID)
@@ -740,6 +750,85 @@ function App() {
     setComposeState(null)
     loadAccountsAndMails()
   }
+
+  // 정리하기 > 단축키에 안내된 목록을 실제로 동작하게 한다. 입력창/textarea/select에
+  // 포커스가 있거나 작성 중일 때는 타이핑을 방해하지 않도록 전부 무시한다.
+  useEffect(() => {
+    const activeList = view === "folder" || view === "archive" ? folderMails : view === "inbox" ? visibleMails : []
+
+    const moveFocus = (direction: 1 | -1) => {
+      if (activeList.length === 0) return
+      const currentIndex = focusedMailId ? activeList.findIndex((m) => m.id === focusedMailId) : -1
+      const nextIndex =
+        currentIndex === -1
+          ? direction === 1 ? 0 : activeList.length - 1
+          : Math.min(activeList.length - 1, Math.max(0, currentIndex + direction))
+      const next = activeList[nextIndex]
+      if (next) {
+        setFocusedMailId(next.id)
+        document.getElementById(`mail-row-${next.id}`)?.scrollIntoView({ block: "nearest" })
+      }
+    }
+
+    const handler = (e: KeyboardEvent) => {
+      if (composeState) return
+      const target = e.target
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) return
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === "/") {
+        e.preventDefault()
+        setShortcutsHelpOpen((v) => !v)
+        return
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+
+      if (e.key === "Escape") {
+        if (shortcutsHelpOpen) setShortcutsHelpOpen(false)
+        else if (selectedMailId) setSelectedMailId(null)
+        else if (checkedMailIds.size > 0) setCheckedMailIds(new Set())
+        else if (focusedMailId) setFocusedMailId(null)
+        return
+      }
+
+      if (activeList.length === 0) return
+
+      if (e.key === "j" || e.key === "J") {
+        e.preventDefault()
+        moveFocus(1)
+        return
+      }
+      if (e.key === "k" || e.key === "K") {
+        e.preventDefault()
+        moveFocus(-1)
+        return
+      }
+      if (e.key === "Enter") {
+        const target = focusedMailId ? activeList.find((m) => m.id === focusedMailId) : activeList[0]
+        if (target) handleSelectMail(target.id)
+        return
+      }
+
+      const relevant = selectedMail ?? (focusedMailId ? activeList.find((m) => m.id === focusedMailId) ?? null : null)
+      if (!relevant) return
+
+      if (e.key === "Backspace") {
+        e.preventDefault()
+        handleDeleteMail(relevant.id, relevant.accountId)
+      } else if (e.key === "r" || e.key === "R") {
+        handleReply(relevant)
+      } else if (e.key === "s" || e.key === "S") {
+        handleToggleStar(relevant.id, relevant.accountId, !relevant.isStarred)
+      } else if ((e.key === "u" || e.key === "U") && relevant.isRead) {
+        handleMarkAsUnread(relevant.id, relevant.accountId)
+      }
+    }
+
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [composeState, view, visibleMails, folderMails, selectedMailId, selectedMail, focusedMailId, checkedMailIds, shortcutsHelpOpen])
 
   const handleManualRefresh = async () => {
     if (isRefreshing) return
@@ -915,6 +1004,7 @@ function App() {
           mails={visibleMails}
           accounts={accounts}
           selectedMailId={selectedMailId}
+          focusedMailId={focusedMailId}
           onSelectMail={handleSelectMail}
           onToggleStar={handleToggleStar}
           checkedIds={checkedMailIds}
@@ -974,6 +1064,7 @@ function App() {
       mails={folderMails}
       accounts={accounts}
       selectedMailId={selectedMailId}
+      focusedMailId={focusedMailId}
       onSelectMail={handleSelectMail}
       onToggleStar={handleToggleStar}
       checkedIds={checkedMailIds}
@@ -1198,6 +1289,27 @@ function App() {
       {errorMessage && (
         <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
           {errorMessage}
+        </div>
+      )}
+      {shortcutsHelpOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => setShortcutsHelpOpen(false)}
+        >
+          <div
+            className="bg-background mx-4 w-full max-w-sm rounded-lg border p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-4 font-semibold">단축키</h3>
+            <div className="space-y-2">
+              {SHORTCUTS.map((s) => (
+                <div key={s.keys} className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{s.desc}</span>
+                  <kbd className="bg-muted rounded px-1.5 py-0.5 font-mono text-xs">{s.keys}</kbd>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </SidebarProvider>
