@@ -78,15 +78,15 @@ const GMAIL_COLOR_PALETTE = ["bg-red-500", "bg-orange-500", "bg-pink-500", "bg-p
 const NAVER_COLOR_PALETTE = ["bg-green-500", "bg-emerald-500", "bg-lime-500", "bg-teal-500"]
 const DAUM_COLOR_PALETTE = ["bg-blue-500", "bg-sky-500", "bg-cyan-500", "bg-indigo-500"]
 const IMAP_COLOR_PALETTE = ["bg-slate-500", "bg-zinc-500", "bg-stone-500", "bg-neutral-500"]
-// 메일함 색상은 hex 값으로 저장해 사용자가 색상 선택기로 자유롭게 바꿀 수 있게 한다
+// 분류 색상은 hex 값으로 저장해 사용자가 색상 선택기로 자유롭게 바꿀 수 있게 한다
 // (Tailwind 클래스명은 빌드 타임에 알려진 값만 써야 해서 임의 색상을 표현할 수 없다).
-// 아래는 새 메일함을 만들 때 자동으로 배정되는 기본값일 뿐, 이후 사용자가 원하는 색으로 바꿀 수 있다.
+// 아래는 새 분류를 만들 때 자동으로 배정되는 기본값일 뿐, 이후 사용자가 원하는 색으로 바꿀 수 있다.
 const FOLDER_COLOR_PALETTE = [
   "#8b5cf6", "#d946ef", "#06b6d4", "#84cc16",
   "#f97316", "#14b8a6", "#f43f5e", "#6366f1",
 ]
 
-// 보관함은 사용자 정의 메일함과 동일한 배정(assignment) 메커니즘을 쓰는 예약된 가상 폴더 ID.
+// 보관함은 사용자 정의 분류와 동일한 배정(assignment) 메커니즘을 쓰는 예약된 가상 폴더 ID.
 // org.folders 목록에는 들어가지 않으므로 이름변경/삭제 대상이 되지 않는다.
 const ARCHIVE_FOLDER_ID = "archive"
 
@@ -258,7 +258,7 @@ api.delete("/accounts/:id", async (c) => {
   return c.json({ ok: true })
 })
 
-// ── 사용자 정의 메일함 (앱 내부 전용, 실제 서버에는 반영되지 않음) ──────────────
+// ── 사용자 정의 분류 (앱 내부 전용, 실제 서버에는 반영되지 않음) ──────────────
 
 api.get("/folders", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
@@ -274,13 +274,13 @@ api.post("/folders", async (c) => {
 
   const body = await c.req.json<{ name?: string }>().catch(() => null)
   const name = body?.name?.trim()
-  if (!name) return c.json({ error: "메일함 이름을 입력해주세요." }, 400)
-  if (name.length > 40) return c.json({ error: "메일함 이름이 너무 깁니다." }, 400)
+  if (!name) return c.json({ error: "분류 이름을 입력해주세요." }, 400)
+  if (name.length > 40) return c.json({ error: "분류 이름이 너무 깁니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
   const org = await resolveMailOrg(c.env, session)
   if (org.folders.some((f) => f.name === name)) {
-    return c.json({ error: "이미 같은 이름의 메일함이 있습니다." }, 400)
+    return c.json({ error: "이미 같은 이름의 분류가 있습니다." }, 400)
   }
 
   const folder: MailFolder = {
@@ -317,8 +317,8 @@ api.patch("/folders/:id", async (c) => {
   const folderId = c.req.param("id")
   const body = await c.req.json<{ name?: string; color?: string }>().catch(() => null)
   const name = body?.name?.trim()
-  if (!name) return c.json({ error: "메일함 이름을 입력해주세요." }, 400)
-  if (name.length > 40) return c.json({ error: "메일함 이름이 너무 깁니다." }, 400)
+  if (!name) return c.json({ error: "분류 이름을 입력해주세요." }, 400)
+  if (name.length > 40) return c.json({ error: "분류 이름이 너무 깁니다." }, 400)
   if (body?.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(body.color)) {
     return c.json({ error: "잘못된 색상입니다." }, 400)
   }
@@ -327,9 +327,9 @@ api.patch("/folders/:id", async (c) => {
   const org = await resolveMailOrg(c.env, session)
 
   const folder = org.folders.find((f) => f.id === folderId)
-  if (!folder) return c.json({ error: "메일함을 찾을 수 없습니다." }, 404)
+  if (!folder) return c.json({ error: "분류를 찾을 수 없습니다." }, 404)
   if (org.folders.some((f) => f.id !== folderId && f.name === name)) {
-    return c.json({ error: "이미 같은 이름의 메일함이 있습니다." }, 400)
+    return c.json({ error: "이미 같은 이름의 분류가 있습니다." }, 400)
   }
 
   folder.name = name
@@ -492,13 +492,13 @@ api.post("/rules", async (c) => {
   const category = (body?.category ?? null) as MailCategory | null
   if (field !== "from" && field !== "subject") return c.json({ error: "잘못된 조건입니다." }, 400)
   if (!keyword) return c.json({ error: "키워드를 입력해주세요." }, 400)
-  if (!targetFolderId && !category) return c.json({ error: "이동할 메일함이나 카테고리를 선택해주세요." }, 400)
+  if (!targetFolderId && !category) return c.json({ error: "이동할 분류나 카테고리를 선택해주세요." }, 400)
   if (category && !VALID_CATEGORIES.includes(category)) return c.json({ error: "잘못된 카테고리입니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
   const org = await resolveMailOrg(c.env, session)
   if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
-    return c.json({ error: "메일함을 찾을 수 없습니다." }, 404)
+    return c.json({ error: "분류를 찾을 수 없습니다." }, 404)
   }
 
   const rule: AutoClassifyRule = {
@@ -547,7 +547,7 @@ api.patch("/rules/:id", async (c) => {
   if (body?.targetFolderId !== undefined) {
     const targetFolderId = body.targetFolderId
     if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
-      return c.json({ error: "메일함을 찾을 수 없습니다." }, 404)
+      return c.json({ error: "분류를 찾을 수 없습니다." }, 404)
     }
     rule.targetFolderId = targetFolderId
   }
@@ -556,7 +556,7 @@ api.patch("/rules/:id", async (c) => {
     if (category && !VALID_CATEGORIES.includes(category)) return c.json({ error: "잘못된 카테고리입니다." }, 400)
     rule.category = category
   }
-  if (!rule.targetFolderId && !rule.category) return c.json({ error: "이동할 메일함이나 카테고리를 선택해주세요." }, 400)
+  if (!rule.targetFolderId && !rule.category) return c.json({ error: "이동할 분류나 카테고리를 선택해주세요." }, 400)
   if (body?.enabled !== undefined) rule.enabled = body.enabled
 
   await persistMailOrg(c.env, sessionId, session, org)
@@ -588,7 +588,7 @@ api.post("/mail/move", async (c) => {
   const org = await resolveMailOrg(c.env, session)
 
   if (folderId !== null && folderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === folderId)) {
-    return c.json({ error: "메일함을 찾을 수 없습니다." }, 404)
+    return c.json({ error: "분류를 찾을 수 없습니다." }, 404)
   }
 
   for (const { accountId, mailId } of items) {
@@ -622,7 +622,7 @@ api.get("/mail", async (c) => {
   const IMAP_PAGE = 50
   const GMAIL_PAGE = 50
 
-  // 사용자 정의 메일함으로 옮긴 메일은 받은편지함 목록에서 제외한다 (실제 서버에서는 옮기지 않으므로 앱에서 걸러냄)
+  // 사용자 정의 분류로 옮긴 메일은 받은편지함 목록에서 제외한다 (실제 서버에서는 옮기지 않으므로 앱에서 걸러냄)
   const isAssignedElsewhere = (accountId: string, mailId: string) =>
     Object.prototype.hasOwnProperty.call(org.assignments, assignmentKey(accountId, mailId))
 
@@ -856,7 +856,7 @@ api.post("/trash/restore", async (c) => {
     await gmailRestoreFromTrash(fresh.accessToken, mailIds)
   }
 
-  // 복구된 메일에 사용자 정의 메일함 배정이 남아있으면 정리한다 (실제로는 받은편지함으로 돌아왔으므로)
+  // 복구된 메일에 사용자 정의 분류 배정이 남아있으면 정리한다 (실제로는 받은편지함으로 돌아왔으므로)
   const org = await resolveMailOrg(c.env, session)
   let orgChanged = false
   for (const mailId of mailIds) {

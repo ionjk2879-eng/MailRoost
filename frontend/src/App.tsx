@@ -385,7 +385,7 @@ function App() {
     await deleteMailsWithRevert([target], view === "folder" ? "folder" : "inbox")
   }
 
-  // 메일함 이동: 실제 서버에서는 옮기지 않고 앱 내부 배정만 바꾼다.
+  // 분류 이동: 실제 서버에서는 옮기지 않고 앱 내부 배정만 바꾼다.
   const applyMove = async (targets: Mail[], folderId: string | null, origin: "inbox" | "folder") => {
     if (targets.length === 0) return
     const setList = origin === "folder" ? setFolderMails : setRealMails
@@ -546,7 +546,7 @@ function App() {
     loadFolderMails(folderId)
   }
 
-  // 보관함은 사용자 정의 메일함과 동일한 배정 메커니즘을 쓰는 예약된 가상 폴더라서
+  // 보관함은 사용자 정의 분류와 동일한 배정 메커니즘을 쓰는 예약된 가상 폴더라서
   // folderMails/selectedFolderId 상태를 그대로 재사용한다.
   const goToArchive = () => {
     setView("archive")
@@ -570,7 +570,7 @@ function App() {
       goHome()
     }
     await apiDeleteFolder(folderId)
-    // 삭제된 메일함에 있던 메일은 서버에서 배정이 풀려 받은편지함으로 돌아간다
+    // 삭제된 분류에 있던 메일은 서버에서 배정이 풀려 받은편지함으로 돌아간다
     loadAccountsAndMails()
   }
 
@@ -588,7 +588,7 @@ function App() {
     const result = await apiReorderFolders(order)
     if (!result.ok) {
       setFolders(previous)
-      showError(result.error ?? "메일함 순서 변경에 실패했습니다.")
+      showError(result.error ?? "분류 순서 변경에 실패했습니다.")
     }
   }
 
@@ -987,7 +987,7 @@ function App() {
                     : view === "memo"
                       ? "메모"
                       : view === "folder"
-                      ? (folders.find((f) => f.id === selectedFolderId)?.name ?? "메일함")
+                      ? (folders.find((f) => f.id === selectedFolderId)?.name ?? "분류")
                       : selectedAccountId
                       ? (() => {
                           const account = accounts.find((a) => a.id === selectedAccountId)

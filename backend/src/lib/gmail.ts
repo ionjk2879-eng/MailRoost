@@ -230,7 +230,7 @@ export async function listInboxMails(
   return listMailsByLabel(accessToken, accountId, "INBOX", maxResults, pageToken)
 }
 
-// 특정 메시지 ID 목록의 메타데이터를 조회 (사용자 정의 메일함 조회용).
+// 특정 메시지 ID 목록의 메타데이터를 조회 (사용자 정의 분류 조회용).
 // 서버에서 이미 삭제된 메시지는 조용히 건너뛴다 (표류한 배정 항목).
 export async function fetchMailsByIds(accessToken: string, accountId: string, ids: string[]): Promise<Mail[]> {
   const messages = await batchGetMessages(accessToken, ids)

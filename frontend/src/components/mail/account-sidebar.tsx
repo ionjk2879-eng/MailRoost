@@ -1,4 +1,4 @@
-import { Archive, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2 } from "lucide-react"
+import { Archive, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2 } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -71,6 +71,12 @@ function useDragReorder(ids: string[], onReorder: (order: string[]) => void) {
 
   return { draggingId, overId, handleDragStart, handleDragOver, handleDrop, handleDragEnd }
 }
+
+// 분류 색상 빠른 선택용 프리셋 (백엔드가 새 분류에 자동 배정하는 기본 팔레트와 동일)
+const FOLDER_COLOR_PRESETS = [
+  "#8b5cf6", "#d946ef", "#06b6d4", "#84cc16",
+  "#f97316", "#14b8a6", "#f43f5e", "#6366f1",
+]
 
 interface AccountSidebarProps {
   accounts: Account[]
@@ -182,7 +188,7 @@ export function AccountSidebar({
     const result = await onCreateFolder(name)
     setIsCreatingFolder(false)
     if (!result.ok) {
-      setCreateFolderError(result.error ?? "메일함 생성에 실패했습니다.")
+      setCreateFolderError(result.error ?? "분류 생성에 실패했습니다.")
       return
     }
     setIsCreateFolderOpen(false)
@@ -199,7 +205,7 @@ export function AccountSidebar({
     const result = await onRenameFolder(pendingRenameFolder.id, name, renameColor)
     setIsRenaming(false)
     if (!result.ok) {
-      setRenameError(result.error ?? "메일함 이름 변경에 실패했습니다.")
+      setRenameError(result.error ?? "분류 변경에 실패했습니다.")
       return
     }
     setPendingRenameFolder(null)
@@ -353,10 +359,10 @@ export function AccountSidebar({
         </SidebarGroup>
         <SidebarGroup>
           <div className="flex items-center justify-between px-2">
-            <SidebarGroupLabel className="px-0">메일함</SidebarGroupLabel>
+            <SidebarGroupLabel className="px-0">분류</SidebarGroupLabel>
             <button
               type="button"
-              aria-label="새 메일함"
+              aria-label="새 분류"
               onClick={() => {
                 setCreateFolderError(null)
                 setNewFolderName("")
@@ -391,13 +397,16 @@ export function AccountSidebar({
                     }}
                     title={folder.name}
                   >
-                    <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: folder.color }} />
+                    <Folder
+                      className="size-4 shrink-0"
+                      style={{ color: folder.color, fill: folder.color, fillOpacity: 0.25 }}
+                    />
                     <span className="truncate">{folder.name}</span>
                   </SidebarMenuButton>
                   <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover/item:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
-                      aria-label="메일함 이름 변경"
+                      aria-label="분류 편집"
                       onClick={() => {
                         setRenameError(null)
                         setRenameValue(folder.name)
@@ -410,7 +419,7 @@ export function AccountSidebar({
                     </button>
                     <button
                       type="button"
-                      aria-label="메일함 삭제"
+                      aria-label="분류 삭제"
                       onClick={() => setPendingDeleteFolder(folder)}
                       className="hover:text-destructive rounded p-0.5"
                     >
@@ -420,7 +429,7 @@ export function AccountSidebar({
                 </SidebarMenuItem>
               ))}
               {folders.length === 0 && (
-                <p className="text-muted-foreground px-2 py-1 text-xs">메일함이 없습니다.</p>
+                <p className="text-muted-foreground px-2 py-1 text-xs">분류가 없습니다.</p>
               )}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -489,13 +498,13 @@ export function AccountSidebar({
         <DialogContent>
           <form onSubmit={handleCreateFolder}>
             <DialogHeader>
-              <DialogTitle>새 메일함 만들기</DialogTitle>
+              <DialogTitle>새 분류 만들기</DialogTitle>
               <DialogDescription>
-                MailRoost 안에서만 사용하는 메일함이에요. 메일 서버에는 반영되지 않아요.
+                MailRoost 안에서만 사용하는 분류예요. 메일 서버에는 반영되지 않아요.
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-1.5 py-4">
-              <Label htmlFor="folder-name">메일함 이름</Label>
+              <Label htmlFor="folder-name">분류 이름</Label>
               <Input
                 id="folder-name"
                 value={newFolderName}
@@ -525,11 +534,11 @@ export function AccountSidebar({
         <DialogContent>
           <form onSubmit={handleRenameFolder}>
             <DialogHeader>
-              <DialogTitle>메일함 편집</DialogTitle>
+              <DialogTitle>분류 편집</DialogTitle>
             </DialogHeader>
             <div className="flex flex-col gap-4 py-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="folder-rename">메일함 이름</Label>
+                <Label htmlFor="folder-rename">분류 이름</Label>
                 <Input
                   id="folder-rename"
                   value={renameValue}
@@ -541,13 +550,27 @@ export function AccountSidebar({
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="folder-color">색상</Label>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {FOLDER_COLOR_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setRenameColor(preset)}
+                      aria-label={`색상 ${preset}`}
+                      className={cn(
+                        "size-6 shrink-0 rounded-full ring-offset-background transition-transform hover:scale-110",
+                        renameColor.toLowerCase() === preset && "ring-2 ring-offset-2",
+                      )}
+                      style={{ backgroundColor: preset, "--tw-ring-color": preset } as React.CSSProperties}
+                    />
+                  ))}
                   <input
                     id="folder-color"
                     type="color"
                     value={renameColor}
                     onChange={(e) => setRenameColor(e.target.value)}
-                    className="border-input bg-background h-9 w-14 cursor-pointer rounded-md border p-1"
+                    aria-label="직접 색상 선택"
+                    className="border-input bg-background h-6 w-8 shrink-0 cursor-pointer rounded-md border p-0.5"
                   />
                   <span className="text-muted-foreground text-sm">{renameColor}</span>
                 </div>
@@ -572,9 +595,9 @@ export function AccountSidebar({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>메일함 삭제</DialogTitle>
+            <DialogTitle>분류 삭제</DialogTitle>
             <DialogDescription>
-              <strong>{pendingDeleteFolder?.name}</strong> 메일함을 삭제합니다. 이 메일함에 있던 메일은
+              <strong>{pendingDeleteFolder?.name}</strong> 분류를 삭제합니다. 이 분류에 있던 메일은
               받은편지함으로 돌아갑니다.
             </DialogDescription>
           </DialogHeader>

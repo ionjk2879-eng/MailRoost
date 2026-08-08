@@ -1,4 +1,4 @@
-import { Archive, ChevronLeft, Download, FolderInput, Inbox, MailOpen, Paperclip, Reply, Star, Trash2 } from "lucide-react"
+import { Archive, ChevronLeft, Download, Folder, FolderInput, Inbox, MailOpen, Paperclip, Reply, Star, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -148,7 +148,7 @@ export function MailDetail({
                   variant="ghost"
                   size="icon"
                   className="size-8"
-                  title="메일함으로 이동"
+                  title="분류로 이동"
                   onClick={() => setMoveOpen((v) => !v)}
                 >
                   <FolderInput className="size-4" />
@@ -180,12 +180,15 @@ export function MailDetail({
                           }}
                           className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
                         >
-                          <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: folder.color }} />
+                          <Folder
+                            className="size-3.5 shrink-0"
+                            style={{ color: folder.color, fill: folder.color, fillOpacity: 0.25 }}
+                          />
                           <span className="truncate">{folder.name}</span>
                         </button>
                       ))}
                     {(!folders || folders.length === 0) && !currentFolderId && (
-                      <p className="text-muted-foreground px-3 py-1.5 text-xs">메일함이 없습니다.</p>
+                      <p className="text-muted-foreground px-3 py-1.5 text-xs">분류가 없습니다.</p>
                     )}
                   </div>
                 )}

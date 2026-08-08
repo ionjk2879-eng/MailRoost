@@ -76,7 +76,7 @@ export interface UserRecord {
   email: string
 }
 
-// 사용자 정의 메일함 (앱 내부 전용 — 실제 메일 서버에는 반영되지 않음)
+// 사용자 정의 분류 (앱 내부 전용 — 실제 메일 서버에는 반영되지 않음)
 export interface MailFolder {
   id: string
   name: string
@@ -85,7 +85,7 @@ export interface MailFolder {
 }
 
 // 자동분류 규칙: 보낸사람/제목에 키워드가 포함되면
-// - targetFolderId가 있으면 지정한 메일함(또는 보관함)으로 이동 (새로 도착한 메일에만, 소급 적용 안 됨)
+// - targetFolderId가 있으면 지정한 분류(또는 보관함)으로 이동 (새로 도착한 메일에만, 소급 적용 안 됨)
 // - category가 있으면 카테고리 탭으로 분류 (매번 다시 계산되는 값이라 기존 메일에도 바로 적용됨)
 // 최소 하나는 있어야 한다.
 export interface AutoClassifyRule {

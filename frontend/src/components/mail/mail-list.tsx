@@ -1,4 +1,4 @@
-import { Archive, Check, ChevronDown, FolderInput, Inbox, Loader2, MailOpen, Minus, Star, Trash2, X } from "lucide-react"
+import { Archive, Check, ChevronDown, Folder, FolderInput, Inbox, Loader2, MailOpen, Minus, Star, Trash2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -23,7 +23,7 @@ interface MailListProps {
   onBulkMarkUnread: () => void
   onBulkDelete: () => void
   isBulkLoading?: boolean
-  // 보관 / 메일함 이동
+  // 보관 / 분류 이동
   onBulkArchive?: () => void
   folders?: MailFolder[]
   currentFolderId?: string
@@ -199,7 +199,7 @@ export function MailList({
                     className="h-7 gap-1 px-2 text-xs"
                     onClick={() => setMoveOpen((v) => !v)}
                     disabled={isBulkLoading}
-                    title="메일함으로 이동"
+                    title="분류로 이동"
                   >
                     <FolderInput className="size-3.5" />
                     <span className="hidden sm:inline">이동</span>
@@ -231,12 +231,15 @@ export function MailList({
                             }}
                             className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
                           >
-                            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: folder.color }} />
+                            <Folder
+                              className="size-3.5 shrink-0"
+                              style={{ color: folder.color, fill: folder.color, fillOpacity: 0.25 }}
+                            />
                             <span className="truncate">{folder.name}</span>
                           </button>
                         ))}
                       {(!folders || folders.length === 0) && !currentFolderId && (
-                        <p className="text-muted-foreground px-3 py-1.5 text-xs">메일함이 없습니다.</p>
+                        <p className="text-muted-foreground px-3 py-1.5 text-xs">분류가 없습니다.</p>
                       )}
                     </div>
                   )}

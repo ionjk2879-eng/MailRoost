@@ -389,8 +389,8 @@ export async function imapListTrash(
   })
 }
 
-// 특정 UID 목록의 메타데이터를 한 번의 연결로 조회 (사용자 정의 메일함 조회용).
-// 실제 메일은 여전히 INBOX에 있음 — 사용자 정의 메일함은 앱 내부 표시 전용이라 서버에서 옮기지 않는다.
+// 특정 UID 목록의 메타데이터를 한 번의 연결로 조회 (사용자 정의 분류 조회용).
+// 실제 메일은 여전히 INBOX에 있음 — 사용자 정의 분류는 앱 내부 표시 전용이라 서버에서 옮기지 않는다.
 export async function imapFetchByUids(config: ImapConfig, accountId: string, uids: string[]): Promise<Mail[]> {
   if (uids.length === 0) return []
   return withImap(config, async (client) => {
