@@ -1,4 +1,4 @@
-import { Archive, ChevronLeft, Download, Folder, FolderInput, Inbox, MailOpen, Paperclip, Reply, Star, Trash2 } from "lucide-react"
+import { Archive, ChevronLeft, Download, Folder, FolderInput, Forward, Inbox, MailOpen, Paperclip, Reply, ReplyAll, Star, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +18,8 @@ interface MailDetailProps {
   onDelete?: (mailId: string, accountId: string) => void
   onArchive?: (mailId: string, accountId: string) => void
   onReply?: (mail: Mail) => void
+  onReplyAll?: (mail: Mail) => void
+  onForward?: (mail: Mail) => void
   folders?: MailFolder[]
   currentFolderId?: string
   onMove?: (mailId: string, accountId: string, folderId: string | null) => void
@@ -59,6 +61,8 @@ export function MailDetail({
   onDelete,
   onArchive,
   onReply,
+  onReplyAll,
+  onForward,
   folders,
   currentFolderId,
   onMove,
@@ -106,6 +110,28 @@ export function MailDetail({
                 onClick={() => onReply(mail)}
               >
                 <Reply className="size-4" />
+              </Button>
+            )}
+            {onReplyAll && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="전체답장"
+                onClick={() => onReplyAll(mail)}
+              >
+                <ReplyAll className="size-4" />
+              </Button>
+            )}
+            {onForward && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                title="전달"
+                onClick={() => onForward(mail)}
+              >
+                <Forward className="size-4" />
               </Button>
             )}
             <Button

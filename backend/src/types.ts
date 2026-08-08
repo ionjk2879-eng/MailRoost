@@ -38,6 +38,9 @@ export interface Mail {
   isRead: boolean
   isStarred: boolean
   attachments?: MailAttachment[]
+  // 목록 조회에서는 비어있고, 상세 조회에서만 채워진다 (전체회신용)
+  toRecipients?: string[]
+  ccRecipients?: string[]
 }
 
 export interface GmailAccountRecord {
@@ -67,6 +70,8 @@ export interface ImapAccountRecord {
   email: string
   password: string
   label: string
+  smtpHost: string
+  smtpPort: number
 }
 
 export type ConnectedAccountRecord = GmailAccountRecord | NaverAccountRecord | DaumAccountRecord | ImapAccountRecord

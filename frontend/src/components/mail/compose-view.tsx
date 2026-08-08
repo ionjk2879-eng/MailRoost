@@ -6,13 +6,17 @@ import { Label } from "@/components/ui/label"
 import { sendMail } from "@/lib/api"
 import type { Account } from "@/types/mail"
 
-export const COMPOSE_SUPPORTED: Array<Account["provider"]> = ["gmail", "naver", "daum"]
+export const COMPOSE_SUPPORTED: Array<Account["provider"]> = ["gmail", "naver", "daum", "imap"]
 
 interface ComposeViewProps {
   accounts: Account[]
+  title?: string
   defaultAccountId?: string
   defaultTo?: string
+  defaultCc?: string
+  defaultBcc?: string
   defaultSubject?: string
+  defaultBody?: string
   onBack?: () => void
   onCancel: () => void
   onSent: () => void
@@ -20,9 +24,13 @@ interface ComposeViewProps {
 
 export function ComposeView({
   accounts,
+  title = "새 메일",
   defaultAccountId,
   defaultTo = "",
+  defaultCc = "",
+  defaultBcc = "",
   defaultSubject = "",
+  defaultBody = "",
   onBack,
   onCancel,
   onSent,
@@ -34,8 +42,12 @@ export function ComposeView({
       : sendableAccounts[0]?.id ?? "",
   )
   const [to, setTo] = useState(defaultTo)
+  const [cc, setCc] = useState(defaultCc)
+  const [bcc, setBcc] = useState(defaultBcc)
+  const [showCc, setShowCc] = useState(defaultCc.trim().length > 0)
+  const [showBcc, setShowBcc] = useState(defaultBcc.trim().length > 0)
   const [subject, setSubject] = useState(defaultSubject)
-  const [body, setBody] = useState("")
+  const [body, setBody] = useState(defaultBody)
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
 
@@ -47,7 +59,14 @@ export function ComposeView({
     }
     setError(null)
     setIsSending(true)
-    const result = await sendMail(accountId, to.trim(), subject.trim(), body)
+    const result = await sendMail(
+      accountId,
+      to.trim(),
+      subject.trim(),
+      body,
+      cc.trim() || undefined,
+      bcc.trim() || undefined,
+    )
     setIsSending(false)
     if (!result.ok) {
       setError(result.error ?? "전송에 실패했습니다.")
@@ -66,7 +85,7 @@ export function ComposeView({
           </Button>
         )}
         <div className="flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold">새 메일</h2>
+          <h2 className="text-lg font-semibold">{title}</h2>
           <button
             type="button"
             onClick={onCancel}
@@ -98,16 +117,62 @@ export function ComposeView({
             </select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="compose-to">받는 사람</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="compose-to">받는 사람</Label>
+              <div className="flex gap-2">
+                {!showCc && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCc(true)}
+                    className="text-muted-foreground hover:text-foreground text-xs"
+                  >
+                    참조
+                  </button>
+                )}
+                {!showBcc && (
+                  <button
+                    type="button"
+                    onClick={() => setShowBcc(true)}
+                    className="text-muted-foreground hover:text-foreground text-xs"
+                  >
+                    숨은참조
+                  </button>
+                )}
+              </div>
+            </div>
             <Input
               id="compose-to"
               type="email"
-              placeholder="recipient@example.com"
+              placeholder="recipient@example.com (여러 명은 콤마로 구분)"
               value={to}
               onChange={(e) => setTo(e.target.value)}
               required
             />
           </div>
+          {showCc && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="compose-cc">참조</Label>
+              <Input
+                id="compose-cc"
+                type="text"
+                placeholder="cc@example.com (여러 명은 콤마로 구분)"
+                value={cc}
+                onChange={(e) => setCc(e.target.value)}
+              />
+            </div>
+          )}
+          {showBcc && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="compose-bcc">숨은참조</Label>
+              <Input
+                id="compose-bcc"
+                type="text"
+                placeholder="bcc@example.com (여러 명은 콤마로 구분)"
+                value={bcc}
+                onChange={(e) => setBcc(e.target.value)}
+              />
+            </div>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="compose-subject">제목</Label>
             <Input

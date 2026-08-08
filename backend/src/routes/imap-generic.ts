@@ -8,15 +8,32 @@ import { createSessionId, readSession, SESSION_COOKIE, writeSession } from "../l
 
 const imapGeneric = new Hono<{ Bindings: Env }>()
 
+// IMAP 서버 이름에서 SMTP 서버 이름을 추측한다 (imap.example.com -> smtp.example.com).
+// 사용자가 직접 입력하지 않았을 때의 기본값일 뿐이며, 틀리면 나중에 분류 편집처럼 계정을 다시
+// 연결해 고칠 수 있다.
+function guessSmtpHost(imapHost: string): string {
+  return imapHost.startsWith("imap.") ? imapHost.replace(/^imap\./, "smtp.") : `smtp.${imapHost}`
+}
+
 imapGeneric.post("/connect", async (c) => {
   const body = await c
-    .req.json<{ host?: string; port?: number; email?: string; password?: string; label?: string }>()
+    .req.json<{
+      host?: string
+      port?: number
+      email?: string
+      password?: string
+      label?: string
+      smtpHost?: string
+      smtpPort?: number
+    }>()
     .catch(() => null)
   const host = body?.host?.trim()
   const port = body?.port ?? 993
   const email = body?.email?.trim()
   const password = body?.password?.trim()
   const label = body?.label?.trim() || host || "IMAP"
+  const smtpHost = body?.smtpHost?.trim() || (host ? guessSmtpHost(host) : "")
+  const smtpPort = body?.smtpPort ?? 465
 
   if (!host || !email || !password) {
     return c.json({ error: "서버 주소, 이메일, 비밀번호를 모두 입력해주세요." }, 400)
@@ -34,7 +51,7 @@ imapGeneric.post("/connect", async (c) => {
 
   const session = await readSession(c.env, sessionId)
   const accountId = `imap:${host}:${email}`
-  const imapRecord = { provider: "imap" as const, host, port, email, password, label }
+  const imapRecord = { provider: "imap" as const, host, port, email, password, label, smtpHost, smtpPort }
 
   if (session.userId) {
     const accounts = await getUserAccounts(c.env, session.userId)

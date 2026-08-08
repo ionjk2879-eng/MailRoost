@@ -1,5 +1,5 @@
 import type { Env, GmailAccountRecord, Mail, MailAttachment, MailCategory } from "../types"
-import { decodeRfc2047, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
+import { decodeRfc2047, parseAddressList, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
 
 // gmail.modify로는 라벨 변경/휴지통 이동까지만 되고 영구 삭제(batchDelete)는 403이 난다.
 // 휴지통 비우기/선택 영구삭제를 지원하려면 전체 계정 접근 스코프가 필요하다.
@@ -230,6 +230,24 @@ export async function listInboxMails(
   return listMailsByLabel(accessToken, accountId, "INBOX", maxResults, pageToken)
 }
 
+// Gmail 자체 검색(q 파라미터)으로 받은편지함 안에서 검색한다.
+export async function searchMails(
+  accessToken: string,
+  accountId: string,
+  query: string,
+  maxResults = 30,
+): Promise<Mail[]> {
+  const params = new URLSearchParams({ maxResults: String(maxResults), q: `in:inbox ${query}` })
+  const listRes = await fetch(`${GMAIL_API_BASE}/messages?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!listRes.ok) throw new Error(`Gmail 검색 실패: ${listRes.status}`)
+  const listJson = (await listRes.json()) as { messages?: { id: string }[] }
+  const ids = listJson.messages?.map((m) => m.id) ?? []
+  const messages = await batchGetMessages(accessToken, ids)
+  return messages.map((m) => mapMessageToMail(m, accountId))
+}
+
 // 특정 메시지 ID 목록의 메타데이터를 조회 (사용자 정의 분류 조회용).
 // 서버에서 이미 삭제된 메시지는 조용히 건너뛴다 (표류한 배정 항목).
 export async function fetchMailsByIds(accessToken: string, accountId: string, ids: string[]): Promise<Mail[]> {
@@ -402,10 +420,14 @@ export async function sendGmailMessage(
   to: string,
   subject: string,
   body: string,
+  cc?: string,
+  bcc?: string,
 ): Promise<void> {
   const raw = [
     `From: ${from}`,
     `To: ${to}`,
+    ...(cc ? [`Cc: ${cc}`] : []),
+    ...(bcc ? [`Bcc: ${bcc}`] : []),
     `Subject: ${encodeRfc2047Gmail(subject)}`,
     `MIME-Version: 1.0`,
     `Content-Type: text/plain; charset=utf-8`,
@@ -440,6 +462,10 @@ export async function getMailDetail(accessToken: string, accountId: string, mess
   const attachments: MailAttachment[] = []
   collectAttachments(msg.payload, attachments)
   if (attachments.length > 0) mail.attachments = attachments
+  const toHeader = getHeader(msg.payload?.headers, "To")
+  const ccHeader = getHeader(msg.payload?.headers, "Cc")
+  if (toHeader) mail.toRecipients = parseAddressList(toHeader)
+  if (ccHeader) mail.ccRecipients = parseAddressList(ccHeader)
   return mail
 }
 

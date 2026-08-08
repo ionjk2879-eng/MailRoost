@@ -69,10 +69,11 @@ function encodeRfc2047(str: string): string {
   return `=?UTF-8?B?${bytesToBase64(enc.encode(str))}?=`
 }
 
-function buildMessage(from: string, to: string, subject: string, body: string): string {
+function buildMessage(from: string, to: string, subject: string, body: string, cc?: string): string {
   const header = [
     `From: ${from}`,
     `To: ${to}`,
+    ...(cc ? [`Cc: ${cc}`] : []),
     `Subject: ${encodeRfc2047(subject)}`,
     `MIME-Version: 1.0`,
     `Content-Type: text/plain; charset=utf-8`,
@@ -89,6 +90,10 @@ function buildMessage(from: string, to: string, subject: string, body: string): 
   return `${header}\r\n${escapedBody}`
 }
 
+function splitAddresses(value: string | undefined): string[] {
+  return value ? value.split(",").map((s) => s.trim()).filter(Boolean) : []
+}
+
 export async function sendSmtp(
   host: string,
   port: number,
@@ -97,6 +102,8 @@ export async function sendSmtp(
   to: string,
   subject: string,
   body: string,
+  cc?: string,
+  bcc?: string,
 ): Promise<void> {
   const socket = connect({ hostname: host, port }, { secureTransport: "on", allowHalfOpen: false })
   const smtp = new SmtpSocket(socket)
@@ -124,15 +131,20 @@ export async function sendSmtp(
     const mf = await smtp.readResponse()
     if (mf.code !== 250) throw new Error(`MAIL FROM 실패: ${mf.code}`)
 
-    await smtp.write(`RCPT TO:<${to}>\r\n`)
-    const rt = await smtp.readResponse()
-    if (rt.code !== 250) throw new Error(`수신자 오류: ${rt.code} — 유효한 이메일 주소인지 확인해주세요.`)
+    // 실제 수신 봉투(envelope)는 To/Cc/Bcc 구분 없이 전체 수신자에게 RCPT TO를 보내야 한다.
+    // Bcc는 헤더에는 안 쓰지만 여기서는 똑같이 받아야 한다.
+    const recipients = [...splitAddresses(to), ...splitAddresses(cc), ...splitAddresses(bcc)]
+    for (const recipient of recipients) {
+      await smtp.write(`RCPT TO:<${recipient}>\r\n`)
+      const rt = await smtp.readResponse()
+      if (rt.code !== 250) throw new Error(`수신자 오류(${recipient}): ${rt.code} — 유효한 이메일 주소인지 확인해주세요.`)
+    }
 
     await smtp.write("DATA\r\n")
     const data = await smtp.readResponse()
     if (data.code !== 354) throw new Error(`DATA 실패: ${data.code}`)
 
-    const msg = buildMessage(email, to, subject, body)
+    const msg = buildMessage(email, to, subject, body, cc)
     await smtp.write(`${msg}\r\n.\r\n`)
     const sent = await smtp.readResponse()
     if (sent.code !== 250) throw new Error(`메일 전송 실패: ${sent.code}`)
@@ -150,8 +162,10 @@ export async function naverSendMail(
   to: string,
   subject: string,
   body: string,
+  cc?: string,
+  bcc?: string,
 ): Promise<void> {
-  await sendSmtp("smtp.naver.com", 465, email, appPassword, to, subject, body)
+  await sendSmtp("smtp.naver.com", 465, email, appPassword, to, subject, body, cc, bcc)
 }
 
 export async function daumSendMail(
@@ -160,6 +174,8 @@ export async function daumSendMail(
   to: string,
   subject: string,
   body: string,
+  cc?: string,
+  bcc?: string,
 ): Promise<void> {
-  await sendSmtp("smtp.daum.net", 465, email, password, to, subject, body)
+  await sendSmtp("smtp.daum.net", 465, email, password, to, subject, body, cc, bcc)
 }

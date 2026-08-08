@@ -303,15 +303,24 @@ export async function sendMail(
   to: string,
   subject: string,
   body: string,
+  cc?: string,
+  bcc?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch("/api/mail/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accountId, to, subject, body }),
+    body: JSON.stringify({ accountId, to, cc, bcc, subject, body }),
   })
   const data = (await res.json().catch(() => ({}))) as { error?: string }
   if (!res.ok) return { ok: false, error: data.error ?? "메일 전송에 실패했습니다." }
   return { ok: true }
+}
+
+// 이미 불러온 메일 안에서만 훑는 게 아니라 서버(Gmail 검색 / IMAP SEARCH)에서 직접 검색한다.
+export async function searchMails(query: string): Promise<{ mails: Mail[]; failedAccountIds: string[] }> {
+  const res = await fetch(`/api/mail/search?q=${encodeURIComponent(query)}`)
+  if (!res.ok) return { mails: [], failedAccountIds: [] }
+  return res.json()
 }
 
 export async function fetchMemos(): Promise<MemoItem[]> {
@@ -414,6 +423,8 @@ export async function connectImapAccount(params: {
   email: string
   password: string
   label: string
+  smtpHost?: string
+  smtpPort?: number
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const res = await fetch("/auth/imap/connect", {
     method: "POST",

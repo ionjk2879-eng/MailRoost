@@ -1,6 +1,6 @@
 import { connect } from "cloudflare:sockets"
 import type { Mail } from "../types"
-import { decodeRfc2047, extractMimeAttachment, listMimeAttachments, parseFromHeader, parseHeaderBlock, parseMimeMessage, sanitizeHtml, stripHtml } from "./mime"
+import { decodeRfc2047, extractMimeAttachment, listMimeAttachments, parseAddressList, parseFromHeader, parseHeaderBlock, parseMimeMessage, sanitizeHtml, stripHtml } from "./mime"
 
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
   const out = new Uint8Array(a.length + b.length)
@@ -374,6 +374,38 @@ export async function imapListInbox(
   })
 }
 
+// 받은편지함 안에서 보낸사람/제목/본문에 검색어가 포함된 메일을 찾는다.
+// 이미 불러온 메일 안에서만 훑던 클라이언트 검색과 달리 서버(IMAP SEARCH)까지 실제로 검색한다.
+export async function imapSearchInbox(
+  config: ImapConfig,
+  accountId: string,
+  query: string,
+  maxResults = 30,
+): Promise<Mail[]> {
+  return withImap(config, async (client) => {
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+
+    const escaped = query.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+    const searchResult = await client.command(
+      `UID SEARCH CHARSET UTF-8 OR FROM "${escaped}" OR SUBJECT "${escaped}" TEXT "${escaped}"`,
+    )
+    if (!searchResult.ok) return []
+    const line = searchResult.lines.find((l) => /^\*\s+SEARCH/i.test(l))
+    if (!line) return []
+    const uids = line.replace(/^\*\s+SEARCH\s*/i, "").trim().split(/\s+/).filter(Boolean)
+    if (uids.length === 0) return []
+
+    // SEARCH는 보통 오름차순(오래된 것부터)으로 UID를 돌려주므로, 뒤쪽(최신 것)만 취한다.
+    const targetUids = uids.slice(-maxResults)
+    const fetchResult = await client.command(
+      `UID FETCH ${targetUids.join(",")} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])`,
+    )
+    if (!fetchResult.ok) return []
+    return mapFetchLinesToMails(fetchResult.lines, accountId)
+  })
+}
+
 export async function imapListTrash(
   config: ImapConfig,
   accountId: string,
@@ -553,6 +585,8 @@ export async function imapGetMailDetail(config: ImapConfig, accountId: string, u
     isRead: flags.includes("\\Seen"),
     isStarred: flags.includes("\\Flagged"),
     attachments: attachments.length > 0 ? attachments : undefined,
+    toRecipients: headers["to"] ? parseAddressList(headers["to"]) : undefined,
+    ccRecipients: headers["cc"] ? parseAddressList(headers["cc"]) : undefined,
   }
 }
 
@@ -627,6 +661,16 @@ export async function naverListInbox(
   offset = 0,
 ): Promise<{ mails: Mail[]; hasMore: boolean }> {
   return imapListInbox(naverConfig(email, appPassword), accountId, maxResults, offset)
+}
+
+export async function naverSearchInbox(
+  email: string,
+  appPassword: string,
+  accountId: string,
+  query: string,
+  maxResults = 30,
+): Promise<Mail[]> {
+  return imapSearchInbox(naverConfig(email, appPassword), accountId, query, maxResults)
 }
 
 export async function naverMarkAsRead(email: string, appPassword: string, uid: string): Promise<void> {
@@ -723,6 +767,16 @@ export async function daumListInbox(
   offset = 0,
 ): Promise<{ mails: Mail[]; hasMore: boolean }> {
   return imapListInbox(daumConfig(email, password), accountId, maxResults, offset)
+}
+
+export async function daumSearchInbox(
+  email: string,
+  password: string,
+  accountId: string,
+  query: string,
+  maxResults = 30,
+): Promise<Mail[]> {
+  return imapSearchInbox(daumConfig(email, password), accountId, query, maxResults)
 }
 
 export async function daumMarkAsRead(email: string, password: string, uid: string): Promise<void> {

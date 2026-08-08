@@ -62,6 +62,33 @@ export function parseFromHeader(from: string): { name: string; email: string } {
   return { name: decoded, email: decoded }
 }
 
+// To/Cc처럼 콤마로 구분된 여러 주소가 들어있는 헤더를 파싱한다 (전체회신 수신자 목록용).
+// 따옴표로 감싼 표시 이름 안의 콤마("Doe, John" <a@b.com>)는 건너뛰도록 따옴표 안팎을 추적한다.
+export function parseAddressList(header: string): string[] {
+  const decoded = decodeRfc2047(header)
+  const parts: string[] = []
+  let current = ""
+  let inQuotes = false
+  for (const ch of decoded) {
+    if (ch === '"') inQuotes = !inQuotes
+    if (ch === "," && !inQuotes) {
+      parts.push(current)
+      current = ""
+      continue
+    }
+    current += ch
+  }
+  if (current.trim()) parts.push(current)
+
+  return parts
+    .map((part) => {
+      const trimmed = part.trim()
+      const match = trimmed.match(/<(.+)>$/)
+      return (match ? match[1] : trimmed).trim()
+    })
+    .filter(Boolean)
+}
+
 export function stripHtml(html: string): string {
   return html
     .replace(/<!--[\s\S]*?-->/g, "")

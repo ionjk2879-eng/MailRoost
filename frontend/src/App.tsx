@@ -48,6 +48,7 @@ import {
   reorderAccounts as apiReorderAccounts,
   reorderFolders as apiReorderFolders,
   restoreFromTrash,
+  searchMails,
   toggleStar,
   updateMemo,
   updateRule as apiUpdateRule,
@@ -84,7 +85,15 @@ function App() {
   const [isFolderLoading, setIsFolderLoading] = useState(false)
   const [rules, setRules] = useState<AutoClassifyRule[]>([])
   const [memos, setMemos] = useState<MemoItem[]>([])
-  const [composeState, setComposeState] = useState<{ accountId?: string; to?: string; subject?: string } | null>(null)
+  const [composeState, setComposeState] = useState<{
+    accountId?: string
+    to?: string
+    cc?: string
+    bcc?: string
+    subject?: string
+    body?: string
+    title?: string
+  } | null>(null)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [selectedMailId, setSelectedMailId] = useState<string | null>(null)
@@ -187,26 +196,53 @@ function App() {
     return counts
   }, [accountMails])
 
-  const visibleMails = useMemo(() => {
-    let mails = selectedCategory
-      ? accountMails.filter((mail) => mail.category === selectedCategory)
-      : accountMails
+  const categoryMails = useMemo(
+    () => (selectedCategory ? accountMails.filter((mail) => mail.category === selectedCategory) : accountMails),
+    [accountMails, selectedCategory],
+  )
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase()
-      mails = mails.filter(
-        (m) =>
-          m.fromName.toLowerCase().includes(q) ||
-          m.fromEmail.toLowerCase().includes(q) ||
-          m.subject.toLowerCase().includes(q) ||
-          m.snippet.toLowerCase().includes(q),
-      )
+  // 검색어를 입력하면 이미 불러온 메일 안에서는 바로 필터링해 보여주고(즉각 반응),
+  // 잠시 후(디바운스) 서버(Gmail 검색 / IMAP SEARCH)에서도 검색해 결과를 합친다.
+  const [serverSearchResults, setServerSearchResults] = useState<Mail[] | null>(null)
+  const [isServerSearching, setIsServerSearching] = useState(false)
+  const searchGenerationRef = useRef(0)
+
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (!query) {
+      setServerSearchResults(null)
+      setIsServerSearching(false)
+      return
+    }
+    const generation = ++searchGenerationRef.current
+    setIsServerSearching(true)
+    const timer = window.setTimeout(() => {
+      searchMails(query).then(({ mails }) => {
+        if (searchGenerationRef.current !== generation) return // 이미 검색어가 바뀐 뒤 늦게 도착한 응답은 버린다
+        setServerSearchResults(mails)
+        setIsServerSearching(false)
+      })
+    }, 400)
+    return () => window.clearTimeout(timer)
+  }, [searchQuery])
+
+  const visibleMails = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) {
+      return [...categoryMails].sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
     }
 
-    return [...mails].sort(
-      (a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime(),
+    const clientMatches = categoryMails.filter(
+      (m) =>
+        m.fromName.toLowerCase().includes(q) ||
+        m.fromEmail.toLowerCase().includes(q) ||
+        m.subject.toLowerCase().includes(q) ||
+        m.snippet.toLowerCase().includes(q),
     )
-  }, [accountMails, selectedCategory, searchQuery])
+    const merged = new Map<string, Mail>()
+    for (const m of [...clientMatches, ...(serverSearchResults ?? [])]) merged.set(`${m.accountId}:${m.id}`, m)
+    return [...merged.values()].sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
+  }, [categoryMails, searchQuery, serverSearchResults])
 
   const selectedMailStub =
     visibleMails.find((mail) => mail.id === selectedMailId)
@@ -659,6 +695,42 @@ function App() {
       accountId: mail.accountId,
       to: mail.fromEmail,
       subject: mail.subject.startsWith("Re:") ? mail.subject : `Re: ${mail.subject}`,
+      title: "답장",
+    })
+  }
+
+  const handleReplyAll = (mail: Mail) => {
+    const account = accounts.find((a) => a.id === mail.accountId)
+    const selfEmail = account?.email.toLowerCase()
+    const others = [...(mail.toRecipients ?? []), ...(mail.ccRecipients ?? [])]
+      .map((addr) => addr.trim())
+      .filter((addr) => addr && addr.toLowerCase() !== mail.fromEmail.toLowerCase() && addr.toLowerCase() !== selfEmail)
+    const uniqueOthers = [...new Set(others)]
+    setComposeState({
+      accountId: mail.accountId,
+      to: mail.fromEmail,
+      cc: uniqueOthers.length > 0 ? uniqueOthers.join(", ") : undefined,
+      subject: mail.subject.startsWith("Re:") ? mail.subject : `Re: ${mail.subject}`,
+      title: "전체답장",
+    })
+  }
+
+  const handleForward = (mail: Mail) => {
+    const headerLines = [
+      "",
+      "",
+      "---------- 원본 메일 ----------",
+      `보낸사람: ${mail.fromName} <${mail.fromEmail}>`,
+      `날짜: ${new Date(mail.receivedAt).toLocaleString("ko-KR")}`,
+      `제목: ${mail.subject}`,
+      ...(mail.toRecipients?.length ? [`받는사람: ${mail.toRecipients.join(", ")}`] : []),
+      "",
+    ]
+    setComposeState({
+      accountId: mail.accountId,
+      subject: mail.subject.startsWith("Fwd:") ? mail.subject : `Fwd: ${mail.subject}`,
+      body: headerLines.join("\n") + (mail.body || ""),
+      title: "전달",
     })
   }
 
@@ -825,7 +897,10 @@ function App() {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="bg-muted/50 focus:bg-muted w-full rounded-md py-1.5 pr-7 pl-7 text-sm outline-none transition-colors placeholder:text-muted-foreground"
         />
-        {searchQuery && (
+        {searchQuery && isServerSearching && (
+          <Loader2 className="text-muted-foreground absolute right-5 top-1/2 size-3.5 -translate-y-1/2 animate-spin" />
+        )}
+        {searchQuery && !isServerSearching && (
           <button
             type="button"
             onClick={() => setSearchQuery("")}
@@ -865,9 +940,13 @@ function App() {
   const mailDetailPane = composeState ? (
     <ComposeView
       accounts={accounts}
+      title={composeState.title}
       defaultAccountId={composeState.accountId}
       defaultTo={composeState.to}
+      defaultCc={composeState.cc}
+      defaultBcc={composeState.bcc}
       defaultSubject={composeState.subject}
+      defaultBody={composeState.body}
       onBack={isMobile ? handleCancelCompose : undefined}
       onCancel={handleCancelCompose}
       onSent={handleComposeSent}
@@ -883,6 +962,8 @@ function App() {
       onDelete={handleDeleteMail}
       onArchive={(mailId, accountId) => handleMoveMailFromInbox(mailId, accountId, ARCHIVE_FOLDER_ID)}
       onReply={handleReply}
+      onReplyAll={handleReplyAll}
+      onForward={handleForward}
       folders={folders}
       onMove={handleMoveMailFromInbox}
     />
@@ -914,9 +995,13 @@ function App() {
   const folderDetailPane = composeState ? (
     <ComposeView
       accounts={accounts}
+      title={composeState.title}
       defaultAccountId={composeState.accountId}
       defaultTo={composeState.to}
+      defaultCc={composeState.cc}
+      defaultBcc={composeState.bcc}
       defaultSubject={composeState.subject}
+      defaultBody={composeState.body}
       onBack={isMobile ? handleCancelCompose : undefined}
       onCancel={handleCancelCompose}
       onSent={handleComposeSent}
@@ -936,6 +1021,8 @@ function App() {
           : (mailId, accountId) => handleMoveMailFromFolder(mailId, accountId, ARCHIVE_FOLDER_ID)
       }
       onReply={handleReply}
+      onReplyAll={handleReplyAll}
+      onForward={handleForward}
       folders={folders}
       currentFolderId={selectedFolderId ?? undefined}
       onMove={handleMoveMailFromFolder}

@@ -18,6 +18,7 @@ import {
   trashMail as gmailTrash,
   trashMailBulk as gmailTrashBulk,
   restoreFromTrashBulk as gmailRestoreFromTrash,
+  searchMails as gmailSearchMails,
   sendGmailMessage,
 } from "../lib/gmail"
 import {
@@ -34,6 +35,7 @@ import {
   daumMarkAsUnread,
   daumPermanentDeleteBulk,
   daumRestoreFromTrashBulk,
+  daumSearchInbox,
   daumToggleStar,
   daumToggleStarBulk,
   imapDeleteMail,
@@ -49,6 +51,7 @@ import {
   imapMarkAsUnread,
   imapPermanentDeleteBulk,
   imapRestoreFromTrashBulk,
+  imapSearchInbox,
   imapToggleStar,
   imapToggleStarBulk,
   naverDeleteMail,
@@ -64,12 +67,13 @@ import {
   naverMarkAsUnread,
   naverPermanentDeleteBulk,
   naverRestoreFromTrashBulk,
+  naverSearchInbox,
   naverToggleStar,
   naverToggleStarBulk,
 } from "../lib/imap"
 import { applyOrder, assignmentKey, emptyMailOrgState, getUserMailOrg, normalizeMailOrgState, parseAssignmentKey, saveUserMailOrg } from "../lib/mailOrg"
 import { getUserMemos, saveUserMemos } from "../lib/memo"
-import { naverSendMail, daumSendMail } from "../lib/smtp"
+import { naverSendMail, daumSendMail, sendSmtp } from "../lib/smtp"
 import { readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
 const api = new Hono<{ Bindings: Env }>()
@@ -192,6 +196,16 @@ async function fetchImapMails(
 ): Promise<{ mails: Mail[]; hasMore: boolean }> {
   if (isDaum(record)) return daumListInbox(record.email, record.password, accountId, maxResults, offset)
   return imapListInbox({ host: record.host, port: record.port, email: record.email, password: record.password }, accountId, maxResults, offset)
+}
+
+async function searchImapMails(
+  accountId: string,
+  record: DaumAccountRecord | ImapAccountRecord,
+  query: string,
+  maxResults: number,
+): Promise<Mail[]> {
+  if (isDaum(record)) return daumSearchInbox(record.email, record.password, accountId, query, maxResults)
+  return imapSearchInbox({ host: record.host, port: record.port, email: record.email, password: record.password }, accountId, query, maxResults)
 }
 
 async function fetchImapTrash(
@@ -729,6 +743,72 @@ api.get("/mail", async (c) => {
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   const nextCursor = Object.keys(nextCursorMap).length > 0 ? encodeCursor(nextCursorMap) : null
   return c.json({ mails: results, nextCursor, failedAccountIds })
+})
+
+// 이미 불러온 메일 안에서만 훑는 클라이언트 검색과 달리, 계정 서버(Gmail 검색 / IMAP SEARCH)에서
+// 직접 검색한다. 계정별로 병렬 조회하고 하나가 실패해도 나머지 결과는 그대로 돌려준다.
+const SEARCH_PAGE_PER_ACCOUNT = 30
+
+api.get("/mail/search", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ mails: [], failedAccountIds: [] })
+
+  const query = c.req.query("q")?.trim()
+  if (!query) return c.json({ mails: [], failedAccountIds: [] })
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const org = await resolveMailOrg(c.env, session)
+  const accountIds = Object.keys(accountMap)
+
+  const isAssignedElsewhere = (accountId: string, mailId: string) =>
+    Object.prototype.hasOwnProperty.call(org.assignments, assignmentKey(accountId, mailId))
+
+  const results: Mail[] = []
+  const failedAccountIds: string[] = []
+  let accountsChanged = false
+
+  const perAccountResults = await Promise.all(
+    accountIds.map(async (accountId) => {
+      const record = accountMap[accountId]
+      if (!record) return null
+      try {
+        if (record.provider === "naver") {
+          const mails = await naverSearchInbox(record.email, record.appPassword, accountId, query, SEARCH_PAGE_PER_ACCOUNT)
+          return { accountId, mails }
+        }
+        if (record.provider === "daum" || record.provider === "imap") {
+          const mails = await searchImapMails(accountId, record, query, SEARCH_PAGE_PER_ACCOUNT)
+          return { accountId, mails }
+        }
+        const fresh = await ensureFreshToken(c.env, record)
+        const updatedRecord = fresh.accessToken !== record.accessToken ? fresh : undefined
+        const mails = await gmailSearchMails(fresh.accessToken, accountId, query, SEARCH_PAGE_PER_ACCOUNT)
+        return { accountId, mails, updatedRecord }
+      } catch (err) {
+        console.error(`[mail-search] account ${accountId} failed, skipping:`, err)
+        return { accountId, failed: true as const }
+      }
+    }),
+  )
+
+  for (const result of perAccountResults) {
+    if (!result) continue
+    if ('failed' in result && result.failed) {
+      failedAccountIds.push(result.accountId)
+      continue
+    }
+    results.push(...result.mails.filter((m) => !isAssignedElsewhere(result.accountId, m.id)))
+    if ('updatedRecord' in result && result.updatedRecord) {
+      accountMap[result.accountId] = result.updatedRecord
+      accountsChanged = true
+    }
+  }
+
+  if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
+
+  results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
+  return c.json({ mails: results, failedAccountIds })
 })
 
 // ── Trash ──────────────────────────────────────────────────────────────────────
@@ -1279,8 +1359,10 @@ api.post("/mail/send", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
 
-  const body = await c.req.json<{ accountId?: string; to?: string; subject?: string; body?: string }>().catch(() => null)
-  const { accountId, to, subject, body: mailBody } = body ?? {}
+  const body = await c.req
+    .json<{ accountId?: string; to?: string; cc?: string; bcc?: string; subject?: string; body?: string }>()
+    .catch(() => null)
+  const { accountId, to, cc, bcc, subject, body: mailBody } = body ?? {}
   if (!accountId || !to || !subject || !mailBody) return c.json({ error: "필수 항목이 누락되었습니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
@@ -1289,15 +1371,19 @@ api.post("/mail/send", async (c) => {
   if (!record) return c.json({ error: "계정을 찾을 수 없습니다." }, 404)
 
   if (record.provider === "naver") {
-    await naverSendMail(record.email, record.appPassword, to, subject, mailBody)
+    await naverSendMail(record.email, record.appPassword, to, subject, mailBody, cc, bcc)
     return c.json({ ok: true })
   }
   if (record.provider === "daum") {
-    await daumSendMail(record.email, record.password, to, subject, mailBody)
+    await daumSendMail(record.email, record.password, to, subject, mailBody, cc, bcc)
     return c.json({ ok: true })
   }
   if (record.provider === "imap") {
-    return c.json({ error: "IMAP 계정은 현재 메일 보내기를 지원하지 않습니다." }, 400)
+    // 예전에 연결한 계정에는 smtpHost/smtpPort가 없을 수 있어 IMAP 호스트에서 다시 추측한다.
+    const smtpHost = record.smtpHost || (record.host.startsWith("imap.") ? record.host.replace(/^imap\./, "smtp.") : `smtp.${record.host}`)
+    const smtpPort = record.smtpPort || 465
+    await sendSmtp(smtpHost, smtpPort, record.email, record.password, to, subject, mailBody, cc, bcc)
+    return c.json({ ok: true })
   }
 
   const fresh = await ensureFreshToken(c.env, record)
@@ -1305,7 +1391,7 @@ api.post("/mail/send", async (c) => {
     accountMap[accountId] = fresh
     await persistAccounts(c.env, sessionId, session, accountMap)
   }
-  await sendGmailMessage(fresh.accessToken, record.email, to, subject, mailBody)
+  await sendGmailMessage(fresh.accessToken, record.email, to, subject, mailBody, cc, bcc)
   return c.json({ ok: true })
 })
 
