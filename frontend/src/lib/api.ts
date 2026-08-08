@@ -1,4 +1,4 @@
-import type { Account, AutoClassifyRule, Mail, MailAttachment, MailCategory, MailFolder, MemoItem } from "@/types/mail"
+import type { Account, AutoClassifyRule, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -8,6 +8,22 @@ export async function fetchAccounts(): Promise<Account[]> {
   const res = await fetch("/api/accounts")
   if (!res.ok) return []
   return res.json()
+}
+
+export async function updateAccountSignature(
+  id: string,
+  signature: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/accounts/${encodeURIComponent(id)}/signature`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ signature }),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "서명 저장에 실패했습니다." }
+  }
+  return { ok: true }
 }
 
 export async function fetchMails(cursor?: string): Promise<{ mails: Mail[]; nextCursor: string | null; failedAccountIds: string[] }> {
@@ -305,14 +321,51 @@ export async function sendMail(
   body: string,
   cc?: string,
   bcc?: string,
+  forwardedAttachments?: ForwardedAttachmentRef[],
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch("/api/mail/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accountId, to, cc, bcc, subject, body }),
+    body: JSON.stringify({ accountId, to, cc, bcc, subject, body, forwardedAttachments }),
   })
   const data = (await res.json().catch(() => ({}))) as { error?: string }
   if (!res.ok) return { ok: false, error: data.error ?? "메일 전송에 실패했습니다." }
+  return { ok: true }
+}
+
+export async function fetchScheduledMails(): Promise<ScheduledMail[]> {
+  const res = await fetch("/api/scheduled-mails")
+  if (!res.ok) return []
+  const data = (await res.json()) as { scheduledMails: ScheduledMail[] }
+  return data.scheduledMails
+}
+
+export async function scheduleMail(
+  accountId: string,
+  to: string,
+  subject: string,
+  body: string,
+  sendAt: number,
+  cc?: string,
+  bcc?: string,
+  forwardedAttachments?: ForwardedAttachmentRef[],
+): Promise<{ ok: true; scheduledMail: ScheduledMail } | { ok: false; error: string }> {
+  const res = await fetch("/api/scheduled-mails", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, to, cc, bcc, subject, body, sendAt, forwardedAttachments }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { scheduledMail?: ScheduledMail; error?: string }
+  if (!res.ok || !data.scheduledMail) return { ok: false, error: data.error ?? "예약발송 등록에 실패했습니다." }
+  return { ok: true, scheduledMail: data.scheduledMail }
+}
+
+export async function cancelScheduledMail(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/scheduled-mails/${encodeURIComponent(id)}`, { method: "DELETE" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "예약발송 취소에 실패했습니다." }
+  }
   return { ok: true }
 }
 
@@ -359,6 +412,50 @@ export async function deleteMemo(id: string): Promise<{ ok: boolean; error?: str
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     return { ok: false, error: data.error ?? "메모 삭제에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function fetchQuickReplies(): Promise<QuickReply[]> {
+  const res = await fetch("/api/quick-replies")
+  if (!res.ok) return []
+  const data = (await res.json()) as { quickReplies: QuickReply[] }
+  return data.quickReplies
+}
+
+export async function createQuickReply(
+  title: string,
+  body: string,
+): Promise<{ ok: true; quickReply: QuickReply } | { ok: false; error: string }> {
+  const res = await fetch("/api/quick-replies", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, body }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { quickReply?: QuickReply; error?: string }
+  if (!res.ok || !data.quickReply) return { ok: false, error: data.error ?? "빠른 답장 생성에 실패했습니다." }
+  return { ok: true, quickReply: data.quickReply }
+}
+
+export async function updateQuickReply(
+  id: string,
+  patch: Partial<Pick<QuickReply, "title" | "body">>,
+): Promise<{ ok: true; quickReply: QuickReply } | { ok: false; error: string }> {
+  const res = await fetch(`/api/quick-replies/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  })
+  const data = (await res.json().catch(() => ({}))) as { quickReply?: QuickReply; error?: string }
+  if (!res.ok || !data.quickReply) return { ok: false, error: data.error ?? "빠른 답장 수정에 실패했습니다." }
+  return { ok: true, quickReply: data.quickReply }
+}
+
+export async function deleteQuickReply(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/quick-replies/${encodeURIComponent(id)}`, { method: "DELETE" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "빠른 답장 삭제에 실패했습니다." }
   }
   return { ok: true }
 }

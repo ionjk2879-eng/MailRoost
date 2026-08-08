@@ -15,6 +15,7 @@ export interface Account {
   provider: Provider
   label: string
   color: string
+  signature?: string
 }
 
 export interface MailAttachment {
@@ -111,6 +112,14 @@ export interface MemoItem {
   updatedAt: number
 }
 
+// 빠른 답장(자주 쓰는 문구) 템플릿. 앱 내부 전용, 계정과 무관하게 공용.
+export interface QuickReply {
+  id: string
+  title: string
+  body: string
+  createdAt: number
+}
+
 export interface MailOrgState {
   folders: MailFolder[]
   // key: assignmentKey(accountId, mailId) in lib/mailOrg.ts -> folderId
@@ -120,6 +129,35 @@ export interface MailOrgState {
   classified: Record<string, true>
   // 사이드바에 표시할 계정 순서 (드래그로 조정). 여기 없는 계정은 뒤에 자연 순서대로 붙는다.
   accountOrder: string[]
+  // key: accountId -> 서명 본문
+  signatures: Record<string, string>
+}
+
+// 전달(forward)로 보낼 때 원본 첨부를 다시 첨부하기 위한 참조. filename/mimeType은
+// 조회 실패 시 폴백으로 쓰인다.
+export interface ForwardedAttachmentRef {
+  accountId: string
+  mailId: string
+  attachmentId: string
+  filename: string
+  mimeType: string
+}
+
+// 예약발송. 도래 시각(sendAt)이 지나면 cron이 스캔해서 실제로 보내고 항목을 지운다.
+// 로그인 사용자는 userId, 게스트는 sessionId만 채운다 — 계정 조회/소유권 확인 방식이 서로 다르기 때문.
+export interface ScheduledMail {
+  id: string
+  userId?: string
+  sessionId?: string
+  accountId: string
+  to: string
+  cc?: string
+  bcc?: string
+  subject: string
+  body: string
+  forwardedAttachments?: ForwardedAttachmentRef[]
+  sendAt: number
+  createdAt: number
 }
 
 export interface StoredSession {
@@ -127,4 +165,5 @@ export interface StoredSession {
   accounts: Record<string, ConnectedAccountRecord>
   mailOrg?: MailOrgState
   memos?: MemoItem[]
+  quickReplies?: QuickReply[]
 }

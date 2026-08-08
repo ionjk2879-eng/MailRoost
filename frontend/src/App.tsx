@@ -22,11 +22,14 @@ import { LandingView } from "@/components/home/landing-view"
 import {
   bulkDeleteMails,
   bulkMarkRead,
+  cancelScheduledMail,
   createFolder as apiCreateFolder,
   createMemo,
+  createQuickReply,
   createRule as apiCreateRule,
   deleteFolder as apiDeleteFolder,
   deleteMemo,
+  deleteQuickReply,
   deleteRule as apiDeleteRule,
   emptyAllTrash,
   emptyTrash,
@@ -37,7 +40,9 @@ import {
   fetchMailDetail,
   fetchMails,
   fetchMemos,
+  fetchQuickReplies,
   fetchRules,
+  fetchScheduledMails,
   fetchTrashMails,
   logout,
   markAsRead,
@@ -50,11 +55,13 @@ import {
   restoreFromTrash,
   searchMails,
   toggleStar,
+  updateAccountSignature,
   updateMemo,
+  updateQuickReply,
   updateRule as apiUpdateRule,
 } from "@/lib/api"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { Account, AutoClassifyRule, Mail, MailCategory, MailFolder, MemoItem } from "@/types/mail"
+import type { Account, AutoClassifyRule, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
 
 function isRealAccountId(accountId: string): boolean {
   return accountId.includes(":")
@@ -85,6 +92,8 @@ function App() {
   const [isFolderLoading, setIsFolderLoading] = useState(false)
   const [rules, setRules] = useState<AutoClassifyRule[]>([])
   const [memos, setMemos] = useState<MemoItem[]>([])
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
+  const [scheduledMails, setScheduledMails] = useState<ScheduledMail[]>([])
   const [composeState, setComposeState] = useState<{
     accountId?: string
     to?: string
@@ -93,6 +102,7 @@ function App() {
     subject?: string
     body?: string
     title?: string
+    forwardedAttachments?: ForwardedAttachmentRef[]
   } | null>(null)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
@@ -151,6 +161,8 @@ function App() {
             fetchFolders().then(setFolders),
             fetchRules().then(setRules),
             fetchMemos().then(setMemos),
+            fetchQuickReplies().then(setQuickReplies),
+            fetchScheduledMails().then(setScheduledMails),
           ])
         }
       })
@@ -695,6 +707,57 @@ function App() {
     }
   }
 
+  const handleCreateQuickReply = async (title: string, body: string): Promise<{ ok: boolean; error?: string }> => {
+    const result = await createQuickReply(title, body)
+    if (!result.ok) return { ok: false, error: result.error }
+    setQuickReplies((prev) => [result.quickReply, ...prev])
+    return { ok: true }
+  }
+
+  const handleUpdateQuickReply = async (
+    id: string,
+    title: string,
+    body: string,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const result = await updateQuickReply(id, { title, body })
+    if (!result.ok) return { ok: false, error: result.error }
+    setQuickReplies((prev) => prev.map((q) => (q.id === id ? result.quickReply : q)))
+    return { ok: true }
+  }
+
+  const handleDeleteQuickReply = async (id: string) => {
+    const removed = quickReplies.find((q) => q.id === id)
+    setQuickReplies((prev) => prev.filter((q) => q.id !== id))
+    const result = await deleteQuickReply(id)
+    if (!result.ok) {
+      if (removed) setQuickReplies((prev) => [removed, ...prev])
+      showError(result.error ?? "빠른 답장 삭제에 실패했습니다.")
+    }
+  }
+
+  const handleScheduled = (mail: ScheduledMail) => {
+    setScheduledMails((prev) => [...prev, mail])
+  }
+
+  const handleCancelScheduledMail = async (id: string) => {
+    const removed = scheduledMails.find((m) => m.id === id)
+    setScheduledMails((prev) => prev.filter((m) => m.id !== id))
+    const result = await cancelScheduledMail(id)
+    if (!result.ok) {
+      if (removed) setScheduledMails((prev) => [...prev, removed])
+      showError(result.error ?? "예약발송 취소에 실패했습니다.")
+    }
+  }
+
+  const handleUpdateSignature = async (accountId: string, signature: string): Promise<{ ok: boolean; error?: string }> => {
+    const result = await updateAccountSignature(accountId, signature)
+    if (!result.ok) return { ok: false, error: result.error }
+    setRealAccounts((prev) =>
+      prev.map((a) => (a.id === accountId ? { ...a, signature: signature.trim() || undefined } : a)),
+    )
+    return { ok: true }
+  }
+
   const handleOpenCompose = () => {
     setComposeState({})
     setSelectedMailId(null)
@@ -741,6 +804,14 @@ function App() {
       subject: mail.subject.startsWith("Fwd:") ? mail.subject : `Fwd: ${mail.subject}`,
       body: headerLines.join("\n") + (mail.body || ""),
       title: "전달",
+      forwardedAttachments: mail.attachments?.map((att) => ({
+        accountId: mail.accountId,
+        mailId: mail.id,
+        attachmentId: att.id,
+        filename: att.filename,
+        mimeType: att.mimeType,
+        size: att.size,
+      })),
     })
   }
 
@@ -922,6 +993,8 @@ function App() {
     setSelectedFolderId(null)
     setRules([])
     setMemos([])
+    setQuickReplies([])
+    setScheduledMails([])
     goHome()
   }
 
@@ -1030,6 +1103,7 @@ function App() {
   const mailDetailPane = composeState ? (
     <ComposeView
       accounts={accounts}
+      quickReplies={quickReplies}
       title={composeState.title}
       defaultAccountId={composeState.accountId}
       defaultTo={composeState.to}
@@ -1037,6 +1111,8 @@ function App() {
       defaultBcc={composeState.bcc}
       defaultSubject={composeState.subject}
       defaultBody={composeState.body}
+      defaultForwardedAttachments={composeState.forwardedAttachments}
+      onScheduled={handleScheduled}
       onBack={isMobile ? handleCancelCompose : undefined}
       onCancel={handleCancelCompose}
       onSent={handleComposeSent}
@@ -1086,6 +1162,7 @@ function App() {
   const folderDetailPane = composeState ? (
     <ComposeView
       accounts={accounts}
+      quickReplies={quickReplies}
       title={composeState.title}
       defaultAccountId={composeState.accountId}
       defaultTo={composeState.to}
@@ -1093,6 +1170,8 @@ function App() {
       defaultBcc={composeState.bcc}
       defaultSubject={composeState.subject}
       defaultBody={composeState.body}
+      defaultForwardedAttachments={composeState.forwardedAttachments}
+      onScheduled={handleScheduled}
       onBack={isMobile ? handleCancelCompose : undefined}
       onCancel={handleCancelCompose}
       onSent={handleComposeSent}
@@ -1209,11 +1288,18 @@ function App() {
               onMarkAllRead={handleMarkAllRead}
               onDeleteBeforeDate={handleDeleteBeforeDate}
               onEmptyTrashAccount={handleEmptyTrashAccount}
+              onUpdateSignature={handleUpdateSignature}
               folders={folders}
               rules={rules}
               onCreateRule={handleCreateRule}
               onToggleRule={handleToggleRule}
               onDeleteRule={handleDeleteRule}
+              quickReplies={quickReplies}
+              onCreateQuickReply={handleCreateQuickReply}
+              onUpdateQuickReply={handleUpdateQuickReply}
+              onDeleteQuickReply={handleDeleteQuickReply}
+              scheduledMails={scheduledMails}
+              onCancelScheduledMail={handleCancelScheduledMail}
             />
           </div>
         ) : view === "trash" ? (

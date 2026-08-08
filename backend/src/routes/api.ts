@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Env, ImapAccountRecord, Mail, MailCategory, MailFolder, MailOrgState, MemoItem, StoredSession } from "../types"
+import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Env, ForwardedAttachmentRef, ImapAccountRecord, Mail, MailCategory, MailFolder, MailOrgState, MemoItem, QuickReply, ScheduledMail, StoredSession } from "../types"
 import { getUserAccounts, getUserById, saveUserAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import {
@@ -8,7 +8,6 @@ import {
   emptyTrash as gmailEmptyTrash,
   ensureFreshToken,
   fetchMailsByIds as gmailFetchByIds,
-  getAttachment as gmailGetAttachment,
   getMailDetail,
   listInboxMails,
   listTrashMails as gmailListTrash,
@@ -19,14 +18,12 @@ import {
   trashMailBulk as gmailTrashBulk,
   restoreFromTrashBulk as gmailRestoreFromTrash,
   searchMails as gmailSearchMails,
-  sendGmailMessage,
 } from "../lib/gmail"
 import {
   daumDeleteMail,
   daumDeleteMailBulk,
   daumEmptyTrash,
   daumFetchByUids,
-  daumGetAttachment,
   daumGetMailDetail,
   daumListInbox,
   daumListTrash,
@@ -42,7 +39,6 @@ import {
   imapDeleteMailBulk,
   imapEmptyTrash,
   imapFetchByUids,
-  imapGetAttachment,
   imapGetMailDetail,
   imapListInbox,
   imapListTrash,
@@ -58,7 +54,6 @@ import {
   naverDeleteMailBulk,
   naverEmptyTrash,
   naverFetchByUids,
-  naverGetAttachment,
   naverGetMailDetail,
   naverListInbox,
   naverListTrash,
@@ -72,8 +67,11 @@ import {
   naverToggleStarBulk,
 } from "../lib/imap"
 import { applyOrder, assignmentKey, emptyMailOrgState, getUserMailOrg, normalizeMailOrgState, parseAssignmentKey, saveUserMailOrg } from "../lib/mailOrg"
+import { fetchAttachmentForAccount, resolveForwardedAttachments, sendViaRecord } from "../lib/mailSend"
+import type { OutgoingAttachment } from "../lib/mime"
 import { getUserMemos, saveUserMemos } from "../lib/memo"
-import { naverSendMail, daumSendMail, sendSmtp } from "../lib/smtp"
+import { getUserQuickReplies, saveUserQuickReplies } from "../lib/quickReplies"
+import { deleteScheduledMail, listAllScheduledMails, saveScheduledMail } from "../lib/scheduledMail"
 import { readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
 const api = new Hono<{ Bindings: Env }>()
@@ -184,6 +182,25 @@ async function persistMemos(
   }
 }
 
+async function resolveQuickReplies(env: Env, session: StoredSession): Promise<QuickReply[]> {
+  if (session.userId) return getUserQuickReplies(env, session.userId)
+  return session.quickReplies ?? []
+}
+
+async function persistQuickReplies(
+  env: Env,
+  sessionId: string,
+  session: StoredSession,
+  quickReplies: QuickReply[],
+): Promise<void> {
+  if (session.userId) {
+    await saveUserQuickReplies(env, session.userId, quickReplies)
+  } else {
+    session.quickReplies = quickReplies
+    await writeSession(env, sessionId, session)
+  }
+}
+
 // ── IMAP helpers ──────────────────────────────────────────────────────────────
 
 function isDaum(r: ConnectedAccountRecord): r is DaumAccountRecord { return r.provider === "daum" }
@@ -240,19 +257,39 @@ api.get("/accounts", async (c) => {
 
   let gmailIdx = 0, naverIdx = 0, daumIdx = 0, imapIdx = 0
   let accounts: Account[] = Object.entries(accountMap).map(([id, record]) => {
+    const signature = org.signatures[id] || undefined
     if (record.provider === "naver") {
-      return { id, email: record.email, provider: "naver" as const, label: "네이버", color: NAVER_COLOR_PALETTE[naverIdx++ % NAVER_COLOR_PALETTE.length] }
+      return { id, email: record.email, provider: "naver" as const, label: "네이버", color: NAVER_COLOR_PALETTE[naverIdx++ % NAVER_COLOR_PALETTE.length], signature }
     }
     if (record.provider === "daum") {
-      return { id, email: record.email, provider: "daum" as const, label: "다음", color: DAUM_COLOR_PALETTE[daumIdx++ % DAUM_COLOR_PALETTE.length] }
+      return { id, email: record.email, provider: "daum" as const, label: "다음", color: DAUM_COLOR_PALETTE[daumIdx++ % DAUM_COLOR_PALETTE.length], signature }
     }
     if (record.provider === "imap") {
-      return { id, email: record.email, provider: "imap" as const, label: record.label, color: IMAP_COLOR_PALETTE[imapIdx++ % IMAP_COLOR_PALETTE.length] }
+      return { id, email: record.email, provider: "imap" as const, label: record.label, color: IMAP_COLOR_PALETTE[imapIdx++ % IMAP_COLOR_PALETTE.length], signature }
     }
-    return { id, email: record.email, provider: "gmail" as const, label: "Gmail", color: GMAIL_COLOR_PALETTE[gmailIdx++ % GMAIL_COLOR_PALETTE.length] }
+    return { id, email: record.email, provider: "gmail" as const, label: "Gmail", color: GMAIL_COLOR_PALETTE[gmailIdx++ % GMAIL_COLOR_PALETTE.length], signature }
   })
   accounts = applyOrder(accounts, org.accountOrder, (a) => a.id)
   return c.json(accounts)
+})
+
+api.patch("/accounts/:id/signature", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const accountId = c.req.param("id")
+  const body = await c.req.json<{ signature?: string }>().catch(() => null)
+  const signature = body?.signature ?? ""
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  if (!accountMap[accountId]) return c.json({ error: "계정을 찾을 수 없습니다." }, 404)
+
+  const org = await resolveMailOrg(c.env, session)
+  if (signature.trim()) org.signatures[accountId] = signature
+  else delete org.signatures[accountId]
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ ok: true, signature: signature.trim() ? signature : undefined })
 })
 
 api.post("/accounts/reorder", async (c) => {
@@ -493,6 +530,72 @@ api.delete("/memos/:id", async (c) => {
   const memos = await resolveMemos(c.env, session)
   const next = memos.filter((m) => m.id !== memoId)
   await persistMemos(c.env, sessionId, session, next)
+  return c.json({ ok: true })
+})
+
+// ── 빠른 답장 (자주 쓰는 문구, 앱 내부 전용) ──────────────────────────────────────
+
+api.get("/quick-replies", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ quickReplies: [] })
+  const session = await readSession(c.env, sessionId)
+  const quickReplies = await resolveQuickReplies(c.env, session)
+  return c.json({ quickReplies })
+})
+
+api.post("/quick-replies", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req.json<{ title?: string; body?: string }>().catch(() => null)
+  const title = body?.title?.trim()
+  const replyBody = body?.body ?? ""
+  if (!title) return c.json({ error: "제목을 입력해주세요." }, 400)
+  if (!replyBody.trim()) return c.json({ error: "내용을 입력해주세요." }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const quickReplies = await resolveQuickReplies(c.env, session)
+
+  const quickReply: QuickReply = { id: crypto.randomUUID(), title, body: replyBody, createdAt: Date.now() }
+  quickReplies.unshift(quickReply)
+  await persistQuickReplies(c.env, sessionId, session, quickReplies)
+  return c.json({ quickReply })
+})
+
+api.patch("/quick-replies/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const id = c.req.param("id")
+  const body = await c.req.json<{ title?: string; body?: string }>().catch(() => null)
+
+  const session = await readSession(c.env, sessionId)
+  const quickReplies = await resolveQuickReplies(c.env, session)
+  const quickReply = quickReplies.find((q) => q.id === id)
+  if (!quickReply) return c.json({ error: "빠른 답장을 찾을 수 없습니다." }, 404)
+
+  if (body?.title !== undefined) {
+    const title = body.title.trim()
+    if (!title) return c.json({ error: "제목을 입력해주세요." }, 400)
+    quickReply.title = title
+  }
+  if (body?.body !== undefined) {
+    if (!body.body.trim()) return c.json({ error: "내용을 입력해주세요." }, 400)
+    quickReply.body = body.body
+  }
+  await persistQuickReplies(c.env, sessionId, session, quickReplies)
+  return c.json({ quickReply })
+})
+
+api.delete("/quick-replies/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const id = c.req.param("id")
+  const session = await readSession(c.env, sessionId)
+  const quickReplies = await resolveQuickReplies(c.env, session)
+  const next = quickReplies.filter((q) => q.id !== id)
+  await persistQuickReplies(c.env, sessionId, session, next)
   return c.json({ ok: true })
 })
 
@@ -1287,29 +1390,15 @@ api.get("/mail/:id/attachment/:attachmentId", async (c) => {
 
   const session = await readSession(c.env, sessionId)
   const accountMap = await resolveAccounts(c.env, session)
-  const record = accountMap[accountId]
-  if (!record) return c.json({ error: "not found" }, 404)
+  if (!accountMap[accountId]) return c.json({ error: "not found" }, 404)
 
-  let result: { bytes: Uint8Array; mimeType: string; filename: string } | null = null
-
-  if (record.provider === "naver") {
-    result = await naverGetAttachment(record.email, record.appPassword, mailId, attachmentId)
-  } else if (record.provider === "daum") {
-    result = await daumGetAttachment(record.email, record.password, mailId, attachmentId)
-  } else if (record.provider === "imap") {
-    result = await imapGetAttachment(
-      { host: record.host, port: record.port, email: record.email, password: record.password },
-      mailId,
-      attachmentId,
-    )
-  } else {
-    const fresh = await ensureFreshToken(c.env, record)
-    if (fresh.accessToken !== record.accessToken) {
-      accountMap[accountId] = fresh
-      await persistAccounts(c.env, sessionId, session, accountMap)
-    }
-    const gmailResult = await gmailGetAttachment(fresh.accessToken, mailId, attachmentId)
-    result = gmailResult ? { ...gmailResult, mimeType: fallbackMimeType, filename: fallbackFilename } : null
+  const { result, updatedRecord } = await fetchAttachmentForAccount(c.env, accountMap, accountId, mailId, attachmentId, {
+    filename: fallbackFilename,
+    mimeType: fallbackMimeType,
+  })
+  if (updatedRecord) {
+    accountMap[accountId] = updatedRecord
+    await persistAccounts(c.env, sessionId, session, accountMap)
   }
 
   if (!result) return c.json({ error: "첨부파일을 찾을 수 없습니다." }, 404)
@@ -1360,9 +1449,17 @@ api.post("/mail/send", async (c) => {
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
 
   const body = await c.req
-    .json<{ accountId?: string; to?: string; cc?: string; bcc?: string; subject?: string; body?: string }>()
+    .json<{
+      accountId?: string
+      to?: string
+      cc?: string
+      bcc?: string
+      subject?: string
+      body?: string
+      forwardedAttachments?: ForwardedAttachmentRef[]
+    }>()
     .catch(() => null)
-  const { accountId, to, cc, bcc, subject, body: mailBody } = body ?? {}
+  const { accountId, to, cc, bcc, subject, body: mailBody, forwardedAttachments } = body ?? {}
   if (!accountId || !to || !subject || !mailBody) return c.json({ error: "필수 항목이 누락되었습니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
@@ -1370,28 +1467,90 @@ api.post("/mail/send", async (c) => {
   const record = accountMap[accountId]
   if (!record) return c.json({ error: "계정을 찾을 수 없습니다." }, 404)
 
-  if (record.provider === "naver") {
-    await naverSendMail(record.email, record.appPassword, to, subject, mailBody, cc, bcc)
-    return c.json({ ok: true })
-  }
-  if (record.provider === "daum") {
-    await daumSendMail(record.email, record.password, to, subject, mailBody, cc, bcc)
-    return c.json({ ok: true })
-  }
-  if (record.provider === "imap") {
-    // 예전에 연결한 계정에는 smtpHost/smtpPort가 없을 수 있어 IMAP 호스트에서 다시 추측한다.
-    const smtpHost = record.smtpHost || (record.host.startsWith("imap.") ? record.host.replace(/^imap\./, "smtp.") : `smtp.${record.host}`)
-    const smtpPort = record.smtpPort || 465
-    await sendSmtp(smtpHost, smtpPort, record.email, record.password, to, subject, mailBody, cc, bcc)
-    return c.json({ ok: true })
+  let attachments: OutgoingAttachment[] = []
+  if (forwardedAttachments?.length) {
+    const resolved = await resolveForwardedAttachments(c.env, accountMap, forwardedAttachments)
+    attachments = resolved.attachments
+    if (resolved.accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
   }
 
-  const fresh = await ensureFreshToken(c.env, record)
-  if (fresh.accessToken !== record.accessToken) {
-    accountMap[accountId] = fresh
+  const { updatedRecord } = await sendViaRecord(c.env, record, to, subject, mailBody, cc, bcc, attachments)
+  if (updatedRecord) {
+    accountMap[accountId] = updatedRecord
     await persistAccounts(c.env, sessionId, session, accountMap)
   }
-  await sendGmailMessage(fresh.accessToken, record.email, to, subject, mailBody, cc, bcc)
+  return c.json({ ok: true })
+})
+
+// ── 예약발송 ──────────────────────────────────────────────────────────────────
+
+api.get("/scheduled-mails", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+  const session = await readSession(c.env, sessionId)
+
+  const all = await listAllScheduledMails(c.env)
+  const mine = all
+    .filter((m) => (session.userId ? m.userId === session.userId : m.sessionId === sessionId))
+    .sort((a, b) => a.sendAt - b.sendAt)
+  return c.json({ scheduledMails: mine })
+})
+
+api.post("/scheduled-mails", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req
+    .json<{
+      accountId?: string
+      to?: string
+      cc?: string
+      bcc?: string
+      subject?: string
+      body?: string
+      forwardedAttachments?: ForwardedAttachmentRef[]
+      sendAt?: number
+    }>()
+    .catch(() => null)
+  const { accountId, to, cc, bcc, subject, body: mailBody, forwardedAttachments, sendAt } = body ?? {}
+  if (!accountId || !to || !subject || !mailBody || !sendAt) return c.json({ error: "필수 항목이 누락되었습니다." }, 400)
+  if (sendAt <= Date.now()) return c.json({ error: "예약 시각은 미래여야 합니다." }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  if (!accountMap[accountId]) return c.json({ error: "계정을 찾을 수 없습니다." }, 404)
+
+  const scheduledMail: ScheduledMail = {
+    id: crypto.randomUUID(),
+    userId: session.userId,
+    sessionId: session.userId ? undefined : sessionId,
+    accountId,
+    to,
+    cc,
+    bcc,
+    subject,
+    body: mailBody,
+    forwardedAttachments,
+    sendAt,
+    createdAt: Date.now(),
+  }
+  await saveScheduledMail(c.env, scheduledMail)
+  return c.json({ scheduledMail })
+})
+
+api.delete("/scheduled-mails/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+  const session = await readSession(c.env, sessionId)
+
+  const id = c.req.param("id")
+  const all = await listAllScheduledMails(c.env)
+  const target = all.find((m) => m.id === id)
+  if (!target) return c.json({ error: "not found" }, 404)
+  const owns = session.userId ? target.userId === session.userId : target.sessionId === sessionId
+  if (!owns) return c.json({ error: "not found" }, 404)
+
+  await deleteScheduledMail(c.env, id)
   return c.json({ ok: true })
 })
 

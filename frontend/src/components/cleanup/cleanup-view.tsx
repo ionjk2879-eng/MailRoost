@@ -4,9 +4,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { Account, AutoClassifyRule, Mail, MailCategory, MailFolder } from "@/types/mail"
+import type { Account, AutoClassifyRule, Mail, MailCategory, MailFolder, QuickReply, ScheduledMail } from "@/types/mail"
 
-type MainTab = "mailbox" | "auto" | "quickreply" | "shortcuts"
+type MainTab = "mailbox" | "auto" | "quickreply" | "scheduled" | "shortcuts"
 type MailboxSubTab = "manage" | "unread" | "bydate"
 
 const CATEGORY_LABELS: Record<MailCategory, string> = {
@@ -23,6 +23,7 @@ interface CleanupViewProps {
   onMarkAllRead: (accountId?: string) => Promise<void>
   onDeleteBeforeDate: (cutoff: Date, accountId?: string) => Promise<void>
   onEmptyTrashAccount: (accountId: string) => Promise<void>
+  onUpdateSignature: (accountId: string, signature: string) => Promise<{ ok: boolean; error?: string }>
   folders: MailFolder[]
   rules: AutoClassifyRule[]
   onCreateRule: (
@@ -33,6 +34,12 @@ interface CleanupViewProps {
   ) => Promise<{ ok: boolean; error?: string }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
   onDeleteRule: (ruleId: string) => void
+  quickReplies: QuickReply[]
+  onCreateQuickReply: (title: string, body: string) => Promise<{ ok: boolean; error?: string }>
+  onUpdateQuickReply: (id: string, title: string, body: string) => Promise<{ ok: boolean; error?: string }>
+  onDeleteQuickReply: (id: string) => void
+  scheduledMails: ScheduledMail[]
+  onCancelScheduledMail: (id: string) => void
 }
 
 export const SHORTCUTS = [
@@ -52,7 +59,8 @@ function MailboxManageTab({
   onMarkAllRead,
   onDeleteBeforeDate,
   onEmptyTrashAccount,
-}: Pick<CleanupViewProps, "accounts" | "mails" | "onMarkAllRead" | "onDeleteBeforeDate" | "onEmptyTrashAccount">) {
+  onUpdateSignature,
+}: Pick<CleanupViewProps, "accounts" | "mails" | "onMarkAllRead" | "onDeleteBeforeDate" | "onEmptyTrashAccount" | "onUpdateSignature">) {
   const [subTab, setSubTab] = useState<MailboxSubTab>("manage")
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [cutoffDate, setCutoffDate] = useState("")
@@ -61,6 +69,9 @@ function MailboxManageTab({
   const [confirmClear, setConfirmClear] = useState<string | null>(null)
   const [confirmEmptyTrash, setConfirmEmptyTrash] = useState<string | null>(null)
   const [emptyingTrashAccountId, setEmptyingTrashAccountId] = useState<string | null>(null)
+  const [signatureEditAccountId, setSignatureEditAccountId] = useState<string | null>(null)
+  const [signatureDraft, setSignatureDraft] = useState("")
+  const [isSavingSignature, setIsSavingSignature] = useState(false)
 
   const mailsByAccount = (accountId: string) =>
     mails.filter((m) => m.accountId === accountId)
@@ -173,6 +184,17 @@ function MailboxManageTab({
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            setSignatureEditAccountId(account.id)
+                            setSignatureDraft(account.signature ?? "")
+                          }}
+                        >
+                          서명
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -358,6 +380,41 @@ function MailboxManageTab({
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setConfirmEmptyTrash(null)}>취소</Button>
               <Button variant="destructive" size="sm" onClick={() => handleEmptyTrash(confirmEmptyTrash)}>비우기</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 서명 편집 다이얼로그 */}
+      {signatureEditAccountId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-background rounded-lg border p-6 shadow-xl max-w-sm w-full mx-4">
+            <h3 className="font-semibold mb-2">서명 편집</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              이 계정으로 메일을 보낼 때 본문 끝에 자동으로 붙습니다.
+            </p>
+            <textarea
+              value={signatureDraft}
+              onChange={(e) => setSignatureDraft(e.target.value)}
+              placeholder="예: 감사합니다.\n홍길동 드림"
+              className="border-input bg-background placeholder:text-muted-foreground min-h-[120px] w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:outline-none"
+            />
+            <div className="flex gap-2 justify-end mt-4">
+              <Button variant="outline" size="sm" onClick={() => setSignatureEditAccountId(null)} disabled={isSavingSignature}>
+                취소
+              </Button>
+              <Button
+                size="sm"
+                disabled={isSavingSignature}
+                onClick={async () => {
+                  setIsSavingSignature(true)
+                  await onUpdateSignature(signatureEditAccountId, signatureDraft)
+                  setIsSavingSignature(false)
+                  setSignatureEditAccountId(null)
+                }}
+              >
+                {isSavingSignature ? <Loader2 className="size-3.5 animate-spin" /> : "저장"}
+              </Button>
             </div>
           </div>
         </div>
@@ -601,17 +658,186 @@ function AutoClassifyTab({
   )
 }
 
+function QuickReplyTab({
+  quickReplies,
+  onCreateQuickReply,
+  onUpdateQuickReply,
+  onDeleteQuickReply,
+}: {
+  quickReplies: QuickReply[]
+  onCreateQuickReply: (title: string, body: string) => Promise<{ ok: boolean; error?: string }>
+  onUpdateQuickReply: (id: string, title: string, body: string) => Promise<{ ok: boolean; error?: string }>
+  onDeleteQuickReply: (id: string) => void
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [title, setTitle] = useState("")
+  const [body, setBody] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const resetForm = () => {
+    setEditingId(null)
+    setTitle("")
+    setBody("")
+    setError(null)
+  }
+
+  const startEdit = (qr: QuickReply) => {
+    setEditingId(qr.id)
+    setTitle(qr.title)
+    setBody(qr.body)
+    setError(null)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle || !body.trim()) return
+    setIsSaving(true)
+    setError(null)
+    const result = editingId
+      ? await onUpdateQuickReply(editingId, trimmedTitle, body)
+      : await onCreateQuickReply(trimmedTitle, body)
+    setIsSaving(false)
+    if (!result.ok) {
+      setError(result.error ?? "저장에 실패했습니다.")
+      return
+    }
+    resetForm()
+  }
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div className="rounded-lg border p-4">
+        <h3 className="mb-1 font-medium">{editingId ? "빠른 답장 수정" : "새 빠른 답장 만들기"}</h3>
+        <p className="text-muted-foreground mb-4 text-sm">
+          자주 쓰는 답장 문구를 저장해두면 메일 작성 화면에서 바로 끼워넣을 수 있습니다.
+        </p>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-muted-foreground text-xs">제목</label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 회의 일정 안내" required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-muted-foreground text-xs">내용</label>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="답장 본문에 들어갈 내용을 입력하세요"
+              required
+              className="border-input bg-background placeholder:text-muted-foreground min-h-[100px] w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:outline-none"
+            />
+          </div>
+          {error && <p className="text-destructive text-sm">{error}</p>}
+          <div className="flex justify-end gap-2">
+            {editingId && (
+              <Button type="button" variant="outline" size="sm" onClick={resetForm}>
+                취소
+              </Button>
+            )}
+            <Button type="submit" size="sm" disabled={isSaving || !title.trim() || !body.trim()}>
+              {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : editingId ? "저장" : "추가"}
+            </Button>
+          </div>
+        </form>
+      </div>
+
+      <div className="space-y-2">
+        {quickReplies.map((qr) => (
+          <div key={qr.id} className="flex items-start justify-between gap-3 rounded-lg border p-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium text-sm">{qr.title}</p>
+              <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs whitespace-pre-wrap">{qr.body}</p>
+            </div>
+            <div className="flex shrink-0 gap-1">
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => startEdit(qr)}>
+                수정
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive h-7 text-xs"
+                onClick={() => {
+                  if (editingId === qr.id) resetForm()
+                  onDeleteQuickReply(qr.id)
+                }}
+              >
+                삭제
+              </Button>
+            </div>
+          </div>
+        ))}
+        {quickReplies.length === 0 && (
+          <p className="text-muted-foreground py-8 text-center text-sm">아직 저장된 빠른 답장이 없습니다.</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ScheduledMailTab({
+  accounts,
+  scheduledMails,
+  onCancelScheduledMail,
+}: {
+  accounts: Account[]
+  scheduledMails: ScheduledMail[]
+  onCancelScheduledMail: (id: string) => void
+}) {
+  const accountLabel = (accountId: string) => {
+    const a = accounts.find((acc) => acc.id === accountId)
+    if (!a) return "(삭제된 계정)"
+    return a.provider === "gmail" || a.provider === "naver" || a.provider === "daum" ? a.email : a.label
+  }
+
+  const sorted = [...scheduledMails].sort((a, b) => a.sendAt - b.sendAt)
+
+  return (
+    <div className="max-w-2xl space-y-2">
+      {sorted.map((m) => (
+        <div key={m.id} className="flex items-start justify-between gap-3 rounded-lg border p-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium">{m.subject || "(제목 없음)"}</p>
+            <p className="text-muted-foreground mt-0.5 truncate text-xs">
+              {accountLabel(m.accountId)} → {m.to}
+            </p>
+            <p className="text-primary mt-1 text-xs">{new Date(m.sendAt).toLocaleString()}에 발송 예정</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive hover:text-destructive h-7 shrink-0 text-xs"
+            onClick={() => onCancelScheduledMail(m.id)}
+          >
+            취소
+          </Button>
+        </div>
+      ))}
+      {sorted.length === 0 && (
+        <p className="text-muted-foreground py-8 text-center text-sm">예약된 메일이 없습니다.</p>
+      )}
+    </div>
+  )
+}
+
 export function CleanupView({
   accounts,
   mails,
   onMarkAllRead,
   onDeleteBeforeDate,
   onEmptyTrashAccount,
+  onUpdateSignature,
   folders,
   rules,
   onCreateRule,
   onToggleRule,
   onDeleteRule,
+  quickReplies,
+  onCreateQuickReply,
+  onUpdateQuickReply,
+  onDeleteQuickReply,
+  scheduledMails,
+  onCancelScheduledMail,
 }: CleanupViewProps) {
   const [mainTab, setMainTab] = useState<MainTab>("mailbox")
 
@@ -619,6 +845,7 @@ export function CleanupView({
     { key: "mailbox", label: "메일함 관리" },
     { key: "auto", label: "자동분류" },
     { key: "quickreply", label: "빠른 답장" },
+    { key: "scheduled", label: "예약발송" },
     { key: "shortcuts", label: "단축키" },
   ]
 
@@ -654,6 +881,7 @@ export function CleanupView({
             onMarkAllRead={onMarkAllRead}
             onDeleteBeforeDate={onDeleteBeforeDate}
             onEmptyTrashAccount={onEmptyTrashAccount}
+            onUpdateSignature={onUpdateSignature}
           />
         )}
 
@@ -669,10 +897,20 @@ export function CleanupView({
         )}
 
         {mainTab === "quickreply" && (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-lg font-medium mb-2">빠른 답장</p>
-            <p className="text-muted-foreground text-sm">준비 중입니다.</p>
-          </div>
+          <QuickReplyTab
+            quickReplies={quickReplies}
+            onCreateQuickReply={onCreateQuickReply}
+            onUpdateQuickReply={onUpdateQuickReply}
+            onDeleteQuickReply={onDeleteQuickReply}
+          />
+        )}
+
+        {mainTab === "scheduled" && (
+          <ScheduledMailTab
+            accounts={accounts}
+            scheduledMails={scheduledMails}
+            onCancelScheduledMail={onCancelScheduledMail}
+          />
         )}
 
         {mainTab === "shortcuts" && (

@@ -1,15 +1,19 @@
-import { ChevronLeft, X } from "lucide-react"
-import { useState } from "react"
+import { ChevronLeft, Clock, MessageSquarePlus, Paperclip, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { sendMail } from "@/lib/api"
-import type { Account } from "@/types/mail"
+import { scheduleMail, sendMail } from "@/lib/api"
+import type { Account, ForwardedAttachmentRef, QuickReply, ScheduledMail } from "@/types/mail"
 
 export const COMPOSE_SUPPORTED: Array<Account["provider"]> = ["gmail", "naver", "daum", "imap"]
 
+// 서명 앞에 붙이는 구분자. 메일 클라이언트들이 흔히 쓰는 "-- " 관례를 따른다.
+const SIGNATURE_MARKER = "\n\n-- \n"
+
 interface ComposeViewProps {
   accounts: Account[]
+  quickReplies?: QuickReply[]
   title?: string
   defaultAccountId?: string
   defaultTo?: string
@@ -17,13 +21,30 @@ interface ComposeViewProps {
   defaultBcc?: string
   defaultSubject?: string
   defaultBody?: string
+  defaultForwardedAttachments?: ForwardedAttachmentRef[]
   onBack?: () => void
   onCancel: () => void
   onSent: () => void
+  onScheduled?: (mail: ScheduledMail) => void
+}
+
+// datetime-local input이 요구하는 "로컬 시각" 형식으로 최소값(지금부터 5분 뒤)을 만든다.
+function minScheduleValue(): string {
+  const d = new Date(Date.now() + 5 * 60 * 1000)
+  d.setSeconds(0, 0)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 
 export function ComposeView({
   accounts,
+  quickReplies = [],
   title = "새 메일",
   defaultAccountId,
   defaultTo = "",
@@ -31,9 +52,11 @@ export function ComposeView({
   defaultBcc = "",
   defaultSubject = "",
   defaultBody = "",
+  defaultForwardedAttachments = [],
   onBack,
   onCancel,
   onSent,
+  onScheduled,
 }: ComposeViewProps) {
   const sendableAccounts = accounts.filter((a) => COMPOSE_SUPPORTED.includes(a.provider))
   const [accountId, setAccountId] = useState(
@@ -48,8 +71,44 @@ export function ComposeView({
   const [showBcc, setShowBcc] = useState(defaultBcc.trim().length > 0)
   const [subject, setSubject] = useState(defaultSubject)
   const [body, setBody] = useState(defaultBody)
+  const [forwardedAttachments, setForwardedAttachments] = useState(defaultForwardedAttachments)
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
+  const [showSchedule, setShowSchedule] = useState(false)
+  const [scheduleAt, setScheduleAt] = useState("")
+  const [quickReplyOpen, setQuickReplyOpen] = useState(false)
+  const quickReplyRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!quickReplyOpen) return
+    const handler = (e: MouseEvent) => {
+      if (quickReplyRef.current && !quickReplyRef.current.contains(e.target as Node)) setQuickReplyOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [quickReplyOpen])
+
+  // 계정을 고르면(또는 처음 열릴 때) 그 계정의 서명을 본문 끝에 자동으로 붙인다.
+  // 계정을 바꾸면 이전 서명은 지우고 새 서명으로 교체한다. accounts는 세션 동안 거의 안 바뀌므로
+  // 의도적으로 accountId 변경에만 반응시킨다.
+  useEffect(() => {
+    const signature = accounts.find((a) => a.id === accountId)?.signature?.trim()
+    setBody((prev) => {
+      const markerIndex = prev.indexOf(SIGNATURE_MARKER)
+      const withoutSignature = markerIndex === -1 ? prev : prev.slice(0, markerIndex)
+      return signature ? `${withoutSignature}${SIGNATURE_MARKER}${signature}` : withoutSignature
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId])
+
+  const insertQuickReply = (qr: QuickReply) => {
+    setBody((prev) => (prev.trim() ? `${prev}\n\n${qr.body}` : qr.body))
+    setQuickReplyOpen(false)
+  }
+
+  const removeForwardedAttachment = (attachmentId: string) => {
+    setForwardedAttachments((prev) => prev.filter((a) => a.attachmentId !== attachmentId))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -57,6 +116,36 @@ export function ComposeView({
       setError("보내는 계정을 선택해주세요.")
       return
     }
+    const attachments = forwardedAttachments.length > 0 ? forwardedAttachments : undefined
+
+    if (showSchedule && scheduleAt) {
+      const sendAt = new Date(scheduleAt).getTime()
+      if (Number.isNaN(sendAt) || sendAt <= Date.now()) {
+        setError("예약 시각은 현재보다 미래여야 합니다.")
+        return
+      }
+      setError(null)
+      setIsSending(true)
+      const result = await scheduleMail(
+        accountId,
+        to.trim(),
+        subject.trim(),
+        body,
+        sendAt,
+        cc.trim() || undefined,
+        bcc.trim() || undefined,
+        attachments,
+      )
+      setIsSending(false)
+      if (!result.ok) {
+        setError(result.error ?? "예약발송 등록에 실패했습니다.")
+        return
+      }
+      onScheduled?.(result.scheduledMail)
+      onSent()
+      return
+    }
+
     setError(null)
     setIsSending(true)
     const result = await sendMail(
@@ -66,6 +155,7 @@ export function ComposeView({
       body,
       cc.trim() || undefined,
       bcc.trim() || undefined,
+      attachments,
     )
     setIsSending(false)
     if (!result.ok) {
@@ -184,8 +274,62 @@ export function ComposeView({
               required
             />
           </div>
+          {forwardedAttachments.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label>첨부파일</Label>
+              <div className="flex flex-wrap gap-2">
+                {forwardedAttachments.map((att) => (
+                  <div
+                    key={att.attachmentId}
+                    className="bg-muted flex items-center gap-1.5 rounded-md py-1 pr-1 pl-2 text-xs"
+                  >
+                    <Paperclip className="size-3.5 shrink-0" />
+                    <span className="max-w-[160px] truncate">{att.filename}</span>
+                    <span className="text-muted-foreground shrink-0">{formatFileSize(att.size)}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeForwardedAttachment(att.attachmentId)}
+                      aria-label={`${att.filename} 첨부 제거`}
+                      className="hover:bg-accent flex size-5 shrink-0 items-center justify-center rounded"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-            <Label htmlFor="compose-body">내용</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="compose-body">내용</Label>
+              {quickReplies.length > 0 && (
+                <div ref={quickReplyRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setQuickReplyOpen((v) => !v)}
+                    className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs"
+                  >
+                    <MessageSquarePlus className="size-3.5" />
+                    빠른 답장 삽입
+                  </button>
+                  {quickReplyOpen && (
+                    <div className="bg-background absolute top-full right-0 z-20 mt-1 max-h-56 w-56 overflow-y-auto rounded-md border shadow-md">
+                      {quickReplies.map((qr) => (
+                        <button
+                          key={qr.id}
+                          type="button"
+                          onClick={() => insertQuickReply(qr)}
+                          className="hover:bg-accent flex w-full flex-col items-start gap-0.5 px-3 py-1.5 text-left"
+                        >
+                          <span className="truncate text-sm">{qr.title}</span>
+                          <span className="text-muted-foreground w-full truncate text-xs">{qr.body}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <textarea
               id="compose-body"
               placeholder="내용을 입력하세요"
@@ -199,13 +343,40 @@ export function ComposeView({
         </div>
       )}
       {sendableAccounts.length > 0 && (
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t p-4">
-          <Button type="button" variant="outline" disabled={isSending} onClick={onCancel}>
-            취소
-          </Button>
-          <Button type="submit" disabled={isSending}>
-            {isSending ? "전송 중..." : "보내기"}
-          </Button>
+        <div className="flex shrink-0 flex-col gap-2 border-t p-4">
+          {showSchedule && (
+            <div className="flex items-center gap-2">
+              <Clock className="text-muted-foreground size-4 shrink-0" />
+              <input
+                type="datetime-local"
+                value={scheduleAt}
+                min={minScheduleValue()}
+                onChange={(e) => setScheduleAt(e.target.value)}
+                className="border-input bg-background h-9 flex-1 rounded-md border px-3 text-sm focus:outline-none"
+              />
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSchedule((v) => !v)
+                if (showSchedule) setScheduleAt("")
+              }}
+              className={`flex items-center gap-1 text-xs ${showSchedule ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <Clock className="size-3.5" />
+              예약발송
+            </button>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" disabled={isSending} onClick={onCancel}>
+                취소
+              </Button>
+              <Button type="submit" disabled={isSending || (showSchedule && !scheduleAt)}>
+                {isSending ? (showSchedule ? "예약 중..." : "전송 중...") : showSchedule ? "예약 등록" : "보내기"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </form>

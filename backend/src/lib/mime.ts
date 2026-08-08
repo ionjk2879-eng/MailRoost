@@ -298,3 +298,84 @@ export function extractMimeAttachment(
     filename: part.filename,
   }
 }
+
+// ── 발송용 MIME 메시지 빌더 (첨부파일 포함) ──────────────────────────────────────
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ""
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
+}
+
+// RFC 2045: base64 본문은 한 줄에 76자를 넘지 않아야 한다.
+function wrapBase64Lines(base64: string): string {
+  const lines: string[] = []
+  for (let i = 0; i < base64.length; i += 76) lines.push(base64.slice(i, i + 76))
+  return lines.join("\r\n")
+}
+
+function encodeRfc2047Header(str: string): string {
+  if (!/[^\x00-\x7F]/.test(str)) return str
+  return `=?UTF-8?B?${bytesToBase64(new TextEncoder().encode(str))}?=`
+}
+
+export interface OutgoingAttachment {
+  filename: string
+  mimeType: string
+  bytes: Uint8Array
+}
+
+// 첨부파일이 있으면 multipart/mixed로, 없으면 기존처럼 단순 text/plain으로 raw RFC822 메시지를 만든다.
+//
+// bcc 헤더 주의: 일반 SMTP 릴레이는 메시지 내용을 수신자 전원에게 그대로 전달하므로, 헤더에 Bcc를
+// 넣으면 모두에게 숨은참조 목록이 노출된다 (SMTP는 RCPT TO 봉투로만 숨은참조를 구현해야 함 — 이 함수를
+// SMTP 발송에 쓸 때는 bcc를 넘기면 안 된다). 반면 Gmail API는 raw 메시지의 Bcc 헤더를 자기가 파싱해서
+// 수신자로만 쓰고 실제 배달 전에 제거해주므로, Gmail 발송에서만 bcc를 넘긴다.
+export function buildMimeMessage(params: {
+  from: string
+  to: string
+  cc?: string
+  bcc?: string
+  subject: string
+  textBody: string
+  attachments?: OutgoingAttachment[]
+}): string {
+  const { from, to, cc, bcc, subject, attachments } = params
+  // 본문은 보통 textarea에서 온 LF(\n) 줄바꿈이라 SMTP 전송 규격(CRLF)에 맞게 통일한다.
+  const textBody = params.textBody.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n")
+  const headers = [
+    `From: ${from}`,
+    `To: ${to}`,
+    ...(cc ? [`Cc: ${cc}`] : []),
+    ...(bcc ? [`Bcc: ${bcc}`] : []),
+    `Subject: ${encodeRfc2047Header(subject)}`,
+    `MIME-Version: 1.0`,
+  ]
+
+  if (!attachments || attachments.length === 0) {
+    return [...headers, `Content-Type: text/plain; charset=utf-8`, `Content-Transfer-Encoding: 8bit`, ``, textBody].join(
+      "\r\n",
+    )
+  }
+
+  const boundary = `MailRoost_${crypto.randomUUID().replace(/-/g, "")}`
+  const bodyParts = [
+    [`--${boundary}`, `Content-Type: text/plain; charset=utf-8`, `Content-Transfer-Encoding: 8bit`, ``, textBody].join(
+      "\r\n",
+    ),
+    ...attachments.map((att) => {
+      const safeName = att.filename.replace(/"/g, "")
+      return [
+        `--${boundary}`,
+        `Content-Type: ${att.mimeType || "application/octet-stream"}; name="${safeName}"`,
+        `Content-Disposition: attachment; filename="${safeName}"`,
+        `Content-Transfer-Encoding: base64`,
+        ``,
+        wrapBase64Lines(bytesToBase64(att.bytes)),
+      ].join("\r\n")
+    }),
+    `--${boundary}--`,
+  ]
+
+  return [...headers, `Content-Type: multipart/mixed; boundary="${boundary}"`, ``, bodyParts.join("\r\n")].join("\r\n")
+}

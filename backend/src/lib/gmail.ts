@@ -1,5 +1,6 @@
 import type { Env, GmailAccountRecord, Mail, MailAttachment, MailCategory } from "../types"
-import { decodeRfc2047, parseAddressList, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
+import { buildMimeMessage, decodeRfc2047, parseAddressList, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
+import type { OutgoingAttachment } from "./mime"
 
 // gmail.modify로는 라벨 변경/휴지통 이동까지만 되고 영구 삭제(batchDelete)는 403이 난다.
 // 휴지통 비우기/선택 영구삭제를 지원하려면 전체 계정 접근 스코프가 필요하다.
@@ -408,12 +409,6 @@ function bytesToBase64Url(bytes: Uint8Array): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
 }
 
-function encodeRfc2047Gmail(str: string): string {
-  if (!/[^\x00-\x7F]/.test(str)) return str
-  const bytes = new TextEncoder().encode(str)
-  return `=?UTF-8?B?${(() => { let b = ""; for (let i = 0; i < bytes.length; i++) b += String.fromCharCode(bytes[i]); return btoa(b) })()}?=`
-}
-
 export async function sendGmailMessage(
   accessToken: string,
   from: string,
@@ -422,20 +417,9 @@ export async function sendGmailMessage(
   body: string,
   cc?: string,
   bcc?: string,
+  attachments?: OutgoingAttachment[],
 ): Promise<void> {
-  const raw = [
-    `From: ${from}`,
-    `To: ${to}`,
-    ...(cc ? [`Cc: ${cc}`] : []),
-    ...(bcc ? [`Bcc: ${bcc}`] : []),
-    `Subject: ${encodeRfc2047Gmail(subject)}`,
-    `MIME-Version: 1.0`,
-    `Content-Type: text/plain; charset=utf-8`,
-    `Content-Transfer-Encoding: 8bit`,
-    ``,
-    body,
-  ].join("\r\n")
-
+  const raw = buildMimeMessage({ from, to, cc, bcc, subject, textBody: body, attachments })
   const encoded = bytesToBase64Url(new TextEncoder().encode(raw))
 
   const res = await fetch(`${GMAIL_API_BASE}/messages/send`, {

@@ -8,6 +8,7 @@ export interface Account {
   provider: Provider
   label: string
   color: string
+  signature?: string
 }
 
 export interface MailFolder {
@@ -61,4 +62,33 @@ export interface Mail {
   // 목록 조회에서는 비어있고, 상세 조회에서만 채워진다 (전체회신용)
   toRecipients?: string[]
   ccRecipients?: string[]
+}
+
+export interface QuickReply {
+  id: string
+  title: string
+  body: string
+  createdAt: number
+}
+
+export interface ForwardedAttachmentRef {
+  accountId: string
+  mailId: string
+  attachmentId: string
+  filename: string
+  mimeType: string
+  size: number
+}
+
+export interface ScheduledMail {
+  id: string
+  accountId: string
+  to: string
+  cc?: string
+  bcc?: string
+  subject: string
+  body: string
+  forwardedAttachments?: ForwardedAttachmentRef[]
+  sendAt: number
+  createdAt: number
 }

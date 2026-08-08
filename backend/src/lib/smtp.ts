@@ -1,4 +1,6 @@
 import { connect } from "cloudflare:sockets"
+import { buildMimeMessage } from "./mime"
+import type { OutgoingAttachment } from "./mime"
 
 const dec = new TextDecoder("utf-8", { fatal: false, ignoreBOM: false })
 const enc = new TextEncoder()
@@ -56,38 +58,13 @@ class SmtpSocket {
   }
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = ""
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i])
-  }
-  return btoa(binary)
-}
-
-function encodeRfc2047(str: string): string {
-  if (!/[^\x00-\x7F]/.test(str)) return str
-  return `=?UTF-8?B?${bytesToBase64(enc.encode(str))}?=`
-}
-
-function buildMessage(from: string, to: string, subject: string, body: string, cc?: string): string {
-  const header = [
-    `From: ${from}`,
-    `To: ${to}`,
-    ...(cc ? [`Cc: ${cc}`] : []),
-    `Subject: ${encodeRfc2047(subject)}`,
-    `MIME-Version: 1.0`,
-    `Content-Type: text/plain; charset=utf-8`,
-    `Content-Transfer-Encoding: 8bit`,
-    ``,
-  ].join("\r\n")
-
-  // Escape SMTP dot-stuffing: lines starting with '.' get an extra '.'
-  const escapedBody = body
-    .split("\n")
+// SMTP dot-stuffing(RFC 5321): DATA 본문 중 줄 맨 앞이 "."인 줄은 "."을 하나 더 붙여야
+// 서버가 그 줄을 "종료 마커(.)"로 오인하지 않는다. 헤더/첨부 포함 전체 메시지에 적용해야 한다.
+function dotStuff(message: string): string {
+  return message
+    .split("\r\n")
     .map((line) => (line.startsWith(".") ? "." + line : line))
     .join("\r\n")
-
-  return `${header}\r\n${escapedBody}`
 }
 
 function splitAddresses(value: string | undefined): string[] {
@@ -104,6 +81,7 @@ export async function sendSmtp(
   body: string,
   cc?: string,
   bcc?: string,
+  attachments?: OutgoingAttachment[],
 ): Promise<void> {
   const socket = connect({ hostname: host, port }, { secureTransport: "on", allowHalfOpen: false })
   const smtp = new SmtpSocket(socket)
@@ -144,8 +122,10 @@ export async function sendSmtp(
     const data = await smtp.readResponse()
     if (data.code !== 354) throw new Error(`DATA 실패: ${data.code}`)
 
-    const msg = buildMessage(email, to, subject, body, cc)
-    await smtp.write(`${msg}\r\n.\r\n`)
+    // bcc는 절대 넘기지 않는다 — SMTP는 헤더 내용을 수신자 전원에게 그대로 릴레이하므로,
+    // 헤더에 Bcc를 쓰면 숨은참조가 노출된다 (수신자 지정은 위 RCPT TO로 이미 끝났다).
+    const msg = buildMimeMessage({ from: email, to, cc, subject, textBody: body, attachments })
+    await smtp.write(`${dotStuff(msg)}\r\n.\r\n`)
     const sent = await smtp.readResponse()
     if (sent.code !== 250) throw new Error(`메일 전송 실패: ${sent.code}`)
 
@@ -164,8 +144,9 @@ export async function naverSendMail(
   body: string,
   cc?: string,
   bcc?: string,
+  attachments?: OutgoingAttachment[],
 ): Promise<void> {
-  await sendSmtp("smtp.naver.com", 465, email, appPassword, to, subject, body, cc, bcc)
+  await sendSmtp("smtp.naver.com", 465, email, appPassword, to, subject, body, cc, bcc, attachments)
 }
 
 export async function daumSendMail(
@@ -176,6 +157,7 @@ export async function daumSendMail(
   body: string,
   cc?: string,
   bcc?: string,
+  attachments?: OutgoingAttachment[],
 ): Promise<void> {
-  await sendSmtp("smtp.daum.net", 465, email, password, to, subject, body, cc, bcc)
+  await sendSmtp("smtp.daum.net", 465, email, password, to, subject, body, cc, bcc, attachments)
 }

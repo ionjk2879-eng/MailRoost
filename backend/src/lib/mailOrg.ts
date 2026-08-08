@@ -15,7 +15,7 @@ export function parseAssignmentKey(key: string): { accountId: string; mailId: st
 }
 
 export function emptyMailOrgState(): MailOrgState {
-  return { folders: [], assignments: {}, rules: [], classified: {}, accountOrder: [] }
+  return { folders: [], assignments: {}, rules: [], classified: {}, accountOrder: [], signatures: {} }
 }
 
 // 이 기능들이 추가되기 전에 저장된 상태에는 일부 필드가 없을 수 있어 채워준다.
@@ -26,6 +26,7 @@ export function normalizeMailOrgState(state: Partial<MailOrgState>): MailOrgStat
     rules: state.rules ?? [],
     classified: state.classified ?? {},
     accountOrder: state.accountOrder ?? [],
+    signatures: state.signatures ?? {},
   }
 }
 
