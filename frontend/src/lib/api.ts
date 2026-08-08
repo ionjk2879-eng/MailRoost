@@ -1,4 +1,4 @@
-import type { Account, AppNotification, AutoClassifyRule, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
+import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -490,6 +490,57 @@ export async function deleteQuickReply(id: string): Promise<{ ok: boolean; error
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     return { ok: false, error: data.error ?? "빠른 답장 삭제에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+interface DraftFields {
+  accountId?: string
+  to?: string
+  cc?: string
+  bcc?: string
+  subject?: string
+  body?: string
+  forwardedAttachments?: ForwardedAttachmentRef[]
+}
+
+export async function fetchDrafts(): Promise<Draft[]> {
+  const res = await fetch("/api/drafts")
+  if (!res.ok) return []
+  const data = (await res.json()) as { drafts: Draft[] }
+  return data.drafts
+}
+
+export async function createDraft(fields: DraftFields): Promise<{ ok: true; draft: Draft } | { ok: false; error: string }> {
+  const res = await fetch("/api/drafts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  })
+  const data = (await res.json().catch(() => ({}))) as { draft?: Draft; error?: string }
+  if (!res.ok || !data.draft) return { ok: false, error: data.error ?? "임시보관 저장에 실패했습니다." }
+  return { ok: true, draft: data.draft }
+}
+
+export async function updateDraft(
+  id: string,
+  fields: DraftFields,
+): Promise<{ ok: true; draft: Draft } | { ok: false; error: string }> {
+  const res = await fetch(`/api/drafts/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  })
+  const data = (await res.json().catch(() => ({}))) as { draft?: Draft; error?: string }
+  if (!res.ok || !data.draft) return { ok: false, error: data.error ?? "임시보관 저장에 실패했습니다." }
+  return { ok: true, draft: data.draft }
+}
+
+export async function deleteDraft(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/drafts/${encodeURIComponent(id)}`, { method: "DELETE" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "임시보관 삭제에 실패했습니다." }
   }
   return { ok: true }
 }

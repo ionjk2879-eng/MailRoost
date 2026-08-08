@@ -8,6 +8,7 @@ import { MailList } from "@/components/mail/mail-list"
 import { CleanupView, SHORTCUTS } from "@/components/cleanup/cleanup-view"
 import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
+import { DraftsView } from "@/components/drafts/drafts-view"
 import { NotificationBell } from "@/components/notifications/notification-bell"
 import { Button } from "@/components/ui/button"
 import {
@@ -28,6 +29,7 @@ import {
   createMemo,
   createQuickReply,
   createRule as apiCreateRule,
+  deleteDraft,
   deleteFolder as apiDeleteFolder,
   deleteMemo,
   deleteQuickReply,
@@ -37,6 +39,7 @@ import {
   emptyTrash,
   fetchAccounts,
   fetchCurrentUser,
+  fetchDrafts,
   fetchFolderMails,
   fetchFolders,
   fetchMailDetail,
@@ -66,7 +69,7 @@ import {
   updateRule as apiUpdateRule,
 } from "@/lib/api"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { Account, AppNotification, AutoClassifyRule, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
+import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
 
 function isRealAccountId(accountId: string): boolean {
   return accountId.includes(":")
@@ -86,7 +89,7 @@ function App() {
   const isMobile = useIsMobile()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder" | "archive" | "memo">("home")
+  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts">("home")
   const [trashMails, setTrashMails] = useState<Mail[]>([])
   const [trashCursor, setTrashCursor] = useState<string | null>(null)
   const [isTrashLoading, setIsTrashLoading] = useState(false)
@@ -100,6 +103,7 @@ function App() {
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
   const [scheduledMails, setScheduledMails] = useState<ScheduledMail[]>([])
   const [notifications, setNotifications] = useState<AppNotification[]>([])
+  const [drafts, setDrafts] = useState<Draft[]>([])
   const [composeState, setComposeState] = useState<{
     accountId?: string
     to?: string
@@ -109,6 +113,7 @@ function App() {
     body?: string
     title?: string
     forwardedAttachments?: ForwardedAttachmentRef[]
+    draftId?: string
   } | null>(null)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
@@ -170,6 +175,7 @@ function App() {
             fetchQuickReplies().then(setQuickReplies),
             fetchScheduledMails().then(setScheduledMails),
             fetchNotifications().then(setNotifications),
+            fetchDrafts().then(setDrafts),
           ])
         }
       })
@@ -571,6 +577,14 @@ function App() {
     setComposeState(null)
   }
 
+  const goToDrafts = () => {
+    setView("drafts")
+    setSelectedMailId(null)
+    setFocusedMailId(null)
+    setCheckedMailIds(new Set())
+    setComposeState(null)
+  }
+
   const loadTrash = () => {
     setIsTrashLoading(true)
     return fetchTrashMails()
@@ -857,6 +871,34 @@ function App() {
     loadAccountsAndMails()
   }
 
+  const handleOpenDraft = (draft: Draft) => {
+    setComposeState({
+      accountId: draft.accountId,
+      to: draft.to,
+      cc: draft.cc,
+      bcc: draft.bcc,
+      subject: draft.subject,
+      body: draft.body,
+      forwardedAttachments: draft.forwardedAttachments,
+      title: "임시보관 이어쓰기",
+      draftId: draft.id,
+    })
+    setSelectedMailId(null)
+  }
+
+  const handleDraftSaved = (draft: Draft) => {
+    setDrafts((prev) => (prev.some((d) => d.id === draft.id) ? prev.map((d) => (d.id === draft.id ? draft : d)) : [draft, ...prev]))
+  }
+
+  const handleDraftDeleted = (id: string) => {
+    setDrafts((prev) => prev.filter((d) => d.id !== id))
+  }
+
+  const handleDeleteDraft = (id: string) => {
+    setDrafts((prev) => prev.filter((d) => d.id !== id))
+    deleteDraft(id)
+  }
+
   // 정리하기 > 단축키에 안내된 목록을 실제로 동작하게 한다. 입력창/textarea/select에
   // 포커스가 있거나 작성 중일 때는 타이핑을 방해하지 않도록 전부 무시한다.
   useEffect(() => {
@@ -1031,6 +1073,7 @@ function App() {
     setQuickReplies([])
     setScheduledMails([])
     setNotifications([])
+    setDrafts([])
     goHome()
   }
 
@@ -1139,6 +1182,7 @@ function App() {
   const mailDetailPane = composeState ? (
     <ComposeView
       accounts={accounts}
+      mails={allMails}
       quickReplies={quickReplies}
       title={composeState.title}
       defaultAccountId={composeState.accountId}
@@ -1148,7 +1192,10 @@ function App() {
       defaultSubject={composeState.subject}
       defaultBody={composeState.body}
       defaultForwardedAttachments={composeState.forwardedAttachments}
+      defaultDraftId={composeState.draftId}
       onScheduled={handleScheduled}
+      onDraftSaved={handleDraftSaved}
+      onDraftDeleted={handleDraftDeleted}
       onBack={isMobile ? handleCancelCompose : undefined}
       onCancel={handleCancelCompose}
       onSent={handleComposeSent}
@@ -1198,6 +1245,7 @@ function App() {
   const folderDetailPane = composeState ? (
     <ComposeView
       accounts={accounts}
+      mails={allMails}
       quickReplies={quickReplies}
       title={composeState.title}
       defaultAccountId={composeState.accountId}
@@ -1207,7 +1255,10 @@ function App() {
       defaultSubject={composeState.subject}
       defaultBody={composeState.body}
       defaultForwardedAttachments={composeState.forwardedAttachments}
+      defaultDraftId={composeState.draftId}
       onScheduled={handleScheduled}
+      onDraftSaved={handleDraftSaved}
+      onDraftDeleted={handleDraftDeleted}
       onBack={isMobile ? handleCancelCompose : undefined}
       onCancel={handleCancelCompose}
       onSent={handleComposeSent}
@@ -1246,6 +1297,8 @@ function App() {
         isTrashView={view === "trash"}
         isArchiveView={view === "archive"}
         isMemoView={view === "memo"}
+        isDraftsView={view === "drafts"}
+        draftCount={drafts.length}
         folders={folders}
         selectedFolderId={selectedFolderId}
         isFolderView={view === "folder"}
@@ -1255,6 +1308,7 @@ function App() {
         onGoTrash={goToTrash}
         onGoArchive={goToArchive}
         onGoMemo={goToMemo}
+        onGoDrafts={goToDrafts}
         onSelectFolder={goToFolder}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}
@@ -1279,6 +1333,8 @@ function App() {
                     ? "보관함"
                     : view === "memo"
                       ? "메모"
+                      : view === "drafts"
+                      ? "임시보관함"
                       : view === "folder"
                       ? (folders.find((f) => f.id === selectedFolderId)?.name ?? "분류")
                       : selectedAccountId
@@ -1366,6 +1422,17 @@ function App() {
             onUpdateContent={handleUpdateMemoContent}
             onDelete={handleDeleteMemo}
           />
+        ) : view === "drafts" ? (
+          composeState ? (
+            <div className="min-h-0 flex-1">{mailDetailPane}</div>
+          ) : (
+            <DraftsView
+              drafts={drafts}
+              accounts={accounts}
+              onOpenDraft={handleOpenDraft}
+              onDeleteDraft={handleDeleteDraft}
+            />
+          )
         ) : view === "folder" || view === "archive" ? (
           isFolderLoading && folderMails.length === 0 ? (
             <div className="flex flex-1 items-center justify-center">

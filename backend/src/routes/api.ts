@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Env, ForwardedAttachmentRef, ImapAccountRecord, Mail, MailCategory, MailFolder, MailOrgState, MemoItem, QuickReply, ScheduledMail, StoredSession } from "../types"
+import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Draft, Env, ForwardedAttachmentRef, ImapAccountRecord, Mail, MailCategory, MailFolder, MailOrgState, MemoItem, QuickReply, ScheduledMail, StoredSession } from "../types"
 import { getUserAccounts, getUserById, saveUserAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import {
@@ -66,6 +66,7 @@ import {
   naverToggleStar,
   naverToggleStarBulk,
 } from "../lib/imap"
+import { getUserDrafts, saveUserDrafts } from "../lib/drafts"
 import { applyOrder, assignmentKey, emptyMailOrgState, getUserMailOrg, normalizeMailOrgState, parseAssignmentKey, saveUserMailOrg } from "../lib/mailOrg"
 import { fetchAttachmentForAccount, resolveForwardedAttachments, sendViaRecord } from "../lib/mailSend"
 import type { OutgoingAttachment } from "../lib/mime"
@@ -198,6 +199,25 @@ async function persistQuickReplies(
     await saveUserQuickReplies(env, session.userId, quickReplies)
   } else {
     session.quickReplies = quickReplies
+    await writeSession(env, sessionId, session)
+  }
+}
+
+async function resolveDrafts(env: Env, session: StoredSession): Promise<Draft[]> {
+  if (session.userId) return getUserDrafts(env, session.userId)
+  return session.drafts ?? []
+}
+
+async function persistDrafts(
+  env: Env,
+  sessionId: string,
+  session: StoredSession,
+  drafts: Draft[],
+): Promise<void> {
+  if (session.userId) {
+    await saveUserDrafts(env, session.userId, drafts)
+  } else {
+    session.drafts = drafts
     await writeSession(env, sessionId, session)
   }
 }
@@ -597,6 +617,70 @@ api.delete("/quick-replies/:id", async (c) => {
   const quickReplies = await resolveQuickReplies(c.env, session)
   const next = quickReplies.filter((q) => q.id !== id)
   await persistQuickReplies(c.env, sessionId, session, next)
+  return c.json({ ok: true })
+})
+
+// ── 임시보관함 ──────────────────────────────────────────────────────────────────
+
+api.get("/drafts", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ drafts: [] })
+  const session = await readSession(c.env, sessionId)
+  const drafts = await resolveDrafts(c.env, session)
+  return c.json({ drafts: [...drafts].sort((a, b) => b.updatedAt - a.updatedAt) })
+})
+
+interface DraftFields {
+  accountId?: string
+  to?: string
+  cc?: string
+  bcc?: string
+  subject?: string
+  body?: string
+  forwardedAttachments?: ForwardedAttachmentRef[]
+}
+
+api.post("/drafts", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const fields = (await c.req.json<DraftFields>().catch(() => ({}))) ?? {}
+  const session = await readSession(c.env, sessionId)
+  const drafts = await resolveDrafts(c.env, session)
+
+  const now = Date.now()
+  const draft: Draft = { id: crypto.randomUUID(), createdAt: now, updatedAt: now, ...fields }
+  drafts.unshift(draft)
+  await persistDrafts(c.env, sessionId, session, drafts)
+  return c.json({ draft })
+})
+
+api.patch("/drafts/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const id = c.req.param("id")
+  const fields = (await c.req.json<DraftFields>().catch(() => ({}))) ?? {}
+
+  const session = await readSession(c.env, sessionId)
+  const drafts = await resolveDrafts(c.env, session)
+  const draft = drafts.find((d) => d.id === id)
+  if (!draft) return c.json({ error: "임시보관 메일을 찾을 수 없습니다." }, 404)
+
+  Object.assign(draft, fields, { updatedAt: Date.now() })
+  await persistDrafts(c.env, sessionId, session, drafts)
+  return c.json({ draft })
+})
+
+api.delete("/drafts/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const id = c.req.param("id")
+  const session = await readSession(c.env, sessionId)
+  const drafts = await resolveDrafts(c.env, session)
+  const next = drafts.filter((d) => d.id !== id)
+  await persistDrafts(c.env, sessionId, session, next)
   return c.json({ ok: true })
 })
 

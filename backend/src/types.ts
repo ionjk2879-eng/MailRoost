@@ -175,10 +175,25 @@ export interface AppNotification {
   read: boolean
 }
 
+// 임시보관함. 작성 중인 메일을 주기적으로 자동저장해두고, 발송에 성공하면 지운다.
+export interface Draft {
+  id: string
+  accountId?: string
+  to?: string
+  cc?: string
+  bcc?: string
+  subject?: string
+  body?: string
+  forwardedAttachments?: ForwardedAttachmentRef[]
+  createdAt: number
+  updatedAt: number
+}
+
 export interface StoredSession {
   userId?: string
   accounts: Record<string, ConnectedAccountRecord>
   mailOrg?: MailOrgState
   memos?: MemoItem[]
   quickReplies?: QuickReply[]
+  drafts?: Draft[]
 }

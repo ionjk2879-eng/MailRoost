@@ -1,10 +1,11 @@
 import { ChevronLeft, Clock, MessageSquarePlus, Paperclip, X } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { scheduleMail, sendMail } from "@/lib/api"
-import type { Account, ForwardedAttachmentRef, QuickReply, ScheduledMail } from "@/types/mail"
+import { RecipientInput, type RecipientOption } from "@/components/mail/recipient-input"
+import { createDraft, deleteDraft, scheduleMail, sendMail, updateDraft } from "@/lib/api"
+import type { Account, Draft, ForwardedAttachmentRef, Mail, QuickReply, ScheduledMail } from "@/types/mail"
 
 export const COMPOSE_SUPPORTED: Array<Account["provider"]> = ["gmail", "naver", "daum", "imap"]
 
@@ -13,6 +14,7 @@ const SIGNATURE_MARKER = "\n\n-- \n"
 
 interface ComposeViewProps {
   accounts: Account[]
+  mails?: Mail[]
   quickReplies?: QuickReply[]
   title?: string
   defaultAccountId?: string
@@ -22,11 +24,17 @@ interface ComposeViewProps {
   defaultSubject?: string
   defaultBody?: string
   defaultForwardedAttachments?: ForwardedAttachmentRef[]
+  defaultDraftId?: string
   onBack?: () => void
   onCancel: () => void
   onSent: () => void
   onScheduled?: (mail: ScheduledMail) => void
+  onDraftSaved?: (draft: Draft) => void
+  onDraftDeleted?: (id: string) => void
 }
+
+// 작성을 멈춘 뒤 이만큼 지나면 임시보관함에 자동저장한다.
+const DRAFT_SAVE_DEBOUNCE_MS = 1500
 
 // datetime-local input이 요구하는 "로컬 시각" 형식으로 최소값(지금부터 5분 뒤)을 만든다.
 function minScheduleValue(): string {
@@ -44,6 +52,7 @@ function formatFileSize(bytes: number): string {
 
 export function ComposeView({
   accounts,
+  mails = [],
   quickReplies = [],
   title = "새 메일",
   defaultAccountId,
@@ -53,10 +62,13 @@ export function ComposeView({
   defaultSubject = "",
   defaultBody = "",
   defaultForwardedAttachments = [],
+  defaultDraftId,
   onBack,
   onCancel,
   onSent,
   onScheduled,
+  onDraftSaved,
+  onDraftDeleted,
 }: ComposeViewProps) {
   const sendableAccounts = accounts.filter((a) => COMPOSE_SUPPORTED.includes(a.provider))
   const [accountId, setAccountId] = useState(
@@ -78,6 +90,68 @@ export function ComposeView({
   const [scheduleAt, setScheduleAt] = useState("")
   const [quickReplyOpen, setQuickReplyOpen] = useState(false)
   const quickReplyRef = useRef<HTMLDivElement>(null)
+
+  // 받은 메일의 보낸사람 목록에서 받는사람 자동완성 후보를 뽑는다.
+  const recipientOptions = useMemo<RecipientOption[]>(() => {
+    const seen = new Map<string, RecipientOption>()
+    for (const m of mails) {
+      if (!m.fromEmail || seen.has(m.fromEmail.toLowerCase())) continue
+      seen.set(m.fromEmail.toLowerCase(), { email: m.fromEmail, name: m.fromName })
+    }
+    return [...seen.values()]
+  }, [mails])
+
+  // 임시보관함 자동저장: draftId는 렌더와 무관하게 최신 값을 유지해야 해서 ref로 들고 있는다.
+  const draftIdRef = useRef<string | null>(defaultDraftId ?? null)
+  const sentRef = useRef(false)
+  const skipFirstAutosaveRef = useRef(true)
+  const latestFieldsRef = useRef({ accountId, to, cc, bcc, subject, body, forwardedAttachments })
+  latestFieldsRef.current = { accountId, to, cc, bcc, subject, body, forwardedAttachments }
+
+  const saveDraft = async () => {
+    if (sentRef.current) return
+    const f = latestFieldsRef.current
+    const hasContent = f.to.trim() || f.cc.trim() || f.bcc.trim() || f.subject.trim() || f.body.trim()
+    if (!hasContent) return
+    const fields = {
+      accountId: f.accountId || undefined,
+      to: f.to,
+      cc: f.cc,
+      bcc: f.bcc,
+      subject: f.subject,
+      body: f.body,
+      forwardedAttachments: f.forwardedAttachments.length > 0 ? f.forwardedAttachments : undefined,
+    }
+    if (draftIdRef.current) {
+      const result = await updateDraft(draftIdRef.current, fields)
+      if (result.ok) onDraftSaved?.(result.draft)
+    } else {
+      const result = await createDraft(fields)
+      if (result.ok) {
+        draftIdRef.current = result.draft.id
+        onDraftSaved?.(result.draft)
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (skipFirstAutosaveRef.current) {
+      skipFirstAutosaveRef.current = false
+      return
+    }
+    const timer = window.setTimeout(saveDraft, DRAFT_SAVE_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId, to, cc, bcc, subject, body, forwardedAttachments])
+
+  useEffect(() => {
+    // 디바운스가 끝나기 전에 뒤로가기/취소로 화면을 나가도 마지막 내용을 놓치지 않게 저장한다
+    // (발송에 성공했으면 sentRef가 막아준다).
+    return () => {
+      saveDraft()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!quickReplyOpen) return
@@ -108,6 +182,16 @@ export function ComposeView({
 
   const removeForwardedAttachment = (attachmentId: string) => {
     setForwardedAttachments((prev) => prev.filter((a) => a.attachmentId !== attachmentId))
+  }
+
+  // 발송/예약에 성공하면 자동저장된 임시보관 항목을 지운다 (없으면 아무 일도 안 함).
+  const discardDraftAfterSend = () => {
+    sentRef.current = true
+    const id = draftIdRef.current
+    if (!id) return
+    draftIdRef.current = null
+    deleteDraft(id)
+    onDraftDeleted?.(id)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -141,6 +225,7 @@ export function ComposeView({
         setError(result.error ?? "예약발송 등록에 실패했습니다.")
         return
       }
+      discardDraftAfterSend()
       onScheduled?.(result.scheduledMail)
       onSent()
       return
@@ -162,6 +247,7 @@ export function ComposeView({
       setError(result.error ?? "전송에 실패했습니다.")
       return
     }
+    discardDraftAfterSend()
     onSent()
   }
 
@@ -230,36 +316,36 @@ export function ComposeView({
                 )}
               </div>
             </div>
-            <Input
+            <RecipientInput
               id="compose-to"
-              type="email"
               placeholder="recipient@example.com (여러 명은 콤마로 구분)"
               value={to}
-              onChange={(e) => setTo(e.target.value)}
+              onChange={setTo}
+              options={recipientOptions}
               required
             />
           </div>
           {showCc && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="compose-cc">참조</Label>
-              <Input
+              <RecipientInput
                 id="compose-cc"
-                type="text"
                 placeholder="cc@example.com (여러 명은 콤마로 구분)"
                 value={cc}
-                onChange={(e) => setCc(e.target.value)}
+                onChange={setCc}
+                options={recipientOptions}
               />
             </div>
           )}
           {showBcc && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="compose-bcc">숨은참조</Label>
-              <Input
+              <RecipientInput
                 id="compose-bcc"
-                type="text"
                 placeholder="bcc@example.com (여러 명은 콤마로 구분)"
                 value={bcc}
-                onChange={(e) => setBcc(e.target.value)}
+                onChange={setBcc}
+                options={recipientOptions}
               />
             </div>
           )}

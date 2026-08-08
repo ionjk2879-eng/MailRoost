@@ -1,4 +1,4 @@
-import { Archive, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2 } from "lucide-react"
+import { Archive, FileEdit, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2 } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -99,6 +99,8 @@ interface AccountSidebarProps {
   isTrashView: boolean
   isArchiveView: boolean
   isMemoView: boolean
+  isDraftsView: boolean
+  draftCount: number
   folders: MailFolder[]
   selectedFolderId: string | null
   isFolderView: boolean
@@ -108,6 +110,7 @@ interface AccountSidebarProps {
   onGoTrash: () => void
   onGoArchive: () => void
   onGoMemo: () => void
+  onGoDrafts: () => void
   onSelectFolder: (folderId: string) => void
   onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
   onRenameFolder: (folderId: string, name: string, color: string) => Promise<{ ok: boolean; error?: string }>
@@ -128,6 +131,8 @@ export function AccountSidebar({
   isTrashView,
   isArchiveView,
   isMemoView,
+  isDraftsView,
+  draftCount,
   folders,
   selectedFolderId,
   isFolderView,
@@ -137,6 +142,7 @@ export function AccountSidebar({
   onGoTrash,
   onGoArchive,
   onGoMemo,
+  onGoDrafts,
   onSelectFolder,
   onCreateFolder,
   onRenameFolder,
@@ -303,6 +309,19 @@ export function AccountSidebar({
                   <StickyNote />
                   <span>메모</span>
                 </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isDraftsView}
+                  onClick={() => {
+                    onGoDrafts()
+                    closeOnMobile()
+                  }}
+                >
+                  <FileEdit />
+                  <span>임시보관함</span>
+                </SidebarMenuButton>
+                {draftCount > 0 && <SidebarMenuBadge>{draftCount}</SidebarMenuBadge>}
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
