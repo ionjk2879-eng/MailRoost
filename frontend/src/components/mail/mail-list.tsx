@@ -16,6 +16,7 @@ interface MailListProps {
   // 다중선택
   checkedIds: Set<string>
   onToggleCheck: (mailId: string) => void
+  onCheckRange: (mailIds: string[]) => void
   onSelectByFilter: (filter: SelectFilter) => void
   onClearChecked: () => void
   onBulkMarkRead: () => void
@@ -60,6 +61,7 @@ export function MailList({
   onToggleStar,
   checkedIds,
   onToggleCheck,
+  onCheckRange,
   onSelectByFilter,
   onClearChecked,
   onBulkMarkRead,
@@ -78,6 +80,8 @@ export function MailList({
   const filterRef = useRef<HTMLDivElement>(null)
   const [moveOpen, setMoveOpen] = useState(false)
   const moveRef = useRef<HTMLDivElement>(null)
+  // Shift-클릭 범위선택의 기준점 (마지막으로 클릭/체크한 메일)
+  const [anchorId, setAnchorId] = useState<string | null>(null)
 
   const isSelecting = checkedIds.size > 0
   const allChecked = mails.length > 0 && mails.every((m) => checkedIds.has(m.id))
@@ -227,7 +231,7 @@ export function MailList({
                             }}
                             className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
                           >
-                            <span className={cn("size-2 shrink-0 rounded-full", folder.color)} />
+                            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: folder.color }} />
                             <span className="truncate">{folder.name}</span>
                           </button>
                         ))}
@@ -270,26 +274,51 @@ export function MailList({
           {mails.length === 0 && (
             <p className="text-muted-foreground p-6 text-sm">메일이 없습니다.</p>
           )}
-          {mails.map((mail) => {
+          {mails.map((mail, index) => {
             const account = accounts.find((a) => a.id === mail.accountId)
             const isChecked = checkedIds.has(mail.id)
+
+            // shift 범위선택이면 true를 반환해 호출부가 별도 처리를 건너뛰게 한다.
+            const trySelectRange = (e: React.MouseEvent): boolean => {
+              if (!e.shiftKey || !anchorId) return false
+              const anchorIndex = mails.findIndex((m) => m.id === anchorId)
+              if (anchorIndex === -1) return false
+              const [start, end] = anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex]
+              onCheckRange(mails.slice(start, end + 1).map((m) => m.id))
+              setAnchorId(mail.id)
+              return true
+            }
+
+            const handleRowClick = (e: React.MouseEvent) => {
+              if (trySelectRange(e)) return
+              if (e.ctrlKey || e.metaKey) {
+                onToggleCheck(mail.id)
+                setAnchorId(mail.id)
+                return
+              }
+              if (isSelecting) {
+                onToggleCheck(mail.id)
+              } else {
+                onSelectMail(mail.id)
+              }
+              setAnchorId(mail.id)
+            }
 
             return (
               <button
                 key={mail.id}
                 type="button"
-                onClick={() => {
-                  if (isSelecting) {
-                    onToggleCheck(mail.id)
-                  } else {
-                    onSelectMail(mail.id)
-                  }
+                onMouseDown={(e) => {
+                  if (e.shiftKey) e.preventDefault()
                 }}
+                onClick={handleRowClick}
                 className={cn(
                   "group flex w-full min-w-0 flex-col items-start gap-1 border-b border-l-2 border-l-transparent px-3 py-3 text-left text-sm transition-colors",
-                  "hover:bg-accent/50",
+                  // 마우스 오버는 중립적인 muted 톤으로, 실제 열려있는(선택된) 메일은 accent + 왼쪽 테두리로
+                  // 뚜렷하게 구분한다 — 둘 다 같은 accent를 쓰면 호버가 마치 "이게 선택된 메일"처럼 보여 헷갈린다.
+                  "hover:bg-muted/60",
                   !mail.isRead && "border-l-primary bg-primary/[0.04]",
-                  !isSelecting && selectedMailId === mail.id && "bg-accent",
+                  !isSelecting && selectedMailId === mail.id && "border-l-primary bg-accent",
                   isChecked && "bg-primary/5",
                 )}
               >
@@ -306,7 +335,9 @@ export function MailList({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
+                        if (trySelectRange(e)) return
                         onToggleCheck(mail.id)
+                        setAnchorId(mail.id)
                       }}
                       aria-label={isChecked ? "선택 해제" : "선택"}
                       className={cn(

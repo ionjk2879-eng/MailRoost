@@ -24,7 +24,8 @@ export interface AutoClassifyRule {
   id: string
   field: "from" | "subject"
   keyword: string
-  targetFolderId: string
+  targetFolderId: string | null
+  category: MailCategory | null
   enabled: boolean
   createdAt: number
 }

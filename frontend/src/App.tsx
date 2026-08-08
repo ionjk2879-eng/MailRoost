@@ -266,6 +266,15 @@ function App() {
     })
   }
 
+  // Shift-클릭 범위선택: 범위 안의 메일을 기존 선택에 더한다 (제거는 하지 않음)
+  const handleCheckRange = (mailIds: string[]) => {
+    setCheckedMailIds((prev) => {
+      const next = new Set(prev)
+      for (const id of mailIds) next.add(id)
+      return next
+    })
+  }
+
   const selectByFilter = (mails: Mail[], filter: "all" | "none" | "read" | "unread" | "starred" | "unstarred") => {
     switch (filter) {
       case "all": setCheckedMailIds(new Set(mails.map((m) => m.id))); break
@@ -565,8 +574,8 @@ function App() {
     loadAccountsAndMails()
   }
 
-  const handleRenameFolder = async (folderId: string, name: string): Promise<{ ok: boolean; error?: string }> => {
-    const result = await apiRenameFolder(folderId, name)
+  const handleRenameFolder = async (folderId: string, name: string, color: string): Promise<{ ok: boolean; error?: string }> => {
+    const result = await apiRenameFolder(folderId, name, color)
     if (!result.ok) return { ok: false, error: result.error }
     setFolders((prev) => prev.map((f) => (f.id === folderId ? result.folder : f)))
     return { ok: true }
@@ -586,9 +595,10 @@ function App() {
   const handleCreateRule = async (
     field: "from" | "subject",
     keyword: string,
-    targetFolderId: string,
+    targetFolderId: string | null,
+    category: MailCategory | null,
   ): Promise<{ ok: boolean; error?: string }> => {
-    const result = await apiCreateRule(field, keyword, targetFolderId)
+    const result = await apiCreateRule(field, keyword, targetFolderId, category)
     if (!result.ok) return { ok: false, error: result.error }
     setRules((prev) => [...prev, result.rule])
     return { ok: true }
@@ -834,6 +844,7 @@ function App() {
           onToggleStar={handleToggleStar}
           checkedIds={checkedMailIds}
           onToggleCheck={handleToggleCheck}
+          onCheckRange={handleCheckRange}
           onSelectByFilter={handleSelectByFilter}
           onClearChecked={() => setCheckedMailIds(new Set())}
           onBulkMarkRead={handleBulkMarkRead}
@@ -886,6 +897,7 @@ function App() {
       onToggleStar={handleToggleStar}
       checkedIds={checkedMailIds}
       onToggleCheck={handleToggleCheck}
+      onCheckRange={handleCheckRange}
       onSelectByFilter={handleSelectByFilterInFolder}
       onClearChecked={() => setCheckedMailIds(new Set())}
       onBulkMarkRead={handleBulkMarkReadInFolder}

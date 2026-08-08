@@ -92,7 +92,7 @@ interface AccountSidebarProps {
   onGoMemo: () => void
   onSelectFolder: (folderId: string) => void
   onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
-  onRenameFolder: (folderId: string, name: string) => Promise<{ ok: boolean; error?: string }>
+  onRenameFolder: (folderId: string, name: string, color: string) => Promise<{ ok: boolean; error?: string }>
   onDeleteFolder: (folderId: string) => void
   onReorderFolders: (order: string[]) => void
   onAccountConnected: () => void
@@ -140,6 +140,7 @@ export function AccountSidebar({
   const [pendingDeleteFolder, setPendingDeleteFolder] = useState<MailFolder | null>(null)
   const [pendingRenameFolder, setPendingRenameFolder] = useState<MailFolder | null>(null)
   const [renameValue, setRenameValue] = useState("")
+  const [renameColor, setRenameColor] = useState("#8b5cf6")
   const [renameError, setRenameError] = useState<string | null>(null)
   const [isRenaming, setIsRenaming] = useState(false)
   const accountDrag = useDragReorder(accounts.map((a) => a.id), onReorderAccounts)
@@ -195,7 +196,7 @@ export function AccountSidebar({
     if (!name) return
     setIsRenaming(true)
     setRenameError(null)
-    const result = await onRenameFolder(pendingRenameFolder.id, name)
+    const result = await onRenameFolder(pendingRenameFolder.id, name, renameColor)
     setIsRenaming(false)
     if (!result.ok) {
       setRenameError(result.error ?? "메일함 이름 변경에 실패했습니다.")
@@ -390,7 +391,7 @@ export function AccountSidebar({
                     }}
                     title={folder.name}
                   >
-                    <span className={`size-2 shrink-0 rounded-full ${folder.color}`} />
+                    <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: folder.color }} />
                     <span className="truncate">{folder.name}</span>
                   </SidebarMenuButton>
                   <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover/item:opacity-100 focus-within:opacity-100">
@@ -400,6 +401,7 @@ export function AccountSidebar({
                       onClick={() => {
                         setRenameError(null)
                         setRenameValue(folder.name)
+                        setRenameColor(folder.color)
                         setPendingRenameFolder(folder)
                       }}
                       className="hover:text-foreground rounded p-0.5"
@@ -523,18 +525,33 @@ export function AccountSidebar({
         <DialogContent>
           <form onSubmit={handleRenameFolder}>
             <DialogHeader>
-              <DialogTitle>메일함 이름 변경</DialogTitle>
+              <DialogTitle>메일함 편집</DialogTitle>
             </DialogHeader>
-            <div className="flex flex-col gap-1.5 py-4">
-              <Label htmlFor="folder-rename">메일함 이름</Label>
-              <Input
-                id="folder-rename"
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                maxLength={40}
-                required
-                autoFocus
-              />
+            <div className="flex flex-col gap-4 py-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="folder-rename">메일함 이름</Label>
+                <Input
+                  id="folder-rename"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  maxLength={40}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="folder-color">색상</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="folder-color"
+                    type="color"
+                    value={renameColor}
+                    onChange={(e) => setRenameColor(e.target.value)}
+                    className="border-input bg-background h-9 w-14 cursor-pointer rounded-md border p-1"
+                  />
+                  <span className="text-muted-foreground text-sm">{renameColor}</span>
+                </div>
+              </div>
               {renameError && <p className="text-destructive text-sm">{renameError}</p>}
             </div>
             <DialogFooter>

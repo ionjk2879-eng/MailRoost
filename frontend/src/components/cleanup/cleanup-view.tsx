@@ -4,10 +4,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { Account, AutoClassifyRule, Mail, MailFolder } from "@/types/mail"
+import type { Account, AutoClassifyRule, Mail, MailCategory, MailFolder } from "@/types/mail"
 
 type MainTab = "mailbox" | "auto" | "quickreply" | "shortcuts"
 type MailboxSubTab = "manage" | "unread" | "bydate"
+
+const CATEGORY_LABELS: Record<MailCategory, string> = {
+  primary: "기본",
+  social: "소셜",
+  promotions: "프로모션",
+  updates: "업데이트",
+  forums: "포럼",
+}
 
 interface CleanupViewProps {
   accounts: Account[]
@@ -20,7 +28,8 @@ interface CleanupViewProps {
   onCreateRule: (
     field: "from" | "subject",
     keyword: string,
-    targetFolderId: string,
+    targetFolderId: string | null,
+    category: MailCategory | null,
   ) => Promise<{ ok: boolean; error?: string }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
   onDeleteRule: (ruleId: string) => void
@@ -370,7 +379,8 @@ function AutoClassifyTab({
   onCreateRule: (
     field: "from" | "subject",
     keyword: string,
-    targetFolderId: string,
+    targetFolderId: string | null,
+    category: MailCategory | null,
   ) => Promise<{ ok: boolean; error?: string }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
   onDeleteRule: (ruleId: string) => void
@@ -378,7 +388,8 @@ function AutoClassifyTab({
   const folderOptions = [{ id: ARCHIVE_FOLDER_ID, name: "보관함" }, ...folders]
   const [field, setField] = useState<"from" | "subject">("from")
   const [keyword, setKeyword] = useState("")
-  const [targetFolderId, setTargetFolderId] = useState(folderOptions[0].id)
+  // "folder:<id>" 또는 "category:<name>" 형태로 인코딩해 하나의 select로 둘 다 고른다.
+  const [destination, setDestination] = useState(`folder:${folderOptions[0].id}`)
   const [error, setError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
 
@@ -391,7 +402,13 @@ function AutoClassifyTab({
     if (!trimmed) return
     setIsCreating(true)
     setError(null)
-    const result = await onCreateRule(field, trimmed, targetFolderId)
+    const [kind, value] = destination.split(":") as ["folder" | "category", string]
+    const result = await onCreateRule(
+      field,
+      trimmed,
+      kind === "folder" ? value : null,
+      kind === "category" ? (value as MailCategory) : null,
+    )
     setIsCreating(false)
     if (!result.ok) {
       setError(result.error ?? "규칙 생성에 실패했습니다.")
@@ -405,7 +422,7 @@ function AutoClassifyTab({
       <div className="rounded-lg border p-4">
         <h3 className="mb-1 font-medium">새 규칙 만들기</h3>
         <p className="text-muted-foreground mb-4 text-sm">
-          새로 도착하는 메일부터 적용됩니다. 이미 받은편지함에 있는 메일에는 소급 적용되지 않아요.
+          메일함 이동은 새로 도착하는 메일부터 적용되고, 카테고리 분류는 이미 있는 메일에도 바로 적용됩니다.
         </p>
         <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
           <div className="space-y-1.5">
@@ -424,15 +441,22 @@ function AutoClassifyTab({
             <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="예: 뉴스레터" required />
           </div>
           <div className="space-y-1.5">
-            <label className="text-muted-foreground text-xs">이동할 곳</label>
+            <label className="text-muted-foreground text-xs">동작</label>
             <select
-              value={targetFolderId}
-              onChange={(e) => setTargetFolderId(e.target.value)}
+              value={destination}
+              onChange={(e) => setDestination(e.target.value)}
               className="border-input bg-background h-9 rounded-md border px-2 text-sm focus:outline-none"
             >
-              {folderOptions.map((f) => (
-                <option key={f.id} value={f.id}>{f.name}</option>
-              ))}
+              <optgroup label="메일함으로 이동">
+                {folderOptions.map((f) => (
+                  <option key={f.id} value={`folder:${f.id}`}>{f.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="카테고리로 분류">
+                {(Object.keys(CATEGORY_LABELS) as MailCategory[]).map((c) => (
+                  <option key={c} value={`category:${c}`}>{CATEGORY_LABELS[c]}</option>
+                ))}
+              </optgroup>
             </select>
           </div>
           <Button type="submit" size="sm" disabled={isCreating || !keyword.trim()}>
@@ -453,7 +477,7 @@ function AutoClassifyTab({
           <thead className="bg-muted/50">
             <tr>
               <th className="px-4 py-2.5 text-left font-medium">조건</th>
-              <th className="px-4 py-2.5 text-left font-medium">이동할 곳</th>
+              <th className="px-4 py-2.5 text-left font-medium">동작</th>
               <th className="px-4 py-2.5 text-center font-medium">사용</th>
               <th className="px-4 py-2.5 text-right font-medium">관리</th>
             </tr>
@@ -464,7 +488,11 @@ function AutoClassifyTab({
                 <td className="px-4 py-3">
                   {rule.field === "from" ? "보낸사람" : "제목"}에 <strong>"{rule.keyword}"</strong> 포함
                 </td>
-                <td className="px-4 py-3">{folderName(rule.targetFolderId)}</td>
+                <td className="px-4 py-3">
+                  {rule.targetFolderId && `${folderName(rule.targetFolderId)}(으)로 이동`}
+                  {rule.targetFolderId && rule.category && " · "}
+                  {rule.category && `${CATEGORY_LABELS[rule.category]} 카테고리`}
+                </td>
                 <td className="px-4 py-3 text-center">
                   <button
                     type="button"

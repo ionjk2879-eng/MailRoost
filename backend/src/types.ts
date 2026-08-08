@@ -84,13 +84,16 @@ export interface MailFolder {
   createdAt: number
 }
 
-// 자동분류 규칙: 보낸사람/제목에 키워드가 포함되면 지정한 메일함(또는 보관함)으로 자동 이동.
-// 새로 도착한(=한 번이라도 평가된 적 없는) 메일에만 적용되고, 기존 메일에는 소급 적용되지 않는다.
+// 자동분류 규칙: 보낸사람/제목에 키워드가 포함되면
+// - targetFolderId가 있으면 지정한 메일함(또는 보관함)으로 이동 (새로 도착한 메일에만, 소급 적용 안 됨)
+// - category가 있으면 카테고리 탭으로 분류 (매번 다시 계산되는 값이라 기존 메일에도 바로 적용됨)
+// 최소 하나는 있어야 한다.
 export interface AutoClassifyRule {
   id: string
   field: "from" | "subject"
   keyword: string
-  targetFolderId: string
+  targetFolderId: string | null
+  category: MailCategory | null
   enabled: boolean
   createdAt: number
 }

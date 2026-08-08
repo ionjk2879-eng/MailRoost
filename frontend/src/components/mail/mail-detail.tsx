@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { attachmentDownloadUrl } from "@/lib/api"
-import { cn } from "@/lib/utils"
 import type { Account, Mail, MailFolder } from "@/types/mail"
 
 interface MailDetailProps {
@@ -181,7 +180,7 @@ export function MailDetail({
                           }}
                           className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
                         >
-                          <span className={cn("size-2 shrink-0 rounded-full", folder.color)} />
+                          <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: folder.color }} />
                           <span className="truncate">{folder.name}</span>
                         </button>
                       ))}

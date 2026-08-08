@@ -1,4 +1,4 @@
-import type { Account, AutoClassifyRule, Mail, MailAttachment, MailFolder, MemoItem } from "@/types/mail"
+import type { Account, AutoClassifyRule, Mail, MailAttachment, MailCategory, MailFolder, MemoItem } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -38,11 +38,12 @@ export async function createFolder(name: string): Promise<{ ok: true; folder: Ma
 export async function renameFolder(
   id: string,
   name: string,
+  color?: string,
 ): Promise<{ ok: true; folder: MailFolder } | { ok: false; error: string }> {
   const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(color !== undefined ? { name, color } : { name }),
   })
   const data = (await res.json().catch(() => ({}))) as { folder?: MailFolder; error?: string }
   if (!res.ok || !data.folder) return { ok: false, error: data.error ?? "메일함 이름 변경에 실패했습니다." }
@@ -81,12 +82,13 @@ export async function fetchRules(): Promise<AutoClassifyRule[]> {
 export async function createRule(
   field: "from" | "subject",
   keyword: string,
-  targetFolderId: string,
+  targetFolderId: string | null,
+  category: MailCategory | null,
 ): Promise<{ ok: true; rule: AutoClassifyRule } | { ok: false; error: string }> {
   const res = await fetch("/api/rules", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ field, keyword, targetFolderId }),
+    body: JSON.stringify({ field, keyword, targetFolderId, category }),
   })
   const data = (await res.json().catch(() => ({}))) as { rule?: AutoClassifyRule; error?: string }
   if (!res.ok || !data.rule) return { ok: false, error: data.error ?? "규칙 생성에 실패했습니다." }
@@ -95,7 +97,7 @@ export async function createRule(
 
 export async function updateRule(
   id: string,
-  patch: Partial<Pick<AutoClassifyRule, "field" | "keyword" | "targetFolderId" | "enabled">>,
+  patch: Partial<Pick<AutoClassifyRule, "field" | "keyword" | "targetFolderId" | "category" | "enabled">>,
 ): Promise<{ ok: true; rule: AutoClassifyRule } | { ok: false; error: string }> {
   const res = await fetch(`/api/rules/${encodeURIComponent(id)}`, {
     method: "PATCH",

@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Env, ImapAccountRecord, Mail, MailFolder, MailOrgState, MemoItem, StoredSession } from "../types"
+import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Env, ImapAccountRecord, Mail, MailCategory, MailFolder, MailOrgState, MemoItem, StoredSession } from "../types"
 import { getUserAccounts, getUserById, saveUserAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import {
@@ -78,9 +78,12 @@ const GMAIL_COLOR_PALETTE = ["bg-red-500", "bg-orange-500", "bg-pink-500", "bg-p
 const NAVER_COLOR_PALETTE = ["bg-green-500", "bg-emerald-500", "bg-lime-500", "bg-teal-500"]
 const DAUM_COLOR_PALETTE = ["bg-blue-500", "bg-sky-500", "bg-cyan-500", "bg-indigo-500"]
 const IMAP_COLOR_PALETTE = ["bg-slate-500", "bg-zinc-500", "bg-stone-500", "bg-neutral-500"]
+// 메일함 색상은 hex 값으로 저장해 사용자가 색상 선택기로 자유롭게 바꿀 수 있게 한다
+// (Tailwind 클래스명은 빌드 타임에 알려진 값만 써야 해서 임의 색상을 표현할 수 없다).
+// 아래는 새 메일함을 만들 때 자동으로 배정되는 기본값일 뿐, 이후 사용자가 원하는 색으로 바꿀 수 있다.
 const FOLDER_COLOR_PALETTE = [
-  "bg-violet-500", "bg-fuchsia-500", "bg-cyan-500", "bg-lime-500",
-  "bg-orange-500", "bg-teal-500", "bg-rose-500", "bg-indigo-500",
+  "#8b5cf6", "#d946ef", "#06b6d4", "#84cc16",
+  "#f97316", "#14b8a6", "#f43f5e", "#6366f1",
 ]
 
 // 보관함은 사용자 정의 메일함과 동일한 배정(assignment) 메커니즘을 쓰는 예약된 가상 폴더 ID.
@@ -312,10 +315,13 @@ api.patch("/folders/:id", async (c) => {
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
 
   const folderId = c.req.param("id")
-  const body = await c.req.json<{ name?: string }>().catch(() => null)
+  const body = await c.req.json<{ name?: string; color?: string }>().catch(() => null)
   const name = body?.name?.trim()
   if (!name) return c.json({ error: "메일함 이름을 입력해주세요." }, 400)
   if (name.length > 40) return c.json({ error: "메일함 이름이 너무 깁니다." }, 400)
+  if (body?.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(body.color)) {
+    return c.json({ error: "잘못된 색상입니다." }, 400)
+  }
 
   const session = await readSession(c.env, sessionId)
   const org = await resolveMailOrg(c.env, session)
@@ -327,6 +333,7 @@ api.patch("/folders/:id", async (c) => {
   }
 
   folder.name = name
+  if (body?.color !== undefined) folder.color = body.color
   await persistMailOrg(c.env, sessionId, session, org)
   return c.json({ folder })
 })
@@ -470,21 +477,27 @@ api.get("/rules", async (c) => {
   return c.json({ rules: org.rules })
 })
 
+const VALID_CATEGORIES: MailCategory[] = ["primary", "social", "promotions", "updates", "forums"]
+
 api.post("/rules", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
 
-  const body = await c.req.json<{ field?: string; keyword?: string; targetFolderId?: string }>().catch(() => null)
+  const body = await c.req
+    .json<{ field?: string; keyword?: string; targetFolderId?: string | null; category?: string | null }>()
+    .catch(() => null)
   const field = body?.field
   const keyword = body?.keyword?.trim()
-  const targetFolderId = body?.targetFolderId
+  const targetFolderId = body?.targetFolderId ?? null
+  const category = (body?.category ?? null) as MailCategory | null
   if (field !== "from" && field !== "subject") return c.json({ error: "잘못된 조건입니다." }, 400)
   if (!keyword) return c.json({ error: "키워드를 입력해주세요." }, 400)
-  if (!targetFolderId) return c.json({ error: "이동할 메일함을 선택해주세요." }, 400)
+  if (!targetFolderId && !category) return c.json({ error: "이동할 메일함이나 카테고리를 선택해주세요." }, 400)
+  if (category && !VALID_CATEGORIES.includes(category)) return c.json({ error: "잘못된 카테고리입니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
   const org = await resolveMailOrg(c.env, session)
-  if (targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
+  if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
     return c.json({ error: "메일함을 찾을 수 없습니다." }, 404)
   }
 
@@ -493,6 +506,7 @@ api.post("/rules", async (c) => {
     field,
     keyword,
     targetFolderId,
+    category,
     enabled: true,
     createdAt: Date.now(),
   }
@@ -507,7 +521,13 @@ api.patch("/rules/:id", async (c) => {
 
   const ruleId = c.req.param("id")
   const body = await c.req
-    .json<{ field?: string; keyword?: string; targetFolderId?: string; enabled?: boolean }>()
+    .json<{
+      field?: string
+      keyword?: string
+      targetFolderId?: string | null
+      category?: string | null
+      enabled?: boolean
+    }>()
     .catch(() => null)
 
   const session = await readSession(c.env, sessionId)
@@ -525,11 +545,18 @@ api.patch("/rules/:id", async (c) => {
     rule.keyword = keyword
   }
   if (body?.targetFolderId !== undefined) {
-    if (body.targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === body.targetFolderId)) {
+    const targetFolderId = body.targetFolderId
+    if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
       return c.json({ error: "메일함을 찾을 수 없습니다." }, 404)
     }
-    rule.targetFolderId = body.targetFolderId
+    rule.targetFolderId = targetFolderId
   }
+  if (body?.category !== undefined) {
+    const category = body.category as MailCategory | null
+    if (category && !VALID_CATEGORIES.includes(category)) return c.json({ error: "잘못된 카테고리입니다." }, 400)
+    rule.category = category
+  }
+  if (!rule.targetFolderId && !rule.category) return c.json({ error: "이동할 메일함이나 카테고리를 선택해주세요." }, 400)
   if (body?.enabled !== undefined) rule.enabled = body.enabled
 
   await persistMailOrg(c.env, sessionId, session, org)
@@ -605,7 +632,7 @@ api.get("/mail", async (c) => {
     const key = assignmentKey(accountId, mail.id)
     if (Object.prototype.hasOwnProperty.call(org.classified, key)) return
     for (const rule of org.rules) {
-      if (!rule.enabled) continue
+      if (!rule.enabled || !rule.targetFolderId) continue
       const haystack = (rule.field === "from" ? `${mail.fromName} ${mail.fromEmail}` : mail.subject).toLowerCase()
       if (haystack.includes(rule.keyword.toLowerCase())) {
         org.assignments[key] = rule.targetFolderId
@@ -614,6 +641,16 @@ api.get("/mail", async (c) => {
     }
     org.classified[key] = true
     orgChanged = true
+  }
+
+  // 카테고리는 저장되는 배정이 아니라 매번 새로 계산되는 값이라, 새 메일/기존 메일 구분 없이 매 조회마다 적용한다.
+  function applyCategoryRule(mail: Mail): MailCategory {
+    for (const rule of org.rules) {
+      if (!rule.enabled || !rule.category) continue
+      const haystack = (rule.field === "from" ? `${mail.fromName} ${mail.fromEmail}` : mail.subject).toLowerCase()
+      if (haystack.includes(rule.keyword.toLowerCase())) return rule.category
+    }
+    return mail.category
   }
 
   // 계정별로 병렬 조회 (직렬로 하면 계정 수만큼 지연이 누적됨).
@@ -658,7 +695,10 @@ api.get("/mail", async (c) => {
       continue
     }
     if (org.rules.length > 0) {
-      for (const mail of result.mails) classifyIfNew(result.accountId, mail)
+      for (const mail of result.mails) {
+        classifyIfNew(result.accountId, mail)
+        mail.category = applyCategoryRule(mail)
+      }
     }
     results.push(...result.mails.filter((m) => !isAssignedElsewhere(result.accountId, m.id)))
     if (result.cursor) nextCursorMap[result.accountId] = result.cursor
