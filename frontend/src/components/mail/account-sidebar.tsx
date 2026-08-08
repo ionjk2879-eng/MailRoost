@@ -72,11 +72,23 @@ function useDragReorder(ids: string[], onReorder: (order: string[]) => void) {
   return { draggingId, overId, handleDragStart, handleDragOver, handleDrop, handleDragEnd }
 }
 
-// 분류 색상 빠른 선택용 프리셋 (백엔드가 새 분류에 자동 배정하는 기본 팔레트와 동일)
-const FOLDER_COLOR_PRESETS = [
-  "#8b5cf6", "#d946ef", "#06b6d4", "#84cc16",
-  "#f97316", "#14b8a6", "#f43f5e", "#6366f1",
-]
+function hslToHex(h: number, s: number, l: number): string {
+  const sNorm = s / 100
+  const lNorm = l / 100
+  const k = (n: number) => (n + h / 30) % 12
+  const a = sNorm * Math.min(lNorm, 1 - lNorm)
+  const f = (n: number) => lNorm - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))
+  const toHex = (x: number) => Math.round(x * 255).toString(16).padStart(2, "0")
+  return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`
+}
+
+// 분류 색상 빠른 선택용 프리셋. 색상환을 고르게 돌면서 채도/명도는 백엔드의 랜덤 배정과 같은
+// 범위(너무 탁하거나 형광색이지 않고, 너무 어둡거나 밝지 않은)로 고정해 한눈에 잘 들어오게 한다.
+const FOLDER_COLOR_PRESETS = Array.from({ length: 18 }, (_, i) => {
+  const hue = Math.round((360 / 18) * i)
+  const lightness = i % 2 === 0 ? 52 : 60 // 색상마다 명도를 살짝 번갈아 더 잘 구분되게 함
+  return hslToHex(hue, 65, lightness)
+})
 
 interface AccountSidebarProps {
   accounts: Account[]

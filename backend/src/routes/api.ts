@@ -80,11 +80,26 @@ const DAUM_COLOR_PALETTE = ["bg-blue-500", "bg-sky-500", "bg-cyan-500", "bg-indi
 const IMAP_COLOR_PALETTE = ["bg-slate-500", "bg-zinc-500", "bg-stone-500", "bg-neutral-500"]
 // 분류 색상은 hex 값으로 저장해 사용자가 색상 선택기로 자유롭게 바꿀 수 있게 한다
 // (Tailwind 클래스명은 빌드 타임에 알려진 값만 써야 해서 임의 색상을 표현할 수 없다).
-// 아래는 새 분류를 만들 때 자동으로 배정되는 기본값일 뿐, 이후 사용자가 원하는 색으로 바꿀 수 있다.
-const FOLDER_COLOR_PALETTE = [
-  "#8b5cf6", "#d946ef", "#06b6d4", "#84cc16",
-  "#f97316", "#14b8a6", "#f43f5e", "#6366f1",
-]
+
+function hslToHex(h: number, s: number, l: number): string {
+  const sNorm = s / 100
+  const lNorm = l / 100
+  const k = (n: number) => (n + h / 30) % 12
+  const a = sNorm * Math.min(lNorm, 1 - lNorm)
+  const f = (n: number) => lNorm - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)))
+  const toHex = (x: number) => Math.round(x * 255).toString(16).padStart(2, "0")
+  return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`
+}
+
+// 새 분류를 만들 때 매번 랜덤으로 배정되는 기본 색상. 채도/명도를 적당한 범위로 묶어
+// 너무 탁하거나(채도 낮음) 형광색(채도 높음)이거나, 너무 어둡거나 밝은 색은 나오지 않게 한다.
+// 이후 사용자가 원하는 색으로 자유롭게 바꿀 수 있다.
+function randomFolderColor(): string {
+  const hue = Math.floor(Math.random() * 360)
+  const saturation = 55 + Math.random() * 20 // 55~75%
+  const lightness = 45 + Math.random() * 15 // 45~60%
+  return hslToHex(hue, saturation, lightness)
+}
 
 // 보관함은 사용자 정의 분류와 동일한 배정(assignment) 메커니즘을 쓰는 예약된 가상 폴더 ID.
 // org.folders 목록에는 들어가지 않으므로 이름변경/삭제 대상이 되지 않는다.
@@ -286,7 +301,7 @@ api.post("/folders", async (c) => {
   const folder: MailFolder = {
     id: crypto.randomUUID(),
     name,
-    color: FOLDER_COLOR_PALETTE[org.folders.length % FOLDER_COLOR_PALETTE.length],
+    color: randomFolderColor(),
     createdAt: Date.now(),
   }
   org.folders.push(folder)
