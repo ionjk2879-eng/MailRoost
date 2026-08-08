@@ -1,5 +1,5 @@
 import { AlertTriangle, Loader2 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -390,6 +390,8 @@ function AutoClassifyTab({
   const folderOptions = [{ id: ARCHIVE_FOLDER_ID, name: "보관함" }, ...folders]
   const [field, setField] = useState<"from" | "subject">("from")
   const [keyword, setKeyword] = useState("")
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const suggestRef = useRef<HTMLDivElement>(null)
 
   // 현재 로드된 메일에서 보낸사람/제목 자동완성 후보를 뽑는다 — 직접 입력도 그대로 가능하다.
   const senderOptions = useMemo(() => {
@@ -404,8 +406,25 @@ function AutoClassifyTab({
   const subjectOptions = useMemo(() => {
     const seen = new Set<string>()
     for (const m of mails) if (m.subject) seen.add(m.subject)
-    return [...seen].slice(0, 200)
+    return [...seen].map((s) => ({ value: s, label: s }))
   }, [mails])
+
+  const allOptions = field === "from" ? senderOptions : subjectOptions
+  const filteredOptions = useMemo(() => {
+    const q = keyword.trim().toLowerCase()
+    const matches = q ? allOptions.filter((o) => o.label.toLowerCase().includes(q)) : allOptions
+    return matches.slice(0, 20)
+  }, [allOptions, keyword])
+
+  useEffect(() => {
+    if (!suggestOpen) return
+    const handler = (e: MouseEvent) => {
+      if (suggestRef.current && !suggestRef.current.contains(e.target as Node)) setSuggestOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [suggestOpen])
+
   // "folder:<id>" 또는 "category:<name>" 형태로 인코딩해 하나의 select로 둘 다 고른다.
   const [destination, setDestination] = useState(`folder:${folderOptions[0].id}`)
   const [error, setError] = useState<string | null>(null)
@@ -454,20 +473,36 @@ function AutoClassifyTab({
               <option value="subject">제목</option>
             </select>
           </div>
-          <div className="min-w-[140px] flex-1 space-y-1.5">
+          <div ref={suggestRef} className="relative min-w-[140px] flex-1 space-y-1.5">
             <label className="text-muted-foreground text-xs">포함 키워드</label>
             <Input
               value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
+              onChange={(e) => {
+                setKeyword(e.target.value)
+                setSuggestOpen(true)
+              }}
+              onFocus={() => setSuggestOpen(true)}
               placeholder={field === "from" ? "예: fantia.jp (직접 입력 또는 목록에서 선택)" : "예: 뉴스레터"}
-              list="rule-keyword-options"
+              autoComplete="off"
               required
             />
-            <datalist id="rule-keyword-options">
-              {field === "from"
-                ? senderOptions.map((s) => <option key={s.value} value={s.value} label={s.label} />)
-                : subjectOptions.map((s) => <option key={s} value={s} />)}
-            </datalist>
+            {suggestOpen && filteredOptions.length > 0 && (
+              <div className="bg-background absolute top-full left-0 z-20 mt-1 max-h-56 w-full min-w-[220px] overflow-y-auto rounded-md border shadow-md">
+                {filteredOptions.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => {
+                      setKeyword(o.value)
+                      setSuggestOpen(false)
+                    }}
+                    className="hover:bg-accent flex w-full items-center px-3 py-1.5 text-left text-sm"
+                  >
+                    <span className="truncate">{o.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="space-y-1.5">
             <label className="text-muted-foreground text-xs">동작</label>
