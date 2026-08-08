@@ -47,7 +47,7 @@ export async function createFolder(name: string): Promise<{ ok: true; folder: Ma
     body: JSON.stringify({ name }),
   })
   const data = (await res.json().catch(() => ({}))) as { folder?: MailFolder; error?: string }
-  if (!res.ok || !data.folder) return { ok: false, error: data.error ?? "분류 생성에 실패했습니다." }
+  if (!res.ok || !data.folder) return { ok: false, error: data.error ?? "분류 메일함 생성에 실패했습니다." }
   return { ok: true, folder: data.folder }
 }
 
@@ -62,7 +62,7 @@ export async function renameFolder(
     body: JSON.stringify(color !== undefined ? { name, color } : { name }),
   })
   const data = (await res.json().catch(() => ({}))) as { folder?: MailFolder; error?: string }
-  if (!res.ok || !data.folder) return { ok: false, error: data.error ?? "분류 변경에 실패했습니다." }
+  if (!res.ok || !data.folder) return { ok: false, error: data.error ?? "분류 메일함 변경에 실패했습니다." }
   return { ok: true, folder: data.folder }
 }
 
@@ -70,7 +70,7 @@ export async function deleteFolder(id: string): Promise<{ ok: boolean; error?: s
   const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, { method: "DELETE" })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
-    return { ok: false, error: data.error ?? "분류 삭제에 실패했습니다." }
+    return { ok: false, error: data.error ?? "분류 메일함 삭제에 실패했습니다." }
   }
   return { ok: true }
 }
@@ -83,7 +83,7 @@ export async function reorderFolders(order: string[]): Promise<{ ok: boolean; er
   })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
-    return { ok: false, error: data.error ?? "분류 순서 변경에 실패했습니다." }
+    return { ok: false, error: data.error ?? "분류 메일함 순서 변경에 실패했습니다." }
   }
   return { ok: true }
 }

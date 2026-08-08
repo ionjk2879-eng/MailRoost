@@ -42,6 +42,8 @@ export interface Mail {
   // 목록 조회에서는 비어있고, 상세 조회에서만 채워진다 (전체회신용)
   toRecipients?: string[]
   ccRecipients?: string[]
+  // 사용자 정의 분류 메일함에 배정된 경우 그 분류 메일함 id (보관함이면 "archive"). /mail 목록 조회에서만 채워진다.
+  folderId?: string | null
 }
 
 export interface GmailAccountRecord {

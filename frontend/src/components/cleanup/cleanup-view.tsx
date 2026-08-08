@@ -488,7 +488,7 @@ function AutoClassifyTab({
   const [isCreating, setIsCreating] = useState(false)
 
   const folderName = (id: string) =>
-    id === ARCHIVE_FOLDER_ID ? "보관함" : (folders.find((f) => f.id === id)?.name ?? "(삭제된 분류)")
+    id === ARCHIVE_FOLDER_ID ? "보관함" : (folders.find((f) => f.id === id)?.name ?? "(삭제된 분류 메일함)")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -516,7 +516,7 @@ function AutoClassifyTab({
       <div className="rounded-lg border p-4">
         <h3 className="mb-1 font-medium">새 규칙 만들기</h3>
         <p className="text-muted-foreground mb-4 text-sm">
-          분류로 이동은 새로 도착하는 메일부터 적용되고, 카테고리 지정은 이미 있는 메일에도 바로 적용됩니다.
+          분류 메일함으로 이동은 새로 도착하는 메일부터 적용되고, 카테고리 지정은 이미 있는 메일에도 바로 적용됩니다.
         </p>
         <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
           <div className="space-y-1.5">
@@ -568,7 +568,7 @@ function AutoClassifyTab({
               onChange={(e) => setDestination(e.target.value)}
               className="border-input bg-background h-9 rounded-md border px-2 text-sm focus:outline-none"
             >
-              <optgroup label="분류로 이동">
+              <optgroup label="분류 메일함으로 이동">
                 {folderOptions.map((f) => (
                   <option key={f.id} value={`folder:${f.id}`}>{f.name}</option>
                 ))}
@@ -587,7 +587,7 @@ function AutoClassifyTab({
         {folders.length === 0 && (
           <p className="text-muted-foreground mt-3 flex items-start gap-1.5 text-xs">
             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
-            사이드바에서 분류를 만들어두면 보관함 대신 그쪽으로 보낼 수도 있어요.
+            사이드바에서 분류 메일함을 만들어두면 보관함 대신 그쪽으로 보낼 수도 있어요.
           </p>
         )}
         {error && <p className="text-destructive mt-2 text-sm">{error}</p>}

@@ -93,6 +93,7 @@ const FOLDER_COLOR_PRESETS = Array.from({ length: 18 }, (_, i) => {
 interface AccountSidebarProps {
   accounts: Account[]
   unreadCountByAccount: Record<string, number>
+  unreadCountByFolder: Record<string, number>
   selectedAccountId: string | null
   isInboxView: boolean
   isCleanupView: boolean
@@ -125,6 +126,7 @@ interface AccountSidebarProps {
 export function AccountSidebar({
   accounts,
   unreadCountByAccount,
+  unreadCountByFolder,
   selectedAccountId,
   isInboxView,
   isCleanupView,
@@ -206,7 +208,7 @@ export function AccountSidebar({
     const result = await onCreateFolder(name)
     setIsCreatingFolder(false)
     if (!result.ok) {
-      setCreateFolderError(result.error ?? "분류 생성에 실패했습니다.")
+      setCreateFolderError(result.error ?? "분류 메일함 생성에 실패했습니다.")
       return
     }
     setIsCreateFolderOpen(false)
@@ -223,7 +225,7 @@ export function AccountSidebar({
     const result = await onRenameFolder(pendingRenameFolder.id, name, renameColor)
     setIsRenaming(false)
     if (!result.ok) {
-      setRenameError(result.error ?? "분류 변경에 실패했습니다.")
+      setRenameError(result.error ?? "분류 메일함 변경에 실패했습니다.")
       return
     }
     setPendingRenameFolder(null)
@@ -390,10 +392,10 @@ export function AccountSidebar({
         </SidebarGroup>
         <SidebarGroup>
           <div className="flex items-center justify-between px-2">
-            <SidebarGroupLabel className="px-0">분류</SidebarGroupLabel>
+            <SidebarGroupLabel className="px-0">분류 메일함</SidebarGroupLabel>
             <button
               type="button"
-              aria-label="새 분류"
+              aria-label="새 분류 메일함"
               onClick={() => {
                 setCreateFolderError(null)
                 setNewFolderName("")
@@ -406,7 +408,9 @@ export function AccountSidebar({
           </div>
           <SidebarGroupContent>
             <SidebarMenu>
-              {folders.map((folder) => (
+              {folders.map((folder) => {
+                const unread = unreadCountByFolder[folder.id] ?? 0
+                return (
                 <SidebarMenuItem
                   key={folder.id}
                   className={cn(
@@ -434,10 +438,13 @@ export function AccountSidebar({
                     />
                     <span className="truncate">{folder.name}</span>
                   </SidebarMenuButton>
+                  {unread > 0 && (
+                    <SidebarMenuBadge className="group-hover/item:hidden">{unread}</SidebarMenuBadge>
+                  )}
                   <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover/item:opacity-100 focus-within:opacity-100">
                     <button
                       type="button"
-                      aria-label="분류 편집"
+                      aria-label="분류 메일함 편집"
                       onClick={() => {
                         setRenameError(null)
                         setRenameValue(folder.name)
@@ -450,7 +457,7 @@ export function AccountSidebar({
                     </button>
                     <button
                       type="button"
-                      aria-label="분류 삭제"
+                      aria-label="분류 메일함 삭제"
                       onClick={() => setPendingDeleteFolder(folder)}
                       className="hover:text-destructive rounded p-0.5"
                     >
@@ -458,9 +465,10 @@ export function AccountSidebar({
                     </button>
                   </div>
                 </SidebarMenuItem>
-              ))}
+                )
+              })}
               {folders.length === 0 && (
-                <p className="text-muted-foreground px-2 py-1 text-xs">분류가 없습니다.</p>
+                <p className="text-muted-foreground px-2 py-1 text-xs">분류 메일함이 없습니다.</p>
               )}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -529,13 +537,13 @@ export function AccountSidebar({
         <DialogContent>
           <form onSubmit={handleCreateFolder}>
             <DialogHeader>
-              <DialogTitle>새 분류 만들기</DialogTitle>
+              <DialogTitle>새 분류 메일함 만들기</DialogTitle>
               <DialogDescription>
-                MailRoost 안에서만 사용하는 분류예요. 메일 서버에는 반영되지 않아요.
+                MailRoost 안에서만 사용하는 분류 메일함이에요. 메일 서버에는 반영되지 않아요.
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-1.5 py-4">
-              <Label htmlFor="folder-name">분류 이름</Label>
+              <Label htmlFor="folder-name">분류 메일함 이름</Label>
               <Input
                 id="folder-name"
                 value={newFolderName}
@@ -565,11 +573,11 @@ export function AccountSidebar({
         <DialogContent>
           <form onSubmit={handleRenameFolder}>
             <DialogHeader>
-              <DialogTitle>분류 편집</DialogTitle>
+              <DialogTitle>분류 메일함 편집</DialogTitle>
             </DialogHeader>
             <div className="flex flex-col gap-4 py-4">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="folder-rename">분류 이름</Label>
+                <Label htmlFor="folder-rename">분류 메일함 이름</Label>
                 <Input
                   id="folder-rename"
                   value={renameValue}
@@ -626,9 +634,9 @@ export function AccountSidebar({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>분류 삭제</DialogTitle>
+            <DialogTitle>분류 메일함 삭제</DialogTitle>
             <DialogDescription>
-              <strong>{pendingDeleteFolder?.name}</strong> 분류를 삭제합니다. 이 분류에 있던 메일은
+              <strong>{pendingDeleteFolder?.name}</strong> 분류 메일함을 삭제합니다. 이 분류 메일함에 있던 메일은
               받은편지함으로 돌아갑니다.
             </DialogDescription>
           </DialogHeader>

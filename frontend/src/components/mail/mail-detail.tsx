@@ -174,7 +174,7 @@ export function MailDetail({
                   variant="ghost"
                   size="icon"
                   className="size-8"
-                  title="분류로 이동"
+                  title="분류 메일함으로 이동"
                   onClick={() => setMoveOpen((v) => !v)}
                 >
                   <FolderInput className="size-4" />
@@ -214,7 +214,7 @@ export function MailDetail({
                         </button>
                       ))}
                     {(!folders || folders.length === 0) && !currentFolderId && (
-                      <p className="text-muted-foreground px-3 py-1.5 text-xs">분류가 없습니다.</p>
+                      <p className="text-muted-foreground px-3 py-1.5 text-xs">분류 메일함이 없습니다.</p>
                     )}
                   </div>
                 )}

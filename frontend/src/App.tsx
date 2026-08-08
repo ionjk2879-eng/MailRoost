@@ -221,6 +221,16 @@ function App() {
     return counts
   }, [allMails])
 
+  const unreadCountByFolder = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const mail of allMails) {
+      if (!mail.isRead && mail.folderId) {
+        counts[mail.folderId] = (counts[mail.folderId] ?? 0) + 1
+      }
+    }
+    return counts
+  }, [allMails])
+
   const accountMails = useMemo(() => {
     return selectedAccountId
       ? allMails.filter((mail) => mail.accountId === selectedAccountId)
@@ -680,7 +690,7 @@ function App() {
     const result = await apiReorderFolders(order)
     if (!result.ok) {
       setFolders(previous)
-      showError(result.error ?? "분류 순서 변경에 실패했습니다.")
+      showError(result.error ?? "분류 메일함 순서 변경에 실패했습니다.")
     }
   }
 
@@ -1291,6 +1301,7 @@ function App() {
       <AccountSidebar
         accounts={accounts}
         unreadCountByAccount={unreadCountByAccount}
+        unreadCountByFolder={unreadCountByFolder}
         selectedAccountId={selectedAccountId}
         isInboxView={view === "inbox"}
         isCleanupView={view === "cleanup"}
@@ -1336,7 +1347,7 @@ function App() {
                       : view === "drafts"
                       ? "임시보관함"
                       : view === "folder"
-                      ? (folders.find((f) => f.id === selectedFolderId)?.name ?? "분류")
+                      ? (folders.find((f) => f.id === selectedFolderId)?.name ?? "분류 메일함")
                       : selectedAccountId
                       ? (() => {
                           const account = accounts.find((a) => a.id === selectedAccountId)

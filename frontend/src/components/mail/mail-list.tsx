@@ -202,7 +202,7 @@ export function MailList({
                     className="h-7 gap-1 px-2 text-xs"
                     onClick={() => setMoveOpen((v) => !v)}
                     disabled={isBulkLoading}
-                    title="분류로 이동"
+                    title="분류 메일함으로 이동"
                   >
                     <FolderInput className="size-3.5" />
                     <span className="hidden sm:inline">이동</span>
@@ -242,7 +242,7 @@ export function MailList({
                           </button>
                         ))}
                       {(!folders || folders.length === 0) && !currentFolderId && (
-                        <p className="text-muted-foreground px-3 py-1.5 text-xs">분류가 없습니다.</p>
+                        <p className="text-muted-foreground px-3 py-1.5 text-xs">분류 메일함이 없습니다.</p>
                       )}
                     </div>
                   )}

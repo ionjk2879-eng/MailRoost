@@ -361,13 +361,13 @@ api.post("/folders", async (c) => {
 
   const body = await c.req.json<{ name?: string }>().catch(() => null)
   const name = body?.name?.trim()
-  if (!name) return c.json({ error: "분류 이름을 입력해주세요." }, 400)
-  if (name.length > 40) return c.json({ error: "분류 이름이 너무 깁니다." }, 400)
+  if (!name) return c.json({ error: "분류 메일함 이름을 입력해주세요." }, 400)
+  if (name.length > 40) return c.json({ error: "분류 메일함 이름이 너무 깁니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
   const org = await resolveMailOrg(c.env, session)
   if (org.folders.some((f) => f.name === name)) {
-    return c.json({ error: "이미 같은 이름의 분류가 있습니다." }, 400)
+    return c.json({ error: "이미 같은 이름의 분류 메일함이 있습니다." }, 400)
   }
 
   const folder: MailFolder = {
@@ -404,8 +404,8 @@ api.patch("/folders/:id", async (c) => {
   const folderId = c.req.param("id")
   const body = await c.req.json<{ name?: string; color?: string }>().catch(() => null)
   const name = body?.name?.trim()
-  if (!name) return c.json({ error: "분류 이름을 입력해주세요." }, 400)
-  if (name.length > 40) return c.json({ error: "분류 이름이 너무 깁니다." }, 400)
+  if (!name) return c.json({ error: "분류 메일함 이름을 입력해주세요." }, 400)
+  if (name.length > 40) return c.json({ error: "분류 메일함 이름이 너무 깁니다." }, 400)
   if (body?.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(body.color)) {
     return c.json({ error: "잘못된 색상입니다." }, 400)
   }
@@ -414,9 +414,9 @@ api.patch("/folders/:id", async (c) => {
   const org = await resolveMailOrg(c.env, session)
 
   const folder = org.folders.find((f) => f.id === folderId)
-  if (!folder) return c.json({ error: "분류를 찾을 수 없습니다." }, 404)
+  if (!folder) return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
   if (org.folders.some((f) => f.id !== folderId && f.name === name)) {
-    return c.json({ error: "이미 같은 이름의 분류가 있습니다." }, 400)
+    return c.json({ error: "이미 같은 이름의 분류 메일함이 있습니다." }, 400)
   }
 
   folder.name = name
@@ -709,13 +709,13 @@ api.post("/rules", async (c) => {
   const category = (body?.category ?? null) as MailCategory | null
   if (field !== "from" && field !== "subject") return c.json({ error: "잘못된 조건입니다." }, 400)
   if (!keyword) return c.json({ error: "키워드를 입력해주세요." }, 400)
-  if (!targetFolderId && !category) return c.json({ error: "이동할 분류나 카테고리를 선택해주세요." }, 400)
+  if (!targetFolderId && !category) return c.json({ error: "이동할 분류 메일함이나 카테고리를 선택해주세요." }, 400)
   if (category && !VALID_CATEGORIES.includes(category)) return c.json({ error: "잘못된 카테고리입니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
   const org = await resolveMailOrg(c.env, session)
   if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
-    return c.json({ error: "분류를 찾을 수 없습니다." }, 404)
+    return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
   }
 
   const rule: AutoClassifyRule = {
@@ -764,7 +764,7 @@ api.patch("/rules/:id", async (c) => {
   if (body?.targetFolderId !== undefined) {
     const targetFolderId = body.targetFolderId
     if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
-      return c.json({ error: "분류를 찾을 수 없습니다." }, 404)
+      return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
     }
     rule.targetFolderId = targetFolderId
   }
@@ -773,7 +773,7 @@ api.patch("/rules/:id", async (c) => {
     if (category && !VALID_CATEGORIES.includes(category)) return c.json({ error: "잘못된 카테고리입니다." }, 400)
     rule.category = category
   }
-  if (!rule.targetFolderId && !rule.category) return c.json({ error: "이동할 분류나 카테고리를 선택해주세요." }, 400)
+  if (!rule.targetFolderId && !rule.category) return c.json({ error: "이동할 분류 메일함이나 카테고리를 선택해주세요." }, 400)
   if (body?.enabled !== undefined) rule.enabled = body.enabled
 
   await persistMailOrg(c.env, sessionId, session, org)
@@ -805,7 +805,7 @@ api.post("/mail/move", async (c) => {
   const org = await resolveMailOrg(c.env, session)
 
   if (folderId !== null && folderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === folderId)) {
-    return c.json({ error: "분류를 찾을 수 없습니다." }, 404)
+    return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
   }
 
   for (const { accountId, mailId } of items) {
@@ -839,9 +839,10 @@ api.get("/mail", async (c) => {
   const IMAP_PAGE = 50
   const GMAIL_PAGE = 50
 
-  // 사용자 정의 분류로 옮긴 메일은 받은편지함 목록에서 제외한다 (실제 서버에서는 옮기지 않으므로 앱에서 걸러냄)
-  const isAssignedElsewhere = (accountId: string, mailId: string) =>
-    Object.prototype.hasOwnProperty.call(org.assignments, assignmentKey(accountId, mailId))
+  // 보관함으로 옮긴 메일만 받은편지함 목록에서 제외한다. 사용자 정의 분류 메일함은 라벨처럼 동작해서
+  // 받은편지함에도 계속 보이고, 배정된 분류 메일함 id는 folderId로 함께 내려준다.
+  const folderIdOf = (accountId: string, mailId: string): string | null =>
+    org.assignments[assignmentKey(accountId, mailId)] ?? null
 
   // 새로 도착한(한 번도 평가한 적 없는) 메일만 규칙과 대조한다 — 사용자가 수동으로 받은편지함으로
   // 되돌린 메일이 새로고침할 때마다 다시 자동분류되는 것을 막기 위함.
@@ -917,7 +918,12 @@ api.get("/mail", async (c) => {
         mail.category = applyCategoryRule(mail)
       }
     }
-    results.push(...result.mails.filter((m) => !isAssignedElsewhere(result.accountId, m.id)))
+    for (const mail of result.mails) {
+      const folderId = folderIdOf(result.accountId, mail.id)
+      if (folderId === ARCHIVE_FOLDER_ID) continue
+      mail.folderId = folderId
+      results.push(mail)
+    }
     if (result.cursor) nextCursorMap[result.accountId] = result.cursor
     if (result.updatedRecord) {
       accountMap[result.accountId] = result.updatedRecord
@@ -949,8 +955,8 @@ api.get("/mail/search", async (c) => {
   const org = await resolveMailOrg(c.env, session)
   const accountIds = Object.keys(accountMap)
 
-  const isAssignedElsewhere = (accountId: string, mailId: string) =>
-    Object.prototype.hasOwnProperty.call(org.assignments, assignmentKey(accountId, mailId))
+  const folderIdOf = (accountId: string, mailId: string): string | null =>
+    org.assignments[assignmentKey(accountId, mailId)] ?? null
 
   const results: Mail[] = []
   const failedAccountIds: string[] = []
@@ -986,7 +992,12 @@ api.get("/mail/search", async (c) => {
       failedAccountIds.push(result.accountId)
       continue
     }
-    results.push(...result.mails.filter((m) => !isAssignedElsewhere(result.accountId, m.id)))
+    for (const mail of result.mails) {
+      const folderId = folderIdOf(result.accountId, mail.id)
+      if (folderId === ARCHIVE_FOLDER_ID) continue
+      mail.folderId = folderId
+      results.push(mail)
+    }
     if ('updatedRecord' in result && result.updatedRecord) {
       accountMap[result.accountId] = result.updatedRecord
       accountsChanged = true
