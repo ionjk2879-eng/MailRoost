@@ -67,7 +67,7 @@ import {
   naverToggleStarBulk,
 } from "../lib/imap"
 import { getUserDrafts, saveUserDrafts } from "../lib/drafts"
-import { applyOrder, assignmentKey, emptyMailOrgState, getUserMailOrg, normalizeMailOrgState, parseAssignmentKey, saveUserMailOrg } from "../lib/mailOrg"
+import { applyOrder, ARCHIVE_FOLDER_ID, assignmentKey, emptyMailOrgState, folderIdsOf, getUserMailOrg, isArchived, normalizeMailOrgState, parseAssignmentKey, saveUserMailOrg, toggleFolderAssignment } from "../lib/mailOrg"
 import { fetchAttachmentForAccount, resolveForwardedAttachments, sendViaRecord } from "../lib/mailSend"
 import type { OutgoingAttachment } from "../lib/mime"
 import { getUserMemos, saveUserMemos } from "../lib/memo"
@@ -104,10 +104,6 @@ function randomFolderColor(): string {
   const lightness = 45 + Math.random() * 15 // 45~60%
   return hslToHex(hue, saturation, lightness)
 }
-
-// 보관함은 사용자 정의 분류와 동일한 배정(assignment) 메커니즘을 쓰는 예약된 가상 폴더 ID.
-// org.folders 목록에는 들어가지 않으므로 이름변경/삭제 대상이 되지 않는다.
-const ARCHIVE_FOLDER_ID = "archive"
 
 // ── Cursor-based pagination helpers ──────────────────────────────────────────
 
@@ -391,7 +387,9 @@ api.delete("/folders/:id", async (c) => {
 
   org.folders = org.folders.filter((f) => f.id !== folderId)
   for (const key of Object.keys(org.assignments)) {
-    if (org.assignments[key] === folderId) delete org.assignments[key]
+    const next = org.assignments[key].filter((id) => id !== folderId)
+    if (next.length > 0) org.assignments[key] = next
+    else delete org.assignments[key]
   }
   await persistMailOrg(c.env, sessionId, session, org)
   return c.json({ ok: true })
@@ -449,9 +447,13 @@ api.get("/folders/:id/mail", async (c) => {
   const accountMap = await resolveAccounts(c.env, session)
   const org = await resolveMailOrg(c.env, session)
 
+  // "archive"는 사용자 정의 분류 메일함과 달리 org.assignments가 아니라 org.archived에 따로 있다.
+  const keys = folderId === ARCHIVE_FOLDER_ID
+    ? Object.keys(org.archived)
+    : Object.entries(org.assignments).filter(([, folderIds]) => folderIds.includes(folderId)).map(([key]) => key)
+
   const idsByAccount = new Map<string, string[]>()
-  for (const [key, fid] of Object.entries(org.assignments)) {
-    if (fid !== folderId) continue
+  for (const key of keys) {
     const parsed = parseAssignmentKey(key)
     if (!parsed) continue
     const list = idsByAccount.get(parsed.accountId)
@@ -492,6 +494,7 @@ api.get("/folders/:id/mail", async (c) => {
   if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
 
   const mails = perAccountResults.flat()
+  for (const mail of mails) mail.folderIds = folderIdsOf(org, mail.accountId, mail.id)
   mails.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   return c.json({ mails })
 })
@@ -796,10 +799,19 @@ api.post("/mail/move", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
 
-  const body = await c.req.json<{ items?: { accountId: string; mailId: string }[]; folderId?: string | null }>().catch(() => null)
+  const body = await c.req
+    .json<{
+      items?: { accountId: string; mailId: string }[]
+      folderId?: string | null
+      // folderId가 null일 때만 쓰인다: 어느 맥락(보관함/특정 분류 메일함)에서 "받은편지함으로"를
+      //눌렀는지 알려줘서 그 배정 하나만 정확히 없앨 수 있게 한다.
+      fromFolderId?: string | null
+    }>()
+    .catch(() => null)
   const items = body?.items
   if (!items?.length) return c.json({ error: "bad request" }, 400)
   const folderId = body?.folderId ?? null
+  const fromFolderId = body?.fromFolderId ?? null
 
   const session = await readSession(c.env, sessionId)
   const org = await resolveMailOrg(c.env, session)
@@ -808,11 +820,48 @@ api.post("/mail/move", async (c) => {
     return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
   }
 
+  // 보관은 분류 메일함 배정과 독립적이라 라벨을 그대로 둔 채 보관 여부만 바꾼다.
+  // 분류 메일함으로 이동은 기존 배정을 지우지 않고 그 분류 메일함만 추가한다(여러 개에 동시에 속할 수 있음).
   for (const { accountId, mailId } of items) {
     const key = assignmentKey(accountId, mailId)
-    if (folderId === null) delete org.assignments[key]
-    else org.assignments[key] = folderId
+    if (folderId === ARCHIVE_FOLDER_ID) {
+      org.archived[key] = true
+    } else if (folderId !== null) {
+      toggleFolderAssignment(org, accountId, mailId, folderId, true)
+    } else if (fromFolderId === ARCHIVE_FOLDER_ID) {
+      delete org.archived[key]
+    } else if (fromFolderId) {
+      toggleFolderAssignment(org, accountId, mailId, fromFolderId, false)
+    } else {
+      delete org.archived[key]
+      delete org.assignments[key]
+    }
   }
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ ok: true })
+})
+
+// 메일 하나에 대해 특정 분류 메일함 배정을 추가/제거한다 (다른 배정에는 영향 없음).
+// 메일이 여러 분류 메일함에 동시에 속할 수 있게 하는 핵심 라우트.
+api.post("/mail/folders/toggle", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req
+    .json<{ accountId?: string; mailId?: string; folderId?: string; assign?: boolean }>()
+    .catch(() => null)
+  const { accountId, mailId, folderId, assign } = body ?? {}
+  if (!accountId || !mailId || !folderId || typeof assign !== "boolean") {
+    return c.json({ error: "bad request" }, 400)
+  }
+
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  if (!org.folders.some((f) => f.id === folderId)) {
+    return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
+  }
+
+  toggleFolderAssignment(org, accountId, mailId, folderId, assign)
   await persistMailOrg(c.env, sessionId, session, org)
   return c.json({ ok: true })
 })
@@ -839,11 +888,6 @@ api.get("/mail", async (c) => {
   const IMAP_PAGE = 50
   const GMAIL_PAGE = 50
 
-  // 보관함으로 옮긴 메일만 받은편지함 목록에서 제외한다. 사용자 정의 분류 메일함은 라벨처럼 동작해서
-  // 받은편지함에도 계속 보이고, 배정된 분류 메일함 id는 folderId로 함께 내려준다.
-  const folderIdOf = (accountId: string, mailId: string): string | null =>
-    org.assignments[assignmentKey(accountId, mailId)] ?? null
-
   // 새로 도착한(한 번도 평가한 적 없는) 메일만 규칙과 대조한다 — 사용자가 수동으로 받은편지함으로
   // 되돌린 메일이 새로고침할 때마다 다시 자동분류되는 것을 막기 위함.
   function classifyIfNew(accountId: string, mail: Mail): void {
@@ -853,7 +897,8 @@ api.get("/mail", async (c) => {
       if (!rule.enabled || !rule.targetFolderId) continue
       const haystack = (rule.field === "from" ? `${mail.fromName} ${mail.fromEmail}` : mail.subject).toLowerCase()
       if (haystack.includes(rule.keyword.toLowerCase())) {
-        org.assignments[key] = rule.targetFolderId
+        if (rule.targetFolderId === ARCHIVE_FOLDER_ID) org.archived[key] = true
+        else toggleFolderAssignment(org, accountId, mail.id, rule.targetFolderId, true)
         break
       }
     }
@@ -919,9 +964,8 @@ api.get("/mail", async (c) => {
       }
     }
     for (const mail of result.mails) {
-      const folderId = folderIdOf(result.accountId, mail.id)
-      if (folderId === ARCHIVE_FOLDER_ID) continue
-      mail.folderId = folderId
+      if (isArchived(org, result.accountId, mail.id)) continue
+      mail.folderIds = folderIdsOf(org, result.accountId, mail.id)
       results.push(mail)
     }
     if (result.cursor) nextCursorMap[result.accountId] = result.cursor
@@ -954,9 +998,6 @@ api.get("/mail/search", async (c) => {
   const accountMap = await resolveAccounts(c.env, session)
   const org = await resolveMailOrg(c.env, session)
   const accountIds = Object.keys(accountMap)
-
-  const folderIdOf = (accountId: string, mailId: string): string | null =>
-    org.assignments[assignmentKey(accountId, mailId)] ?? null
 
   const results: Mail[] = []
   const failedAccountIds: string[] = []
@@ -993,9 +1034,8 @@ api.get("/mail/search", async (c) => {
       continue
     }
     for (const mail of result.mails) {
-      const folderId = folderIdOf(result.accountId, mail.id)
-      if (folderId === ARCHIVE_FOLDER_ID) continue
-      mail.folderId = folderId
+      if (isArchived(org, result.accountId, mail.id)) continue
+      mail.folderIds = folderIdsOf(org, result.accountId, mail.id)
       results.push(mail)
     }
     if ('updatedRecord' in result && result.updatedRecord) {
@@ -1150,13 +1190,17 @@ api.post("/trash/restore", async (c) => {
     await gmailRestoreFromTrash(fresh.accessToken, mailIds)
   }
 
-  // 복구된 메일에 사용자 정의 분류 배정이 남아있으면 정리한다 (실제로는 받은편지함으로 돌아왔으므로)
+  // 복구된 메일에 사용자 정의 분류 메일함 배정이나 보관 상태가 남아있으면 정리한다 (실제로는 받은편지함으로 돌아왔으므로)
   const org = await resolveMailOrg(c.env, session)
   let orgChanged = false
   for (const mailId of mailIds) {
     const key = assignmentKey(accountId, mailId)
     if (key in org.assignments) {
       delete org.assignments[key]
+      orgChanged = true
+    }
+    if (key in org.archived) {
+      delete org.archived[key]
       orgChanged = true
     }
   }

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RecipientInput, type RecipientOption } from "@/components/mail/recipient-input"
-import { createDraft, deleteDraft, scheduleMail, sendMail, updateDraft } from "@/lib/api"
+import { createDraft, deleteDraft, scheduleMail, updateDraft } from "@/lib/api"
 import type { Account, Draft, ForwardedAttachmentRef, Mail, QuickReply, ScheduledMail } from "@/types/mail"
 
 export const COMPOSE_SUPPORTED: Array<Account["provider"]> = ["gmail", "naver", "daum", "imap"]
@@ -29,12 +29,17 @@ interface ComposeViewProps {
   onCancel: () => void
   onSent: () => void
   onScheduled?: (mail: ScheduledMail) => void
+  onUndoSendQueued?: (mail: ScheduledMail) => void
   onDraftSaved?: (draft: Draft) => void
   onDraftDeleted?: (id: string) => void
 }
 
 // 작성을 멈춘 뒤 이만큼 지나면 임시보관함에 자동저장한다.
 const DRAFT_SAVE_DEBOUNCE_MS = 1500
+
+// "보내기"를 누르면 실제로는 이만큼 뒤로 예약해두고, 그 사이 "실행취소"를 누르면 취소한다.
+// 예약발송 인프라(같은 라우트/cron)를 그대로 재사용한다.
+const UNDO_SEND_WINDOW_MS = 10_000
 
 // datetime-local input이 요구하는 "로컬 시각" 형식으로 최소값(지금부터 5분 뒤)을 만든다.
 function minScheduleValue(): string {
@@ -67,6 +72,7 @@ export function ComposeView({
   onCancel,
   onSent,
   onScheduled,
+  onUndoSendQueued,
   onDraftSaved,
   onDraftDeleted,
 }: ComposeViewProps) {
@@ -233,11 +239,12 @@ export function ComposeView({
 
     setError(null)
     setIsSending(true)
-    const result = await sendMail(
+    const result = await scheduleMail(
       accountId,
       to.trim(),
       subject.trim(),
       body,
+      Date.now() + UNDO_SEND_WINDOW_MS,
       cc.trim() || undefined,
       bcc.trim() || undefined,
       attachments,
@@ -248,6 +255,7 @@ export function ComposeView({
       return
     }
     discardDraftAfterSend()
+    onUndoSendQueued?.(result.scheduledMail)
     onSent()
   }
 

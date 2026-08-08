@@ -144,16 +144,36 @@ export async function fetchFolderMails(folderId: string): Promise<Mail[]> {
 export async function moveMails(
   items: { accountId: string; mailId: string }[],
   folderId: string | null,
+  fromFolderId?: string | null,
 ): Promise<{ ok: boolean; error?: string }> {
   if (items.length === 0) return { ok: true }
   const res = await fetch("/api/mail/move", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items, folderId }),
+    body: JSON.stringify({ items, folderId, fromFolderId }),
   })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     return { ok: false, error: data.error ?? "메일 이동에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+// 메일 하나에 대해 특정 분류 메일함 배정을 추가/제거한다 (다른 배정에는 영향 없음).
+export async function toggleMailFolder(
+  accountId: string,
+  mailId: string,
+  folderId: string,
+  assign: boolean,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("/api/mail/folders/toggle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, mailId, folderId, assign }),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "분류 메일함 배정 변경에 실패했습니다." }
   }
   return { ok: true }
 }

@@ -1,12 +1,14 @@
-import { Archive, ChevronLeft, Download, Folder, FolderInput, Forward, Inbox, MailOpen, Paperclip, Reply, ReplyAll, Star, Trash2 } from "lucide-react"
+import { Archive, Check, ChevronLeft, Download, Eye, Folder, FolderInput, Forward, Inbox, MailOpen, Paperclip, Reply, ReplyAll, Star, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
+import { AttachmentPreview, isPreviewableAttachment } from "@/components/mail/attachment-preview"
 import { attachmentDownloadUrl } from "@/lib/api"
-import type { Account, Mail, MailFolder } from "@/types/mail"
+import { ARCHIVE_FOLDER_ID } from "@/types/mail"
+import type { Account, Mail, MailAttachment, MailFolder } from "@/types/mail"
 
 interface MailDetailProps {
   mail: Mail | null
@@ -23,6 +25,7 @@ interface MailDetailProps {
   folders?: MailFolder[]
   currentFolderId?: string
   onMove?: (mailId: string, accountId: string, folderId: string | null) => void
+  onToggleFolder?: (mailId: string, accountId: string, folderId: string, assign: boolean) => void
 }
 
 function formatFullDate(iso: string): string {
@@ -66,9 +69,11 @@ export function MailDetail({
   folders,
   currentFolderId,
   onMove,
+  onToggleFolder,
 }: MailDetailProps) {
   const [moveOpen, setMoveOpen] = useState(false)
   const moveRef = useRef<HTMLDivElement>(null)
+  const [previewAttachment, setPreviewAttachment] = useState<MailAttachment | null>(null)
 
   useEffect(() => {
     if (!moveOpen) return
@@ -168,7 +173,7 @@ export function MailDetail({
                 <Archive className="size-4" />
               </Button>
             )}
-            {onMove && (
+            {(onMove || onToggleFolder) && (
               <div ref={moveRef} className="relative">
                 <Button
                   variant="ghost"
@@ -180,40 +185,44 @@ export function MailDetail({
                   <FolderInput className="size-4" />
                 </Button>
                 {moveOpen && (
-                  <div className="bg-background absolute top-full right-0 z-20 mt-1 min-w-[140px] rounded-md border shadow-md">
-                    {currentFolderId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onMove(mail.id, mail.accountId, null)
-                          setMoveOpen(false)
-                        }}
-                        className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
-                      >
-                        <Inbox className="text-muted-foreground size-3.5" />
-                        받은편지함으로
-                      </button>
-                    )}
-                    {(folders ?? [])
-                      .filter((f) => f.id !== currentFolderId)
-                      .map((folder) => (
+                  <div className="bg-background absolute top-full right-0 z-20 mt-1 min-w-[160px] rounded-md border shadow-md">
+                    {currentFolderId === ARCHIVE_FOLDER_ID && (
+                      <>
                         <button
-                          key={folder.id}
                           type="button"
                           onClick={() => {
-                            onMove(mail.id, mail.accountId, folder.id)
+                            onMove?.(mail.id, mail.accountId, null)
                             setMoveOpen(false)
                           }}
                           className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
                         >
+                          <Inbox className="text-muted-foreground size-3.5" />
+                          보관함에서 꺼내기
+                        </button>
+                        <div className="my-1 border-t" />
+                      </>
+                    )}
+                    {(folders ?? []).map((folder) => {
+                      const checked = mail.folderIds?.includes(folder.id) ?? false
+                      return (
+                        <button
+                          key={folder.id}
+                          type="button"
+                          onClick={() => onToggleFolder?.(mail.id, mail.accountId, folder.id, !checked)}
+                          className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
+                        >
+                          <span className="border-input flex size-3.5 shrink-0 items-center justify-center rounded-sm border">
+                            {checked && <Check className="size-2.5" />}
+                          </span>
                           <Folder
                             className="size-3.5 shrink-0"
                             style={{ color: folder.color, fill: folder.color, fillOpacity: 0.25 }}
                           />
                           <span className="truncate">{folder.name}</span>
                         </button>
-                      ))}
-                    {(!folders || folders.length === 0) && !currentFolderId && (
+                      )
+                    })}
+                    {(!folders || folders.length === 0) && currentFolderId !== ARCHIVE_FOLDER_ID && (
                       <p className="text-muted-foreground px-3 py-1.5 text-xs">분류 메일함이 없습니다.</p>
                     )}
                   </div>
@@ -257,20 +266,37 @@ export function MailDetail({
         </div>
         {mail.attachments && mail.attachments.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {mail.attachments.map((attachment) => (
-              <a
-                key={attachment.id}
-                href={attachmentDownloadUrl(mail.id, mail.accountId, attachment)}
-                download={attachment.filename}
-                className="border-input hover:bg-accent flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors"
-              >
-                <Paperclip className="text-muted-foreground size-3.5 shrink-0" />
-                <span className="max-w-[160px] truncate">{attachment.filename}</span>
-                <span className="text-muted-foreground shrink-0">{formatFileSize(attachment.size)}</span>
-                <Download className="text-muted-foreground size-3.5 shrink-0" />
-              </a>
-            ))}
+            {mail.attachments.map((attachment) =>
+              isPreviewableAttachment(attachment.mimeType) ? (
+                <button
+                  key={attachment.id}
+                  type="button"
+                  onClick={() => setPreviewAttachment(attachment)}
+                  className="border-input hover:bg-accent flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors"
+                >
+                  <Paperclip className="text-muted-foreground size-3.5 shrink-0" />
+                  <span className="max-w-[160px] truncate">{attachment.filename}</span>
+                  <span className="text-muted-foreground shrink-0">{formatFileSize(attachment.size)}</span>
+                  <Eye className="text-muted-foreground size-3.5 shrink-0" />
+                </button>
+              ) : (
+                <a
+                  key={attachment.id}
+                  href={attachmentDownloadUrl(mail.id, mail.accountId, attachment)}
+                  download={attachment.filename}
+                  className="border-input hover:bg-accent flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors"
+                >
+                  <Paperclip className="text-muted-foreground size-3.5 shrink-0" />
+                  <span className="max-w-[160px] truncate">{attachment.filename}</span>
+                  <span className="text-muted-foreground shrink-0">{formatFileSize(attachment.size)}</span>
+                  <Download className="text-muted-foreground size-3.5 shrink-0" />
+                </a>
+              ),
+            )}
           </div>
+        )}
+        {previewAttachment && (
+          <AttachmentPreview mail={mail} attachment={previewAttachment} onClose={() => setPreviewAttachment(null)} />
         )}
       </div>
       <Separator />

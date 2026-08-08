@@ -62,8 +62,8 @@ export interface Mail {
   // 목록 조회에서는 비어있고, 상세 조회에서만 채워진다 (전체회신용)
   toRecipients?: string[]
   ccRecipients?: string[]
-  // 사용자 정의 분류 메일함에 배정된 경우 그 분류 메일함 id
-  folderId?: string | null
+  // 배정된 사용자 정의 분류 메일함 id 목록 (여러 개에 동시에 속할 수 있다)
+  folderIds?: string[]
 }
 
 export interface QuickReply {

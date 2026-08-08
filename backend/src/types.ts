@@ -42,8 +42,9 @@ export interface Mail {
   // 목록 조회에서는 비어있고, 상세 조회에서만 채워진다 (전체회신용)
   toRecipients?: string[]
   ccRecipients?: string[]
-  // 사용자 정의 분류 메일함에 배정된 경우 그 분류 메일함 id (보관함이면 "archive"). /mail 목록 조회에서만 채워진다.
-  folderId?: string | null
+  // 배정된 사용자 정의 분류 메일함 id 목록 (메일 하나가 여러 개에 동시에 속할 수 있다). 보관함은 포함되지
+  // 않는다 — 보관 여부는 별도 관리된다. /mail 목록 조회에서만 채워진다.
+  folderIds?: string[]
 }
 
 export interface GmailAccountRecord {
@@ -124,8 +125,12 @@ export interface QuickReply {
 
 export interface MailOrgState {
   folders: MailFolder[]
-  // key: assignmentKey(accountId, mailId) in lib/mailOrg.ts -> folderId
-  assignments: Record<string, string>
+  // key: assignmentKey(accountId, mailId) in lib/mailOrg.ts -> 배정된 분류 메일함 id 목록.
+  // 메일 하나가 여러 분류 메일함에 동시에 속할 수 있다 (라벨처럼 동작). 보관함은 여기 포함되지 않는다.
+  assignments: Record<string, string[]>
+  // key: assignmentKey(accountId, mailId) -> 보관 여부. 분류 메일함 배정과 독립적이라 보관 중에도
+  // 분류 메일함에 배정될 수 있고, 반대도 가능하다.
+  archived: Record<string, true>
   rules: AutoClassifyRule[]
   // 규칙 평가를 한 번이라도 거친 메일 (재평가/무한 재분류 방지용)
   classified: Record<string, true>

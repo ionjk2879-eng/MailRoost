@@ -10,6 +10,7 @@ import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
 import { DraftsView } from "@/components/drafts/drafts-view"
 import { NotificationBell } from "@/components/notifications/notification-bell"
+import { UndoSendToast } from "@/components/mail/undo-send-toast"
 import { Button } from "@/components/ui/button"
 import {
   ResizableHandle,
@@ -62,6 +63,7 @@ import {
   reorderFolders as apiReorderFolders,
   restoreFromTrash,
   searchMails,
+  toggleMailFolder,
   toggleStar,
   updateAccountSignature,
   updateMemo,
@@ -104,6 +106,9 @@ function App() {
   const [scheduledMails, setScheduledMails] = useState<ScheduledMail[]>([])
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [drafts, setDrafts] = useState<Draft[]>([])
+  // "보내기 취소" 유예시간 동안 대기 중인 예약발송(짧은 지연 후 실제 발송됨). 취소하면 작성 화면으로 되돌린다.
+  const [pendingSends, setPendingSends] = useState<ScheduledMail[]>([])
+  const pendingSendTimers = useRef<Record<string, number>>({})
   const [composeState, setComposeState] = useState<{
     accountId?: string
     to?: string
@@ -224,8 +229,9 @@ function App() {
   const unreadCountByFolder = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const mail of allMails) {
-      if (!mail.isRead && mail.folderId) {
-        counts[mail.folderId] = (counts[mail.folderId] ?? 0) + 1
+      if (mail.isRead) continue
+      for (const folderId of mail.folderIds ?? []) {
+        counts[folderId] = (counts[folderId] ?? 0) + 1
       }
     }
     return counts
@@ -472,23 +478,34 @@ function App() {
     await deleteMailsWithRevert([target], view === "folder" ? "folder" : "inbox")
   }
 
-  // 분류 이동: 실제 서버에서는 옮기지 않고 앱 내부 배정만 바꾼다.
-  const applyMove = async (targets: Mail[], folderId: string | null, origin: "inbox" | "folder") => {
+  // 보관/받은편지함 이동: 실제 서버에서는 옮기지 않고 앱 내부 배정만 바꾼다.
+  // 분류 메일함 배정은 라벨처럼 동작해서(여러 개에 동시에 속할 수 있음) 추가하는 것만으로는 지금 보는
+  // 목록에서 사라지지 않는다 — 받은편지함에서는 보관할 때만, 분류 메일함 화면에서는 그 배정을 뺄 때만 사라진다.
+  const applyMove = async (
+    targets: Mail[],
+    folderId: string | null,
+    origin: "inbox" | "folder",
+    fromFolderId?: string | null,
+  ) => {
     if (targets.length === 0) return
+    const removeFromView = origin === "inbox" ? folderId === ARCHIVE_FOLDER_ID : folderId === null
     const setList = origin === "folder" ? setFolderMails : setRealMails
     const ids = new Set(targets.map((m) => m.id))
-    setList((prev) => prev.filter((m) => !ids.has(m.id)))
-    setMailDetails((prev) => {
-      const next = { ...prev }
-      for (const id of ids) delete next[id]
-      return next
-    })
-    if (selectedMailId && ids.has(selectedMailId)) setSelectedMailId(null)
+
+    if (removeFromView) {
+      setList((prev) => prev.filter((m) => !ids.has(m.id)))
+      setMailDetails((prev) => {
+        const next = { ...prev }
+        for (const id of ids) delete next[id]
+        return next
+      })
+      if (selectedMailId && ids.has(selectedMailId)) setSelectedMailId(null)
+    }
 
     const items = targets.map((m) => ({ accountId: m.accountId, mailId: m.id }))
-    const result = await moveMails(items, folderId)
+    const result = await moveMails(items, folderId, fromFolderId)
     if (!result.ok) {
-      setList((prev) => [...prev, ...targets])
+      if (removeFromView) setList((prev) => [...prev, ...targets])
       showError(result.error ?? "메일 이동에 실패했습니다.")
     }
   }
@@ -502,7 +519,7 @@ function App() {
   const handleBulkMoveFromFolder = (folderId: string | null) => {
     const targets = folderMails.filter((m) => checkedMailIds.has(m.id))
     setCheckedMailIds(new Set())
-    applyMove(targets, folderId, "folder")
+    applyMove(targets, folderId, "folder", selectedFolderId)
   }
 
   const handleMoveMailFromInbox = (mailId: string, accountId: string, folderId: string | null) => {
@@ -512,7 +529,37 @@ function App() {
 
   const handleMoveMailFromFolder = (mailId: string, accountId: string, folderId: string | null) => {
     const target = folderMails.find((m) => m.id === mailId && m.accountId === accountId)
-    if (target) applyMove([target], folderId, "folder")
+    if (target) applyMove([target], folderId, "folder", selectedFolderId)
+  }
+
+  // 분류 메일함 배정을 개별로 추가/제거한다 (메일 하나가 여러 분류 메일함에 동시에 속할 수 있다).
+  const handleToggleMailFolder = async (mailId: string, accountId: string, folderId: string, assign: boolean) => {
+    const patchFolderIds = (mail: Mail): Mail => {
+      const current = mail.folderIds ?? []
+      const next = assign ? [...new Set([...current, folderId])] : current.filter((id) => id !== folderId)
+      return { ...mail, folderIds: next }
+    }
+    const isTarget = (m: Mail) => m.id === mailId && m.accountId === accountId
+
+    setRealMails((prev) => prev.map((m) => (isTarget(m) ? patchFolderIds(m) : m)))
+    setFolderMails((prev) => {
+      // 지금 보고 있는 분류 메일함에서 배정을 빼면 그 목록에서도 사라져야 한다.
+      if (!assign && folderId === selectedFolderId) return prev.filter((m) => !isTarget(m))
+      return prev.map((m) => (isTarget(m) ? patchFolderIds(m) : m))
+    })
+    setMailDetails((prev) => {
+      const detail = prev[mailId]
+      if (!detail || detail.accountId !== accountId) return prev
+      return { ...prev, [mailId]: patchFolderIds(detail) }
+    })
+    if (!assign && folderId === selectedFolderId && selectedMailId === mailId) setSelectedMailId(null)
+
+    const result = await toggleMailFolder(accountId, mailId, folderId, assign)
+    if (!result.ok) {
+      showError(result.error ?? "분류 메일함 배정 변경에 실패했습니다.")
+      loadAccountsAndMails()
+      if (selectedFolderId) loadFolderMails(selectedFolderId)
+    }
   }
 
   const handleLoadMore = async () => {
@@ -790,6 +837,41 @@ function App() {
     if (!result.ok) {
       if (removed) setScheduledMails((prev) => [...prev, removed])
       showError(result.error ?? "예약발송 취소에 실패했습니다.")
+    }
+  }
+
+  // "보내기"를 누르면 실제로는 짧게 예약해두고(compose-view.tsx의 UNDO_SEND_WINDOW_MS), 그 사이
+  // 취소할 수 있는 토스트를 띄운다. 유예시간이 지나면 조용히 목록에서만 지운다 (이미 예약은 그대로 진행됨).
+  const handleUndoSendQueued = (mail: ScheduledMail) => {
+    setPendingSends((prev) => [...prev, mail])
+    const timer = window.setTimeout(() => {
+      setPendingSends((prev) => prev.filter((m) => m.id !== mail.id))
+      delete pendingSendTimers.current[mail.id]
+    }, Math.max(0, mail.sendAt - Date.now()))
+    pendingSendTimers.current[mail.id] = timer
+  }
+
+  const handleUndoSend = async (id: string) => {
+    const mail = pendingSends.find((m) => m.id === id)
+    setPendingSends((prev) => prev.filter((m) => m.id !== id))
+    const timer = pendingSendTimers.current[id]
+    if (timer !== undefined) {
+      window.clearTimeout(timer)
+      delete pendingSendTimers.current[id]
+    }
+    await cancelScheduledMail(id)
+    if (mail) {
+      setComposeState({
+        accountId: mail.accountId,
+        to: mail.to,
+        cc: mail.cc,
+        bcc: mail.bcc,
+        subject: mail.subject,
+        body: mail.body,
+        forwardedAttachments: mail.forwardedAttachments,
+        title: "실행취소된 메일",
+      })
+      setSelectedMailId(null)
     }
   }
 
@@ -1084,6 +1166,9 @@ function App() {
     setScheduledMails([])
     setNotifications([])
     setDrafts([])
+    for (const timer of Object.values(pendingSendTimers.current)) window.clearTimeout(timer)
+    pendingSendTimers.current = {}
+    setPendingSends([])
     goHome()
   }
 
@@ -1204,6 +1289,7 @@ function App() {
       defaultForwardedAttachments={composeState.forwardedAttachments}
       defaultDraftId={composeState.draftId}
       onScheduled={handleScheduled}
+      onUndoSendQueued={handleUndoSendQueued}
       onDraftSaved={handleDraftSaved}
       onDraftDeleted={handleDraftDeleted}
       onBack={isMobile ? handleCancelCompose : undefined}
@@ -1225,6 +1311,7 @@ function App() {
       onForward={handleForward}
       folders={folders}
       onMove={handleMoveMailFromInbox}
+      onToggleFolder={handleToggleMailFolder}
     />
   )
 
@@ -1267,6 +1354,7 @@ function App() {
       defaultForwardedAttachments={composeState.forwardedAttachments}
       defaultDraftId={composeState.draftId}
       onScheduled={handleScheduled}
+      onUndoSendQueued={handleUndoSendQueued}
       onDraftSaved={handleDraftSaved}
       onDraftDeleted={handleDraftDeleted}
       onBack={isMobile ? handleCancelCompose : undefined}
@@ -1293,6 +1381,7 @@ function App() {
       folders={folders}
       currentFolderId={selectedFolderId ?? undefined}
       onMove={handleMoveMailFromFolder}
+      onToggleFolder={handleToggleMailFolder}
     />
   )
 
@@ -1518,6 +1607,10 @@ function App() {
           </div>
         </div>
       )}
+      <UndoSendToast
+        pendingSends={pendingSends.map((m) => ({ id: m.id, subject: m.subject, sendAt: m.sendAt }))}
+        onUndo={handleUndoSend}
+      />
     </SidebarProvider>
   )
 }
