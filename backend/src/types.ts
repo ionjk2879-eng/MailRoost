@@ -117,6 +117,21 @@ export interface AutoClassifyRule {
   createdAt: number
 }
 
+// 저장된 검색/스마트 필터: 구조화된 조건에 이름을 붙여 저장해두고 사이드바에서 재사용한다.
+// 각 조건은 비어있으면(null/"") 그 조건을 따지지 않는다.
+export interface SavedFilter {
+  id: string
+  name: string
+  accountId: string | null
+  from: string
+  subject: string
+  isUnread: boolean | null
+  isStarred: boolean | null
+  hasAttachment: boolean | null
+  folderId: string | null
+  createdAt: number
+}
+
 // 사이트 자체 메모 (앱 내부 전용 — 메일 서버와 무관)
 export interface MemoItem {
   id: string
@@ -152,6 +167,7 @@ export interface MailOrgState {
   snoozed: Record<string, number>
   // 뮤트된 발신자 이메일 목록. 해당 발신자의 메일은 받은편지함에 표시되지 않는다.
   muted: string[]
+  savedFilters: SavedFilter[]
 }
 
 // 전달(forward)로 보낼 때 원본 첨부를 다시 첨부하기 위한 참조. filename/mimeType은

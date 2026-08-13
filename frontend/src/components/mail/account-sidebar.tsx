@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, FileEdit, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2, VolumeX } from "lucide-react"
+import { AlarmClock, Archive, FileEdit, Filter, Folder, FolderPlus, Inbox, ListFilter, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2, VolumeX } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/sidebar"
 import { deleteAccount, gmailLoginUrl } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import type { Account, MailFolder } from "@/types/mail"
+import type { Account, MailFolder, SavedFilter } from "@/types/mail"
 
 // 목록을 드래그로 재정렬하기 위한 최소한의 네이티브 HTML5 DnD 헬퍼.
 // 리스트마다 독립적인 인스턴스를 써야 하므로 훅으로 분리했다.
@@ -108,6 +108,8 @@ interface AccountSidebarProps {
   folders: MailFolder[]
   selectedFolderId: string | null
   isFolderView: boolean
+  savedFilters: SavedFilter[]
+  activeFilterId: string | null
   onSelectAccount: (accountId: string | null) => void
   onGoHome: () => void
   onGoCleanup: () => void
@@ -122,6 +124,9 @@ interface AccountSidebarProps {
   onRenameFolder: (folderId: string, name: string, color: string) => Promise<{ ok: boolean; error?: string }>
   onDeleteFolder: (folderId: string) => void
   onReorderFolders: (order: string[]) => void
+  onApplyFilter: (filter: SavedFilter) => void
+  onCreateFilter: (input: Omit<SavedFilter, "id" | "createdAt">) => Promise<{ ok: boolean; error?: string }>
+  onDeleteFilter: (filterId: string) => void
   onAccountConnected: () => void
   onDeleteAccount: (accountId: string) => void
   onReorderAccounts: (order: string[]) => void
@@ -146,6 +151,8 @@ export function AccountSidebar({
   folders,
   selectedFolderId,
   isFolderView,
+  savedFilters,
+  activeFilterId,
   onSelectAccount,
   onGoHome,
   onGoCleanup,
@@ -160,6 +167,9 @@ export function AccountSidebar({
   onRenameFolder,
   onDeleteFolder,
   onReorderFolders,
+  onApplyFilter,
+  onCreateFilter,
+  onDeleteFilter,
   onAccountConnected,
   onDeleteAccount,
   onReorderAccounts,
@@ -179,6 +189,17 @@ export function AccountSidebar({
   const [renameColor, setRenameColor] = useState("#8b5cf6")
   const [renameError, setRenameError] = useState<string | null>(null)
   const [isRenaming, setIsRenaming] = useState(false)
+  const [isCreateFilterOpen, setIsCreateFilterOpen] = useState(false)
+  const [filterName, setFilterName] = useState("")
+  const [filterAccountId, setFilterAccountId] = useState("all")
+  const [filterFrom, setFilterFrom] = useState("")
+  const [filterSubject, setFilterSubject] = useState("")
+  const [filterReadState, setFilterReadState] = useState<"all" | "unread" | "read">("all")
+  const [filterStarredOnly, setFilterStarredOnly] = useState(false)
+  const [filterHasAttachment, setFilterHasAttachment] = useState(false)
+  const [filterFolderId, setFilterFolderId] = useState("all")
+  const [createFilterError, setCreateFilterError] = useState<string | null>(null)
+  const [isCreatingFilter, setIsCreatingFilter] = useState(false)
   const accountDrag = useDragReorder(accounts.map((a) => a.id), onReorderAccounts)
   const folderDrag = useDragReorder(folders.map((f) => f.id), onReorderFolders)
   const connectedGmailCount = accounts.filter((a) => a.provider === "gmail").length
@@ -223,6 +244,43 @@ export function AccountSidebar({
     }
     setIsCreateFolderOpen(false)
     setNewFolderName("")
+  }
+
+  const resetFilterForm = () => {
+    setFilterName("")
+    setFilterAccountId("all")
+    setFilterFrom("")
+    setFilterSubject("")
+    setFilterReadState("all")
+    setFilterStarredOnly(false)
+    setFilterHasAttachment(false)
+    setFilterFolderId("all")
+    setCreateFilterError(null)
+  }
+
+  const handleCreateFilter = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const name = filterName.trim()
+    if (!name) return
+    setIsCreatingFilter(true)
+    setCreateFilterError(null)
+    const result = await onCreateFilter({
+      name,
+      accountId: filterAccountId === "all" ? null : filterAccountId,
+      from: filterFrom.trim(),
+      subject: filterSubject.trim(),
+      isUnread: filterReadState === "all" ? null : filterReadState === "unread",
+      isStarred: filterStarredOnly ? true : null,
+      hasAttachment: filterHasAttachment ? true : null,
+      folderId: filterFolderId === "all" ? null : filterFolderId,
+    })
+    setIsCreatingFilter(false)
+    if (!result.ok) {
+      setCreateFilterError(result.error ?? "필터 저장에 실패했습니다.")
+      return
+    }
+    setIsCreateFilterOpen(false)
+    resetFilterForm()
   }
 
   const handleRenameFolder = async (e: React.FormEvent) => {
@@ -508,6 +566,52 @@ export function AccountSidebar({
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        <SidebarGroup>
+          <div className="flex items-center justify-between px-2">
+            <SidebarGroupLabel className="px-0">저장된 필터</SidebarGroupLabel>
+            <button
+              type="button"
+              aria-label="새 필터 저장"
+              onClick={() => {
+                resetFilterForm()
+                setIsCreateFilterOpen(true)
+              }}
+              className="text-muted-foreground hover:text-foreground rounded p-1"
+            >
+              <ListFilter className="size-3.5" />
+            </button>
+          </div>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {savedFilters.map((filter) => (
+                <SidebarMenuItem key={filter.id} className="group/item">
+                  <SidebarMenuButton
+                    isActive={activeFilterId === filter.id}
+                    onClick={() => {
+                      onApplyFilter(filter)
+                      closeOnMobile()
+                    }}
+                    title={filter.name}
+                  >
+                    <Filter className="size-4 shrink-0" />
+                    <span className="truncate">{filter.name}</span>
+                  </SidebarMenuButton>
+                  <button
+                    type="button"
+                    aria-label="필터 삭제"
+                    onClick={() => onDeleteFilter(filter.id)}
+                    className="text-muted-foreground hover:text-destructive absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-0 transition-opacity group-hover/item:opacity-100 focus-visible:opacity-100"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </SidebarMenuItem>
+              ))}
+              {savedFilters.length === 0 && (
+                <p className="text-muted-foreground px-2 py-1 text-xs">저장된 필터가 없습니다.</p>
+              )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="flex-col gap-2 p-3">
         <Button
@@ -687,6 +791,131 @@ export function AccountSidebar({
               삭제
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isCreateFilterOpen}
+        onOpenChange={(open) => {
+          setIsCreateFilterOpen(open)
+          if (!open) resetFilterForm()
+        }}
+      >
+        <DialogContent>
+          <form onSubmit={handleCreateFilter}>
+            <DialogHeader>
+              <DialogTitle>필터 저장</DialogTitle>
+              <DialogDescription>
+                조건을 지정해두면 사이드바에서 클릭 한 번으로 그 조건의 메일만 볼 수 있어요.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex flex-col gap-4 py-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="filter-name">필터 이름</Label>
+                <Input
+                  id="filter-name"
+                  value={filterName}
+                  onChange={(e) => setFilterName(e.target.value)}
+                  placeholder="예: 이번 주 미확인 첨부파일"
+                  maxLength={40}
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="filter-account">계정</Label>
+                <select
+                  id="filter-account"
+                  value={filterAccountId}
+                  onChange={(e) => setFilterAccountId(e.target.value)}
+                  className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm focus:outline-none"
+                >
+                  <option value="all">전체 계정</option>
+                  {accounts.filter((a) => a.id.includes(":")).map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.provider === "gmail" || a.provider === "naver" || a.provider === "daum" ? a.email : a.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="filter-from">보낸사람 포함</Label>
+                <Input
+                  id="filter-from"
+                  value={filterFrom}
+                  onChange={(e) => setFilterFrom(e.target.value)}
+                  placeholder="예: boss@company.com (비워두면 상관없음)"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="filter-subject">제목 포함</Label>
+                <Input
+                  id="filter-subject"
+                  value={filterSubject}
+                  onChange={(e) => setFilterSubject(e.target.value)}
+                  placeholder="비워두면 상관없음"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="filter-read-state">읽음 여부</Label>
+                <select
+                  id="filter-read-state"
+                  value={filterReadState}
+                  onChange={(e) => setFilterReadState(e.target.value as "all" | "unread" | "read")}
+                  className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm focus:outline-none"
+                >
+                  <option value="all">전체</option>
+                  <option value="unread">읽지 않음만</option>
+                  <option value="read">읽음만</option>
+                </select>
+              </div>
+              {folders.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="filter-folder">분류 메일함</Label>
+                  <select
+                    id="filter-folder"
+                    value={filterFolderId}
+                    onChange={(e) => setFilterFolderId(e.target.value)}
+                    className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm focus:outline-none"
+                  >
+                    <option value="all">전체</option>
+                    {folders.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={filterStarredOnly}
+                    onChange={(e) => setFilterStarredOnly(e.target.checked)}
+                    className="size-4"
+                  />
+                  별표 표시된 메일만
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={filterHasAttachment}
+                    onChange={(e) => setFilterHasAttachment(e.target.checked)}
+                    className="size-4"
+                  />
+                  첨부파일이 있는 메일만
+                </label>
+              </div>
+              {createFilterError && <p className="text-destructive text-sm">{createFilterError}</p>}
+            </div>
+            <DialogFooter>
+              <DialogClose render={<Button type="button" variant="outline" disabled={isCreatingFilter} />}>
+                취소
+              </DialogClose>
+              <Button type="submit" disabled={isCreatingFilter}>
+                {isCreatingFilter ? "저장 중..." : "저장"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </Sidebar>

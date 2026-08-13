@@ -1,4 +1,4 @@
-import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply } from "@/types/mail"
+import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -130,6 +130,35 @@ export async function deleteRule(id: string): Promise<{ ok: boolean; error?: str
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     return { ok: false, error: data.error ?? "규칙 삭제에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+export async function fetchSavedFilters(): Promise<SavedFilter[]> {
+  const res = await fetch("/api/saved-filters")
+  if (!res.ok) return []
+  const data = (await res.json()) as { filters: SavedFilter[] }
+  return data.filters
+}
+
+export async function createSavedFilter(
+  input: Omit<SavedFilter, "id" | "createdAt">,
+): Promise<{ ok: true; filter: SavedFilter } | { ok: false; error: string }> {
+  const res = await fetch("/api/saved-filters", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  })
+  const data = (await res.json().catch(() => ({}))) as { filter?: SavedFilter; error?: string }
+  if (!res.ok || !data.filter) return { ok: false, error: data.error ?? "필터 저장에 실패했습니다." }
+  return { ok: true, filter: data.filter }
+}
+
+export async function deleteSavedFilter(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/saved-filters/${encodeURIComponent(id)}`, { method: "DELETE" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "필터 삭제에 실패했습니다." }
   }
   return { ok: true }
 }

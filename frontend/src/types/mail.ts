@@ -31,6 +31,21 @@ export interface AutoClassifyRule {
   createdAt: number
 }
 
+// 저장된 검색/스마트 필터: 구조화된 조건에 이름을 붙여 저장해두고 사이드바에서 재사용한다.
+// 각 조건은 비어있으면(null/"") 그 조건을 따지지 않는다.
+export interface SavedFilter {
+  id: string
+  name: string
+  accountId: string | null
+  from: string
+  subject: string
+  isUnread: boolean | null
+  isStarred: boolean | null
+  hasAttachment: boolean | null
+  folderId: string | null
+  createdAt: number
+}
+
 export interface MemoItem {
   id: string
   content: string

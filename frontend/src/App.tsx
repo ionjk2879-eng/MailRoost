@@ -1,4 +1,4 @@
-import { Loader2, Pencil, RefreshCw, Search, Settings, X } from "lucide-react"
+import { Filter, Loader2, Pencil, RefreshCw, Search, Settings, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { GroupImperativeHandle, Layout } from "react-resizable-panels"
 import { AccountSidebar } from "@/components/mail/account-sidebar"
@@ -32,11 +32,13 @@ import {
   createMemo,
   createQuickReply,
   createRule as apiCreateRule,
+  createSavedFilter as apiCreateSavedFilter,
   deleteDraft,
   deleteFolder as apiDeleteFolder,
   deleteMemo,
   deleteQuickReply,
   deleteRule as apiDeleteRule,
+  deleteSavedFilter as apiDeleteSavedFilter,
   dismissNotification,
   emptyAllTrash,
   emptyTrash,
@@ -51,6 +53,7 @@ import {
   fetchNotifications,
   fetchQuickReplies,
   fetchRules,
+  fetchSavedFilters,
   fetchTrashMails,
   logout,
   markAllNotificationsRead,
@@ -72,7 +75,7 @@ import {
   updateRule as apiUpdateRule,
 } from "@/lib/api"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply } from "@/types/mail"
+import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"
 import { getSoundPreference, notifyNewMail, playNotificationSound } from "@/lib/push"
 import { applyTheme, getStoredTheme, watchSystemTheme } from "@/lib/theme"
 import { fetchSnoozed, snoozeKey, snoozeMail, unsnoozeMail, fetchMuted, markAllMailsRead, muteSender, unmuteSender } from "@/lib/api"
@@ -94,6 +97,18 @@ function useSnapPanel() {
 
 function isRealAccountId(accountId: string): boolean {
   return accountId.includes(":")
+}
+
+function matchesSavedFilter(mail: Mail, filter: SavedFilter): boolean {
+  if (filter.accountId && mail.accountId !== filter.accountId) return false
+  if (filter.from && !`${mail.fromName} ${mail.fromEmail}`.toLowerCase().includes(filter.from.toLowerCase())) return false
+  if (filter.subject && !mail.subject.toLowerCase().includes(filter.subject.toLowerCase())) return false
+  if (filter.isUnread === true && mail.isRead) return false
+  if (filter.isUnread === false && !mail.isRead) return false
+  if (filter.isStarred === true && !mail.isStarred) return false
+  if (filter.hasAttachment === true && !(mail.attachments && mail.attachments.length > 0)) return false
+  if (filter.folderId && !(mail.folderIds ?? []).includes(filter.folderId)) return false
+  return true
 }
 
 function groupIdsByAccount(mails: Mail[]): Map<string, string[]> {
@@ -158,6 +173,8 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [snoozed, setSnoozed] = useState<Record<string, number>>({})
   const [muted, setMuted] = useState<string[]>([])
+  const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
+  const [activeFilter, setActiveFilter] = useState<SavedFilter | null>(null)
 
   // 이미 알고 있는 메일 ID 집합 — 새 메일 감지용 (초기 로드 시에는 트리거 안 함)
   const knownMailKeysRef = useRef<Set<string> | null>(null)
@@ -230,6 +247,7 @@ function App() {
             fetchDrafts().then(setDrafts),
             fetchSnoozed().then(setSnoozed),
             fetchMuted().then(setMuted),
+            fetchSavedFilters().then(setSavedFilters),
           ])
         }
       })
@@ -340,6 +358,17 @@ function App() {
 
   const visibleMails = useMemo(() => {
     const now = Date.now()
+
+    if (activeFilter) {
+      return allMails
+        .filter((m) => matchesSavedFilter(m, activeFilter))
+        .filter((m) => {
+          const until = snoozed[snoozeKey(m.accountId, m.id)]
+          return (!until || until <= now) && !mutedSet.has(m.fromEmail)
+        })
+        .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
+    }
+
     const q = searchQuery.trim().toLowerCase()
 
     if (!q) {
@@ -363,7 +392,7 @@ function App() {
     const merged = new Map<string, Mail>()
     for (const m of [...clientMatches, ...(serverSearchResults ?? [])]) merged.set(`${m.accountId}:${m.id}`, m)
     return [...merged.values()].sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
-  }, [allMails, categoryMails, searchQuery, serverSearchResults, snoozed, mutedSet])
+  }, [allMails, categoryMails, searchQuery, serverSearchResults, snoozed, mutedSet, activeFilter])
 
   const selectedMailStub =
     visibleMails.find((mail) => mail.id === selectedMailId)
@@ -672,6 +701,32 @@ function App() {
     setSearchQuery("")
     setCheckedMailIds(new Set())
     setComposeState(null)
+    setActiveFilter(null)
+  }
+
+  const handleApplyFilter = (filter: SavedFilter) => {
+    setView("inbox")
+    setSelectedAccountId(filter.accountId)
+    setSelectedCategory(null)
+    setSelectedMailId(null)
+    setFocusedMailId(null)
+    setSearchQuery("")
+    setCheckedMailIds(new Set())
+    setComposeState(null)
+    setActiveFilter(filter)
+  }
+
+  const handleCreateFilter = async (input: Omit<SavedFilter, "id" | "createdAt">) => {
+    const result = await apiCreateSavedFilter(input)
+    if (!result.ok) return result
+    setSavedFilters((prev) => [...prev, result.filter])
+    return { ok: true }
+  }
+
+  const handleDeleteFilter = async (filterId: string) => {
+    setSavedFilters((prev) => prev.filter((f) => f.id !== filterId))
+    if (activeFilter?.id === filterId) setActiveFilter(null)
+    await apiDeleteSavedFilter(filterId)
   }
 
   const goHome = () => {
@@ -1287,8 +1342,25 @@ function App() {
         onSelect={(category) => {
           setSelectedCategory(category)
           setSelectedMailId(null)
+          setActiveFilter(null)
         }}
       />
+      {activeFilter && (
+        <div className="bg-primary/5 flex items-center justify-between gap-2 border-b px-3 py-1.5 text-sm">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <Filter className="text-primary size-3.5 shrink-0" />
+            <span className="truncate">{activeFilter.name}</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setActiveFilter(null)}
+            className="text-muted-foreground hover:text-foreground shrink-0"
+            aria-label="필터 해제"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
       {/* 검색 바 */}
       <div className="relative border-b px-3 py-2">
         <Search className="text-muted-foreground absolute left-5 top-1/2 size-3.5 -translate-y-1/2" />
@@ -1296,7 +1368,10 @@ function App() {
           type="text"
           placeholder="검색..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => {
+            setSearchQuery(e.target.value)
+            if (activeFilter) setActiveFilter(null)
+          }}
           className="bg-muted/50 focus:bg-muted w-full rounded-md py-1.5 pr-7 pl-7 text-sm outline-none transition-colors placeholder:text-muted-foreground"
         />
         {searchQuery && isServerSearching && (
@@ -1470,6 +1545,8 @@ function App() {
         folders={folders}
         selectedFolderId={selectedFolderId}
         isFolderView={view === "folder"}
+        savedFilters={savedFilters}
+        activeFilterId={activeFilter?.id ?? null}
         onSelectAccount={goToInbox}
         onGoHome={goHome}
         onGoCleanup={goToCleanup}
@@ -1484,6 +1561,9 @@ function App() {
         onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
         onReorderFolders={handleReorderFolders}
+        onApplyFilter={handleApplyFilter}
+        onCreateFilter={handleCreateFilter}
+        onDeleteFilter={handleDeleteFilter}
         onAccountConnected={loadAccountsAndMails}
         onDeleteAccount={handleDeleteAccount}
         onReorderAccounts={handleReorderAccounts}

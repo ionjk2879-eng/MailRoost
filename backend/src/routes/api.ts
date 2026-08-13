@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Draft, Env, ForwardedAttachmentRef, ImapAccountRecord, Mail, MailCategory, MailFolder, MailOrgState, MemoItem, QuickReply, StoredSession } from "../types"
+import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Draft, Env, ForwardedAttachmentRef, ImapAccountRecord, Mail, MailCategory, MailFolder, MailOrgState, MemoItem, QuickReply, SavedFilter, StoredSession } from "../types"
 import { getUserAccounts, getUserById, saveUserAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import {
@@ -796,6 +796,70 @@ api.delete("/rules/:id", async (c) => {
   const session = await readSession(c.env, sessionId)
   const org = await resolveMailOrg(c.env, session)
   org.rules = org.rules.filter((r) => r.id !== ruleId)
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ ok: true })
+})
+
+// ── 저장된 검색/스마트 필터 ──────────────────────────────────────────────────
+
+interface SavedFilterInput {
+  name?: string
+  accountId?: string | null
+  from?: string | null
+  subject?: string | null
+  isUnread?: boolean | null
+  isStarred?: boolean | null
+  hasAttachment?: boolean | null
+  folderId?: string | null
+}
+
+api.get("/saved-filters", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ filters: [] })
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  return c.json({ filters: org.savedFilters })
+})
+
+api.post("/saved-filters", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req.json<SavedFilterInput>().catch(() => null)
+  const name = body?.name?.trim()
+  if (!name) return c.json({ error: "이름을 입력해주세요." }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  if (body?.folderId && !org.folders.some((f) => f.id === body.folderId)) {
+    return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
+  }
+
+  const filter: SavedFilter = {
+    id: crypto.randomUUID(),
+    name,
+    accountId: body?.accountId ?? null,
+    from: body?.from?.trim() ?? "",
+    subject: body?.subject?.trim() ?? "",
+    isUnread: body?.isUnread ?? null,
+    isStarred: body?.isStarred ?? null,
+    hasAttachment: body?.hasAttachment ?? null,
+    folderId: body?.folderId ?? null,
+    createdAt: Date.now(),
+  }
+  org.savedFilters.push(filter)
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ filter })
+})
+
+api.delete("/saved-filters/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const filterId = c.req.param("id")
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  org.savedFilters = org.savedFilters.filter((f) => f.id !== filterId)
   await persistMailOrg(c.env, sessionId, session, org)
   return c.json({ ok: true })
 })
