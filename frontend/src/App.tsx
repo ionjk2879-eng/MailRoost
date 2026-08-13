@@ -72,6 +72,7 @@ import {
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply } from "@/types/mail"
 import { getSoundPreference, notifyNewMail, playNotificationSound } from "@/lib/push"
+import { applyTheme, getStoredTheme, watchSystemTheme } from "@/lib/theme"
 
 const SNAP_SIZE = 45
 const SNAP_ZONE = 3
@@ -196,6 +197,12 @@ function App() {
       setNextCursor(cursor)
     })
   }
+
+  // 앱 시작 시 저장된 테마 적용 + 시스템 다크 모드 감지 구독
+  useEffect(() => {
+    applyTheme(getStoredTheme())
+    return watchSystemTheme()
+  }, [])
 
   useEffect(() => {
     fetchCurrentUser()

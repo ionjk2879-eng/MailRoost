@@ -1,4 +1,4 @@
-import { Bell, BellOff, Volume2, VolumeX } from "lucide-react"
+import { Bell, BellOff, Moon, Sun, SunMoon, Volume2, VolumeX } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -12,6 +12,7 @@ import {
   subscribeToPush,
   unsubscribeFromPush,
 } from "@/lib/push"
+import { type Theme, getStoredTheme, setTheme } from "@/lib/theme"
 
 interface SettingsSheetProps {
   open: boolean
@@ -24,17 +25,25 @@ const SOUND_OPTIONS: { value: NotificationSound; label: string; description: str
   { value: "bell", label: "부드러운 벨", description: "잔잔한 종소리" },
 ]
 
+const THEME_OPTIONS: { value: Theme; label: string; icon: React.ReactNode }[] = [
+  { value: "light", label: "라이트", icon: <Sun className="size-3.5" /> },
+  { value: "dark", label: "다크", icon: <Moon className="size-3.5" /> },
+  { value: "system", label: "시스템", icon: <SunMoon className="size-3.5" /> },
+]
+
 export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushLoading, setPushLoading] = useState(false)
   const [sound, setSound] = useState<NotificationSound>("bird")
   const [pushSupported, setPushSupported] = useState(true)
+  const [theme, setThemeState] = useState<Theme>("system")
 
   useEffect(() => {
     if (!open) return
     setPushEnabled(getPushEnabled())
     setSound(getSoundPreference())
     setPushSupported("serviceWorker" in navigator && "PushManager" in window)
+    setThemeState(getStoredTheme())
   }, [open])
 
   const handleTogglePush = useCallback(async () => {
@@ -47,7 +56,6 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
         const ok = await subscribeToPush()
         if (ok) {
           setPushEnabled(true)
-          // 구독 성공 테스트
           await notifyNewMail()
         } else {
           alert("알림 권한이 거부되었거나 지원되지 않는 브라우저입니다.")
@@ -63,8 +71,9 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
     setSoundPreference(value)
   }
 
-  const handlePreview = (value: NotificationSound) => {
-    playNotificationSound(value)
+  const handleThemeChange = (value: Theme) => {
+    setThemeState(value)
+    setTheme(value)
   }
 
   return (
@@ -75,6 +84,28 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
         </SheetHeader>
 
         <div className="mt-6 flex flex-col gap-6">
+          {/* 테마 */}
+          <section className="flex flex-col gap-3">
+            <h3 className="text-sm font-medium">테마</h3>
+            <div className="flex gap-1.5">
+              {THEME_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleThemeChange(opt.value)}
+                  className={`flex flex-1 flex-col items-center gap-1.5 rounded-md border py-2.5 text-xs transition-colors ${
+                    theme === opt.value
+                      ? "border-primary bg-primary/5 text-primary font-medium"
+                      : "hover:bg-muted/50 text-muted-foreground"
+                  }`}
+                >
+                  {opt.icon}
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </section>
+
           {/* 푸시 알림 */}
           <section className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">푸시 알림</h3>
@@ -127,7 +158,7 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          handlePreview(opt.value)
+                          playNotificationSound(opt.value)
                         }}
                         className="text-muted-foreground hover:text-foreground flex size-6 items-center justify-center rounded"
                         title="미리 듣기"
