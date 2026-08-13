@@ -157,41 +157,38 @@ export function MailList({
         {/* 선택 중일 때 액션 버튼 */}
         {isSelecting ? (
           <div className="flex min-w-0 flex-1 items-center gap-1">
-            <span className="text-muted-foreground ml-1 text-xs">{checkedIds.size}개 선택됨</span>
+            <span className="text-muted-foreground ml-1 shrink-0 whitespace-nowrap text-xs">{checkedIds.size}개 선택됨</span>
             <div className="ml-auto flex items-center gap-0.5">
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1 px-2 text-xs"
+                className="size-7 p-0"
                 onClick={onBulkMarkRead}
                 disabled={isBulkLoading}
                 title="읽음 처리"
               >
                 <MailOpen className="size-3.5" />
-                <span className="hidden sm:inline">읽음</span>
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1 px-2 text-xs"
+                className="size-7 p-0"
                 onClick={onBulkMarkUnread}
                 disabled={isBulkLoading}
                 title="읽지않음 처리"
               >
                 <MailOpen className="size-3.5 opacity-50" />
-                <span className="hidden sm:inline">읽지않음</span>
               </Button>
               {onBulkArchive && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 gap-1 px-2 text-xs"
+                  className="size-7 p-0"
                   onClick={onBulkArchive}
                   disabled={isBulkLoading}
                   title="보관"
                 >
                   <Archive className="size-3.5" />
-                  <span className="hidden sm:inline">보관</span>
                 </Button>
               )}
               {onBulkMove && (
@@ -199,13 +196,12 @@ export function MailList({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 gap-1 px-2 text-xs"
+                    className="size-7 p-0"
                     onClick={() => setMoveOpen((v) => !v)}
                     disabled={isBulkLoading}
                     title="분류 메일함으로 이동"
                   >
                     <FolderInput className="size-3.5" />
-                    <span className="hidden sm:inline">이동</span>
                   </Button>
                   {moveOpen && (
                     <div className="bg-background absolute top-full right-0 z-20 mt-1 min-w-[140px] rounded-md border shadow-md">
@@ -251,13 +247,12 @@ export function MailList({
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-destructive hover:text-destructive h-7 gap-1 px-2 text-xs"
+                className="text-destructive hover:text-destructive size-7 p-0"
                 onClick={onBulkDelete}
                 disabled={isBulkLoading}
                 title="삭제"
               >
                 <Trash2 className="size-3.5" />
-                <span className="hidden sm:inline">삭제</span>
               </Button>
               <button
                 type="button"
