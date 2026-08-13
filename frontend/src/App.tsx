@@ -1481,11 +1481,11 @@ function App() {
             </div>
           ) : (
             <ResizablePanelGroup orientation="horizontal" className="flex-1">
-              <ResizablePanel defaultSize="38" minSize="25" maxSize="55" className="overflow-hidden">
+              <ResizablePanel defaultSize="45" minSize="35" maxSize="60" className="overflow-hidden">
                 {folderListPane}
               </ResizablePanel>
               <ResizableHandle withHandle />
-              <ResizablePanel defaultSize="62" minSize="35" className="overflow-hidden">
+              <ResizablePanel defaultSize="55" minSize="35" className="overflow-hidden">
                 {folderDetailPane}
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -1496,11 +1496,11 @@ function App() {
           </div>
         ) : (
           <ResizablePanelGroup orientation="horizontal" className="flex-1">
-            <ResizablePanel defaultSize="38" minSize="25" maxSize="55" className="overflow-hidden">
+            <ResizablePanel defaultSize="45" minSize="35" maxSize="60" className="overflow-hidden">
               {mailListPane}
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize="62" minSize="35" className="overflow-hidden">
+            <ResizablePanel defaultSize="55" minSize="35" className="overflow-hidden">
               {mailDetailPane}
             </ResizablePanel>
           </ResizablePanelGroup>

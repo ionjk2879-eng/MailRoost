@@ -157,7 +157,6 @@ export function MailList({
         {/* 선택 중일 때 액션 버튼 */}
         {isSelecting ? (
           <div className="flex min-w-0 flex-1 items-center gap-1">
-            <span className="text-muted-foreground ml-1 shrink-0 whitespace-nowrap text-xs">{checkedIds.size}개 선택됨</span>
             <div className="ml-auto flex items-center gap-0.5">
               <Button
                 variant="ghost"
