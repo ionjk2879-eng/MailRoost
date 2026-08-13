@@ -12,10 +12,6 @@ interface SnoozedViewProps {
   onSelectMail: (mailId: string, accountId: string) => void
 }
 
-function snoozeKey(accountId: string, mailId: string) {
-  return `${accountId}||${mailId}`
-}
-
 function formatUntil(ts: number): string {
   const date = new Date(ts)
   const now = new Date()
