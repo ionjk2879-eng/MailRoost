@@ -800,6 +800,81 @@ api.delete("/rules/:id", async (c) => {
   return c.json({ ok: true })
 })
 
+// 이미 받은 메일에 규칙을 소급 적용한다. 프론트에서 그때그때 로드해둔 목록만 뒤지는 대신
+// 계정 서버(Gmail 검색 / IMAP SEARCH)에서 직접 찾으므로, 화면에 안 불러와져 있던 오래된 메일도 찾아낸다.
+const RULE_APPLY_SEARCH_LIMIT = 200
+
+api.post("/rules/:id/apply", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const ruleId = c.req.param("id")
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  const rule = org.rules.find((r) => r.id === ruleId)
+  if (!rule || !rule.targetFolderId) return c.json({ error: "규칙을 찾을 수 없습니다." }, 404)
+  const targetFolderId = rule.targetFolderId
+
+  const accountMap = await resolveAccounts(c.env, session)
+  const accountIds = Object.keys(accountMap)
+  let accountsChanged = false
+
+  const matchesRule = (mail: Mail) =>
+    (rule.field === "from" ? `${mail.fromName} ${mail.fromEmail}` : mail.subject)
+      .toLowerCase()
+      .includes(rule.keyword.toLowerCase())
+
+  const perAccountMatches = await Promise.all(
+    accountIds.map(async (accountId): Promise<Mail[]> => {
+      const record = accountMap[accountId]
+      if (!record) return []
+      try {
+        if (record.provider === "gmail") {
+          const fresh = await ensureFreshToken(c.env, record)
+          if (fresh.accessToken !== record.accessToken) {
+            accountMap[accountId] = fresh
+            accountsChanged = true
+          }
+          // Gmail은 from:/subject: 연산자로 그 필드만 정확히 검색할 수 있다.
+          const op = rule.field === "from" ? "from" : "subject"
+          const mails = await gmailSearchMails(fresh.accessToken, accountId, `${op}:"${rule.keyword}"`, RULE_APPLY_SEARCH_LIMIT)
+          return mails.filter(matchesRule)
+        }
+        // IMAP 계열 검색은 보낸사람/제목/본문을 한꺼번에 OR로 찾으므로, 결과를 규칙 조건으로 다시 거른다.
+        if (record.provider === "naver") {
+          const mails = await naverSearchInbox(record.email, record.appPassword, accountId, rule.keyword, RULE_APPLY_SEARCH_LIMIT)
+          return mails.filter(matchesRule)
+        }
+        const mails = await searchImapMails(accountId, record, rule.keyword, RULE_APPLY_SEARCH_LIMIT)
+        return mails.filter(matchesRule)
+      } catch (err) {
+        console.error(`[rules-apply] account ${accountId} failed, skipping:`, err)
+        return []
+      }
+    }),
+  )
+
+  if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
+
+  // 저장 직전에 최신 상태를 다시 읽어와 이번에 새로 찾은 배정만 얹는다 (겹친 요청이 서로 덮어쓰지 않도록).
+  const latestOrg = await resolveMailOrg(c.env, session)
+  let count = 0
+  accountIds.forEach((accountId, i) => {
+    for (const mail of perAccountMatches[i]) {
+      if (isArchived(latestOrg, accountId, mail.id)) continue
+      const key = assignmentKey(accountId, mail.id)
+      const current = latestOrg.assignments[key] ?? []
+      if (current.includes(targetFolderId)) continue
+      latestOrg.assignments[key] = [...current, targetFolderId]
+      latestOrg.classified[key] = true
+      count++
+    }
+  })
+  await persistMailOrg(c.env, sessionId, session, latestOrg)
+
+  return c.json({ ok: true, count })
+})
+
 // ── 저장된 검색/스마트 필터 ──────────────────────────────────────────────────
 
 interface SavedFilterInput {
