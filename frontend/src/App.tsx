@@ -10,6 +10,7 @@ import { CleanupView, SHORTCUTS } from "@/components/cleanup/cleanup-view"
 import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
 import { DraftsView } from "@/components/drafts/drafts-view"
+import { SnoozedView } from "@/components/snoozed/snoozed-view"
 import { NotificationBell } from "@/components/notifications/notification-bell"
 import { SettingsSheet } from "@/components/settings/settings-sheet"
 import { Button } from "@/components/ui/button"
@@ -73,7 +74,7 @@ import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply } from "@/types/mail"
 import { getSoundPreference, notifyNewMail, playNotificationSound } from "@/lib/push"
 import { applyTheme, getStoredTheme, watchSystemTheme } from "@/lib/theme"
-import { fetchSnoozed, snoozeKey, snoozeMail } from "@/lib/api"
+import { fetchSnoozed, snoozeKey, snoozeMail, unsnoozeMail } from "@/lib/api"
 
 const SNAP_SIZE = 45
 const SNAP_ZONE = 3
@@ -110,7 +111,7 @@ function App() {
   const folderSnap = useSnapPanel()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts">("home")
+  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts" | "snoozed">("home")
   const [trashMails, setTrashMails] = useState<Mail[]>([])
   const [trashCursor, setTrashCursor] = useState<string | null>(null)
   const [isTrashLoading, setIsTrashLoading] = useState(false)
@@ -688,6 +689,29 @@ function App() {
     setFocusedMailId(null)
     setCheckedMailIds(new Set())
     setComposeState(null)
+  }
+
+  const goToSnooze = () => {
+    setView("snoozed")
+    setSelectedMailId(null)
+    setFocusedMailId(null)
+    setCheckedMailIds(new Set())
+    setComposeState(null)
+  }
+
+  const handleUnsnooze = async (mailId: string, accountId: string) => {
+    const key = snoozeKey(accountId, mailId)
+    setSnoozed((prev) => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+    await unsnoozeMail(accountId, mailId)
+  }
+
+  const handleSnoozedMailSelect = (mailId: string, accountId: string) => {
+    goToInbox(accountId)
+    setSelectedMailId(mailId)
   }
 
   const loadTrash = () => {
@@ -1401,6 +1425,8 @@ function App() {
         isMemoView={view === "memo"}
         isDraftsView={view === "drafts"}
         draftCount={drafts.length}
+        isSnoozeView={view === "snoozed"}
+        snoozeCount={Object.values(snoozed).filter((until) => until > Date.now()).length}
         folders={folders}
         selectedFolderId={selectedFolderId}
         isFolderView={view === "folder"}
@@ -1411,6 +1437,7 @@ function App() {
         onGoArchive={goToArchive}
         onGoMemo={goToMemo}
         onGoDrafts={goToDrafts}
+        onGoSnooze={goToSnooze}
         onSelectFolder={goToFolder}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}
@@ -1437,6 +1464,8 @@ function App() {
                       ? "메모"
                       : view === "drafts"
                       ? "임시보관함"
+                      : view === "snoozed"
+                      ? "스누즈"
                       : view === "folder"
                       ? (folders.find((f) => f.id === selectedFolderId)?.name ?? "분류 메일함")
                       : selectedAccountId
@@ -1542,6 +1571,14 @@ function App() {
               onDeleteDraft={handleDeleteDraft}
             />
           )
+        ) : view === "snoozed" ? (
+          <SnoozedView
+            mails={allMails}
+            accounts={accounts}
+            snoozed={snoozed}
+            onUnsnooze={handleUnsnooze}
+            onSelectMail={handleSnoozedMailSelect}
+          />
         ) : view === "folder" || view === "archive" ? (
           isFolderLoading && folderMails.length === 0 ? (
             <div className="flex flex-1 items-center justify-center">

@@ -1,4 +1,4 @@
-import { Archive, FileEdit, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2 } from "lucide-react"
+import { AlarmClock, Archive, FileEdit, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2 } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -102,6 +102,8 @@ interface AccountSidebarProps {
   isMemoView: boolean
   isDraftsView: boolean
   draftCount: number
+  isSnoozeView: boolean
+  snoozeCount: number
   folders: MailFolder[]
   selectedFolderId: string | null
   isFolderView: boolean
@@ -112,6 +114,7 @@ interface AccountSidebarProps {
   onGoArchive: () => void
   onGoMemo: () => void
   onGoDrafts: () => void
+  onGoSnooze: () => void
   onSelectFolder: (folderId: string) => void
   onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
   onRenameFolder: (folderId: string, name: string, color: string) => Promise<{ ok: boolean; error?: string }>
@@ -135,6 +138,8 @@ export function AccountSidebar({
   isMemoView,
   isDraftsView,
   draftCount,
+  isSnoozeView,
+  snoozeCount,
   folders,
   selectedFolderId,
   isFolderView,
@@ -145,6 +150,7 @@ export function AccountSidebar({
   onGoArchive,
   onGoMemo,
   onGoDrafts,
+  onGoSnooze,
   onSelectFolder,
   onCreateFolder,
   onRenameFolder,
@@ -324,6 +330,19 @@ export function AccountSidebar({
                   <span>임시보관함</span>
                 </SidebarMenuButton>
                 {draftCount > 0 && <SidebarMenuBadge>{draftCount}</SidebarMenuBadge>}
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isSnoozeView}
+                  onClick={() => {
+                    onGoSnooze()
+                    closeOnMobile()
+                  }}
+                >
+                  <AlarmClock />
+                  <span>스누즈</span>
+                </SidebarMenuButton>
+                {snoozeCount > 0 && <SidebarMenuBadge>{snoozeCount}</SidebarMenuBadge>}
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
