@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AttachmentPreview, isPreviewableAttachment } from "@/components/mail/attachment-preview"
 import { attachmentDownloadUrl } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Account, Mail, MailAttachment, MailFolder } from "@/types/mail"
 
