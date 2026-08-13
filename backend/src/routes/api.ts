@@ -465,6 +465,7 @@ api.get("/folders/:id/mail", async (c) => {
     if (list) list.push(parsed.mailId)
     else idsByAccount.set(parsed.accountId, [parsed.mailId])
   }
+  console.log(`[folder-mail][debug] folderId=${folderId} keys=${keys.length} idsByAccount=${JSON.stringify([...idsByAccount.entries()])}`)
 
   let accountsChanged = false
   const perAccountResults = await Promise.all(
@@ -473,22 +474,23 @@ api.get("/folders/:id/mail", async (c) => {
       if (!record) return []
 
       try {
+        let fetched: Mail[]
         if (record.provider === "naver") {
-          return await naverFetchByUids(record.email, record.appPassword, accountId, mailIds)
+          fetched = await naverFetchByUids(record.email, record.appPassword, accountId, mailIds)
+        } else if (record.provider === "daum") {
+          fetched = await daumFetchByUids(record.email, record.password, accountId, mailIds)
+        } else if (record.provider === "imap") {
+          fetched = await imapFetchByUids({ host: record.host, port: record.port, email: record.email, password: record.password }, accountId, mailIds)
+        } else {
+          const fresh = await ensureFreshToken(c.env, record)
+          if (fresh.accessToken !== record.accessToken) {
+            accountMap[accountId] = fresh
+            accountsChanged = true
+          }
+          fetched = await gmailFetchByIds(fresh.accessToken, accountId, mailIds)
         }
-        if (record.provider === "daum") {
-          return await daumFetchByUids(record.email, record.password, accountId, mailIds)
-        }
-        if (record.provider === "imap") {
-          return await imapFetchByUids({ host: record.host, port: record.port, email: record.email, password: record.password }, accountId, mailIds)
-        }
-
-        const fresh = await ensureFreshToken(c.env, record)
-        if (fresh.accessToken !== record.accessToken) {
-          accountMap[accountId] = fresh
-          accountsChanged = true
-        }
-        return await gmailFetchByIds(fresh.accessToken, accountId, mailIds)
+        console.log(`[folder-mail][debug] account=${accountId} provider=${record.provider} requested=${mailIds.length} got=${fetched.length}`)
+        return fetched
       } catch (err) {
         console.error(`[folder-mail] account ${accountId} failed, skipping:`, err)
         return []
