@@ -34,6 +34,7 @@ const THEME_OPTIONS: { value: Theme; label: string; icon: React.ReactNode }[] = 
 export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushLoading, setPushLoading] = useState(false)
+  const [pushError, setPushError] = useState<string | null>(null)
   const [sound, setSound] = useState<NotificationSound>("bird")
   const [pushSupported, setPushSupported] = useState(true)
   const [theme, setThemeState] = useState<Theme>("system")
@@ -44,6 +45,7 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
     setSound(getSoundPreference())
     setPushSupported("serviceWorker" in navigator && "PushManager" in window)
     setThemeState(getStoredTheme())
+    setPushError(null)
   }, [open])
 
   const handleTogglePush = useCallback(async () => {
@@ -56,9 +58,10 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
         const ok = await subscribeToPush()
         if (ok) {
           setPushEnabled(true)
+          setPushError(null)
           await notifyNewMail()
         } else {
-          alert("알림 권한이 거부되었거나 지원되지 않는 브라우저입니다.")
+          setPushError("알림 권한이 거부되었거나 지원되지 않는 브라우저입니다.")
         }
       }
     } finally {
@@ -130,6 +133,9 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
                   {pushEnabled ? "켜짐" : "켜기"}
                 </Button>
               </div>
+            )}
+            {pushError && (
+              <p className="text-destructive text-xs">{pushError}</p>
             )}
           </section>
 

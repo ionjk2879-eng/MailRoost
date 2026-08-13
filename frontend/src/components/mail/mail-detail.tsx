@@ -1,4 +1,4 @@
-import { Archive, Check, ChevronLeft, Download, Eye, Folder, FolderInput, Forward, Inbox, MailOpen, Paperclip, Reply, ReplyAll, Star, Trash2 } from "lucide-react"
+import { Archive, Check, ChevronLeft, Clock, Download, Eye, Folder, FolderInput, Forward, Inbox, MailOpen, Paperclip, Reply, ReplyAll, Star, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -26,6 +26,40 @@ interface MailDetailProps {
   currentFolderId?: string
   onMove?: (mailId: string, accountId: string, folderId: string | null) => void
   onToggleFolder?: (mailId: string, accountId: string, folderId: string, assign: boolean) => void
+  onSnooze?: (mailId: string, accountId: string, until: number) => void
+}
+
+function getSnoozeOptions(): Array<{ label: string; subtitle: string; until: number }> {
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const opts: Array<{ label: string; subtitle: string; until: number }> = []
+
+  const today5pm = new Date(today.getTime() + 17 * 3600_000)
+  if (today5pm.getTime() > now.getTime()) {
+    opts.push({ label: "오늘 오후 5시", subtitle: "오늘 저녁에 다시", until: today5pm.getTime() })
+  }
+
+  const tomorrow9am = new Date(today.getTime() + 25 * 3600_000) // 내일 01:00 아님 → +1일+9시간
+  tomorrow9am.setHours(9, 0, 0, 0)
+  tomorrow9am.setDate(today.getDate() + 1)
+  opts.push({ label: "내일 오전 9시", subtitle: "내일 아침에 다시", until: tomorrow9am.getTime() })
+
+  const dow = now.getDay()
+  const daysToSat = ((6 - dow) + 7) % 7 || 7
+  const sat = new Date(today.getTime())
+  sat.setDate(today.getDate() + daysToSat)
+  sat.setHours(9, 0, 0, 0)
+  if (sat.getTime() > tomorrow9am.getTime()) {
+    opts.push({ label: "이번 주 토요일", subtitle: "주말에 다시", until: sat.getTime() })
+  }
+
+  const daysToMon = ((8 - dow) % 7) || 7
+  const mon = new Date(today.getTime())
+  mon.setDate(today.getDate() + daysToMon)
+  mon.setHours(9, 0, 0, 0)
+  opts.push({ label: "다음 주 월요일", subtitle: "다음 주에 다시", until: mon.getTime() })
+
+  return opts
 }
 
 function formatFullDate(iso: string): string {
@@ -70,21 +104,31 @@ export function MailDetail({
   currentFolderId,
   onMove,
   onToggleFolder,
+  onSnooze,
 }: MailDetailProps) {
   const [moveOpen, setMoveOpen] = useState(false)
   const moveRef = useRef<HTMLDivElement>(null)
+  const [snoozeOpen, setSnoozeOpen] = useState(false)
+  const snoozeRef = useRef<HTMLDivElement>(null)
   const [previewAttachment, setPreviewAttachment] = useState<MailAttachment | null>(null)
 
   useEffect(() => {
     if (!moveOpen) return
     const handler = (e: MouseEvent) => {
-      if (moveRef.current && !moveRef.current.contains(e.target as Node)) {
-        setMoveOpen(false)
-      }
+      if (moveRef.current && !moveRef.current.contains(e.target as Node)) setMoveOpen(false)
     }
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
   }, [moveOpen])
+
+  useEffect(() => {
+    if (!snoozeOpen) return
+    const handler = (e: MouseEvent) => {
+      if (snoozeRef.current && !snoozeRef.current.contains(e.target as Node)) setSnoozeOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [snoozeOpen])
 
   if (!mail) {
     return (
@@ -225,6 +269,38 @@ export function MailDetail({
                     {(!folders || folders.length === 0) && currentFolderId !== ARCHIVE_FOLDER_ID && (
                       <p className="text-muted-foreground px-3 py-1.5 text-xs">분류 메일함이 없습니다.</p>
                     )}
+                  </div>
+                )}
+              </div>
+            )}
+            {onSnooze && (
+              <div ref={snoozeRef} className="relative">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  title="스누즈"
+                  onClick={() => setSnoozeOpen((v) => !v)}
+                >
+                  <Clock className="size-4" />
+                </Button>
+                {snoozeOpen && (
+                  <div className="bg-background absolute top-full right-0 z-20 mt-1 min-w-[160px] rounded-md border shadow-md">
+                    <p className="text-muted-foreground px-3 pt-2 pb-1 text-xs">나중에 다시 보기</p>
+                    {getSnoozeOptions().map((opt) => (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        onClick={() => {
+                          onSnooze(mail.id, mail.accountId, opt.until)
+                          setSnoozeOpen(false)
+                        }}
+                        className="hover:bg-accent flex w-full flex-col items-start px-3 py-1.5 text-left"
+                      >
+                        <span className="text-sm">{opt.label}</span>
+                        <span className="text-muted-foreground text-xs">{opt.subtitle}</span>
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>

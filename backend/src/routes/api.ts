@@ -1683,6 +1683,69 @@ api.delete("/notifications/:id", async (c) => {
   return c.json({ ok: true })
 })
 
+// ── 스누즈 ───────────────────────────────────────────────────────────────────
+// 외부 API 키: "accountId||mailId" (||는 accountId/mailId에 절대 등장하지 않음)
+// 내부 KV 키: assignmentKey(accountId, mailId) (제어문자 구분자)
+
+function toApiSnoozeKey(accountId: string, mailId: string): string {
+  return `${accountId}||${mailId}`
+}
+
+api.get("/snooze", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ snoozed: {} })
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+
+  // 만료된 항목 정리 후 반환
+  const now = Date.now()
+  const active: Record<string, number> = {}
+  for (const [k, until] of Object.entries(org.snoozed ?? {})) {
+    if (until > now) active[k] = until
+  }
+  // 만료 항목이 있으면 저장
+  if (Object.keys(active).length < Object.keys(org.snoozed ?? {}).length) {
+    org.snoozed = active
+    await persistMailOrg(c.env, sessionId, session, org)
+  }
+
+  // 내부 키 → API 키 변환
+  const result: Record<string, number> = {}
+  for (const [k, until] of Object.entries(active)) {
+    const parsed = parseAssignmentKey(k)
+    if (parsed) result[toApiSnoozeKey(parsed.accountId, parsed.mailId)] = until
+  }
+  return c.json({ snoozed: result })
+})
+
+api.post("/snooze", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+  const session = await readSession(c.env, sessionId)
+  const body = await c.req.json<{ accountId: string; mailId: string; until: number }>()
+  if (!body.accountId || !body.mailId || !body.until) return c.json({ error: "invalid" }, 400)
+
+  const org = await resolveMailOrg(c.env, session)
+  org.snoozed = org.snoozed ?? {}
+  org.snoozed[assignmentKey(body.accountId, body.mailId)] = body.until
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ ok: true })
+})
+
+api.delete("/snooze", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+  const session = await readSession(c.env, sessionId)
+  const body = await c.req.json<{ accountId: string; mailId: string }>()
+  if (!body.accountId || !body.mailId) return c.json({ error: "invalid" }, 400)
+
+  const org = await resolveMailOrg(c.env, session)
+  org.snoozed = org.snoozed ?? {}
+  delete org.snoozed[assignmentKey(body.accountId, body.mailId)]
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ ok: true })
+})
+
 // ── Web Push ─────────────────────────────────────────────────────────────────
 
 const PUSH_SUBS_PREFIX = "push_subs:"

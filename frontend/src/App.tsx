@@ -73,6 +73,7 @@ import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply } from "@/types/mail"
 import { getSoundPreference, notifyNewMail, playNotificationSound } from "@/lib/push"
 import { applyTheme, getStoredTheme, watchSystemTheme } from "@/lib/theme"
+import { fetchSnoozed, snoozeKey, snoozeMail } from "@/lib/api"
 
 const SNAP_SIZE = 45
 const SNAP_ZONE = 3
@@ -153,6 +154,7 @@ function App() {
   const [failedAccountIds, setFailedAccountIds] = useState<string[]>([])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [snoozed, setSnoozed] = useState<Record<string, number>>({})
 
   // 이미 알고 있는 메일 ID 집합 — 새 메일 감지용 (초기 로드 시에는 트리거 안 함)
   const knownMailKeysRef = useRef<Set<string> | null>(null)
@@ -217,6 +219,7 @@ function App() {
             fetchQuickReplies().then(setQuickReplies),
             fetchNotifications().then(setNotifications),
             fetchDrafts().then(setDrafts),
+            fetchSnoozed().then(setSnoozed),
           ])
         }
       })
@@ -320,12 +323,21 @@ function App() {
   }, [searchQuery])
 
   const visibleMails = useMemo(() => {
+    const now = Date.now()
     const q = searchQuery.trim().toLowerCase()
+
     if (!q) {
-      return [...categoryMails].sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
+      // 스누즈 필터 적용 후 정렬
+      return [...categoryMails]
+        .filter((m) => {
+          const until = snoozed[snoozeKey(m.accountId, m.id)]
+          return !until || until <= now
+        })
+        .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
     }
 
-    const clientMatches = categoryMails.filter(
+    // 검색 중: 계정·카테고리 필터 무시하고 전체 메일에서 검색 (통합검색)
+    const clientMatches = allMails.filter(
       (m) =>
         m.fromName.toLowerCase().includes(q) ||
         m.fromEmail.toLowerCase().includes(q) ||
@@ -335,7 +347,7 @@ function App() {
     const merged = new Map<string, Mail>()
     for (const m of [...clientMatches, ...(serverSearchResults ?? [])]) merged.set(`${m.accountId}:${m.id}`, m)
     return [...merged.values()].sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
-  }, [categoryMails, searchQuery, serverSearchResults])
+  }, [allMails, categoryMails, searchQuery, serverSearchResults, snoozed])
 
   const selectedMailStub =
     visibleMails.find((mail) => mail.id === selectedMailId)
@@ -887,6 +899,12 @@ function App() {
     return { ok: true }
   }
 
+  const handleSnooze = async (mailId: string, accountId: string, until: number) => {
+    setSnoozed((prev) => ({ ...prev, [snoozeKey(accountId, mailId)]: until }))
+    setSelectedMailId(null)
+    await snoozeMail(accountId, mailId, until)
+  }
+
   const handleOpenCompose = () => {
     setComposeState({})
     setSelectedMailId(null)
@@ -1153,6 +1171,7 @@ function App() {
     setQuickReplies([])
     setNotifications([])
     setDrafts([])
+    setSnoozed({})
     for (const timer of Object.values(pendingSendTimers.current)) window.clearTimeout(timer)
     pendingSendTimers.current = {}
     goHome()
@@ -1296,6 +1315,7 @@ function App() {
       folders={folders}
       onMove={handleMoveMailFromInbox}
       onToggleFolder={handleToggleMailFolder}
+      onSnooze={handleSnooze}
     />
   )
 

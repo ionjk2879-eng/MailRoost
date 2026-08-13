@@ -601,3 +601,35 @@ export async function connectImapAccount(params: {
   if (!res.ok) return { ok: false, error: data.error ?? "IMAP 계정 연결에 실패했습니다." }
   return { ok: true }
 }
+
+// ── 스누즈 ────────────────────────────────────────────────────────────────────
+
+export function snoozeKey(accountId: string, mailId: string): string {
+  return `${accountId}||${mailId}`
+}
+
+export async function fetchSnoozed(): Promise<Record<string, number>> {
+  const res = await fetch("/api/snooze")
+  if (!res.ok) return {}
+  const data = (await res.json().catch(() => ({}))) as { snoozed?: Record<string, number> }
+  return data.snoozed ?? {}
+}
+
+export async function snoozeMail(accountId: string, mailId: string, until: number): Promise<boolean> {
+  const res = await fetch("/api/snooze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, mailId, until }),
+  })
+  return res.ok
+}
+
+export async function unsnoozeMail(accountId: string, mailId: string): Promise<boolean> {
+  const res = await fetch("/api/snooze", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, mailId }),
+  })
+  return res.ok
+}
+

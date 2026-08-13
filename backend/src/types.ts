@@ -148,6 +148,8 @@ export interface MailOrgState {
   accountOrder: string[]
   // key: accountId -> 서명 본문
   signatures: Record<string, string>
+  // key: assignmentKey(accountId, mailId) -> 스누즈 해제 시각(Unix ms). 그 시각이 지나면 자동 표시.
+  snoozed: Record<string, number>
 }
 
 // 전달(forward)로 보낼 때 원본 첨부를 다시 첨부하기 위한 참조. filename/mimeType은
