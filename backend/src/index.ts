@@ -17,9 +17,16 @@ app.notFound((c) => c.env.ASSETS.fetch(c.req.raw))
 
 // 라우트에서 던진 에러를 그대로 삼키지 않고 프런트가 읽을 수 있는 JSON으로 전달한다.
 // (이게 없으면 실패 이유가 뭐든 프런트에는 뭉뚱그려진 "실패했습니다"만 보임)
+// 이 앱은 1인 전용이라 앱이 직접 만든 안내 문구(예: "네이버 로그인에 실패했습니다...")를
+// 그대로 보여주는 게 디버깅에 실제로 도움이 되므로 기본적으로는 막지 않는다. 다만 어딘가에서
+// 실수로 시크릿 값을 에러 메시지에 그대로 섞어 던지는 최악의 경우에 대비해, 그 값이 메시지에
+// 포함돼 있으면 무조건 일반 메시지로 대체한다.
 app.onError((err, c) => {
   console.error(err)
-  return c.json({ error: err.message }, 500)
+  const secrets = [c.env.GOOGLE_CLIENT_SECRET, c.env.ACCOUNT_ENCRYPTION_KEY, c.env.VAPID_PRIVATE_JWK].filter(Boolean)
+  const leaksSecret = secrets.some((secret) => err.message.includes(secret))
+  const message = leaksSecret ? "요청을 처리하는 중 오류가 발생했습니다." : err.message
+  return c.json({ error: message }, 500)
 })
 
 export default {
