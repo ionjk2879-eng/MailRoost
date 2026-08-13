@@ -6,6 +6,7 @@ import {
   batchDeleteMessages as gmailBatchDelete,
   batchModifyMessages as gmailBatchModify,
   emptyTrash as gmailEmptyTrash,
+  markAllInboxUnreadAsRead as gmailMarkAllUnread,
   ensureFreshToken,
   fetchMailsByIds as gmailFetchByIds,
   getMailDetail,
@@ -29,6 +30,7 @@ import {
   daumListTrash,
   daumMarkAsRead,
   daumMarkAsReadBulk,
+  daumMarkAllInboxUnreadAsRead,
   daumMarkAsUnread,
   daumPermanentDeleteBulk,
   daumRestoreFromTrashBulk,
@@ -43,6 +45,7 @@ import {
   imapListInbox,
   imapListTrash,
   imapMarkAsRead,
+  imapMarkAllInboxUnreadAsRead,
   imapMarkAsReadBulk,
   imapMarkAsUnread,
   imapPermanentDeleteBulk,
@@ -59,6 +62,7 @@ import {
   naverListTrash,
   naverMarkAsRead,
   naverMarkAsReadBulk,
+  naverMarkAllInboxUnreadAsRead,
   naverMarkAsUnread,
   naverPermanentDeleteBulk,
   naverRestoreFromTrashBulk,
@@ -1368,6 +1372,40 @@ api.patch("/mail/:id/star", async (c) => {
 
 // ── Bulk mail actions (하나의 연결로 여러 메일 처리, 계정마다 재연결하지 않음) ──────────
 
+api.patch("/mail/mark-all-read", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+  const body = await c.req.json<{ accountId?: string }>().catch(() => null)
+  const accountId = body?.accountId
+  if (!accountId) return c.json({ error: "bad request" }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const record = accountMap[accountId]
+  if (!record) return c.json({ error: "not found" }, 404)
+
+  if (record.provider === "naver") {
+    await naverMarkAllInboxUnreadAsRead(record.email, record.appPassword)
+    return c.json({ ok: true })
+  }
+  if (record.provider === "daum") {
+    await daumMarkAllInboxUnreadAsRead(record.email, record.password)
+    return c.json({ ok: true })
+  }
+  if (record.provider === "imap") {
+    await imapMarkAllInboxUnreadAsRead({ host: record.host, port: record.port, email: record.email, password: record.password })
+    return c.json({ ok: true })
+  }
+
+  const fresh = await ensureFreshToken(c.env, record)
+  if (fresh.accessToken !== record.accessToken) {
+    accountMap[accountId] = fresh
+    await persistAccounts(c.env, sessionId, session, accountMap)
+  }
+  await gmailMarkAllUnread(fresh.accessToken)
+  return c.json({ ok: true })
+})
+
 api.patch("/mail/bulk/read", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
@@ -1742,6 +1780,44 @@ api.delete("/snooze", async (c) => {
   const org = await resolveMailOrg(c.env, session)
   org.snoozed = org.snoozed ?? {}
   delete org.snoozed[assignmentKey(body.accountId, body.mailId)]
+  await persistMailOrg(c.env, sessionId, session, org)
+  return c.json({ ok: true })
+})
+
+// ── Muted senders ────────────────────────────────────────────────────────────
+
+api.get("/muted", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ muted: [] })
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  return c.json({ muted: org.muted ?? [] })
+})
+
+api.post("/muted", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+  const session = await readSession(c.env, sessionId)
+  const body = await c.req.json<{ email: string }>().catch(() => null)
+  if (!body?.email) return c.json({ error: "invalid" }, 400)
+
+  const org = await resolveMailOrg(c.env, session)
+  if (!(org.muted ?? []).includes(body.email)) {
+    org.muted = [...(org.muted ?? []), body.email]
+    await persistMailOrg(c.env, sessionId, session, org)
+  }
+  return c.json({ ok: true })
+})
+
+api.delete("/muted", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+  const session = await readSession(c.env, sessionId)
+  const body = await c.req.json<{ email: string }>().catch(() => null)
+  if (!body?.email) return c.json({ error: "invalid" }, 400)
+
+  const org = await resolveMailOrg(c.env, session)
+  org.muted = (org.muted ?? []).filter((e) => e !== body.email)
   await persistMailOrg(c.env, sessionId, session, org)
   return c.json({ ok: true })
 })

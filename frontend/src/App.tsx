@@ -11,6 +11,7 @@ import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
 import { DraftsView } from "@/components/drafts/drafts-view"
 import { SnoozedView } from "@/components/snoozed/snoozed-view"
+import { MutedView } from "@/components/muted/muted-view"
 import { NotificationBell } from "@/components/notifications/notification-bell"
 import { SettingsSheet } from "@/components/settings/settings-sheet"
 import { Button } from "@/components/ui/button"
@@ -74,7 +75,7 @@ import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply } from "@/types/mail"
 import { getSoundPreference, notifyNewMail, playNotificationSound } from "@/lib/push"
 import { applyTheme, getStoredTheme, watchSystemTheme } from "@/lib/theme"
-import { fetchSnoozed, snoozeKey, snoozeMail, unsnoozeMail } from "@/lib/api"
+import { fetchSnoozed, snoozeKey, snoozeMail, unsnoozeMail, fetchMuted, markAllMailsRead, muteSender, unmuteSender } from "@/lib/api"
 
 const SNAP_SIZE = 45
 const SNAP_ZONE = 3
@@ -111,7 +112,7 @@ function App() {
   const folderSnap = useSnapPanel()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts" | "snoozed">("home")
+  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts" | "snoozed" | "muted">("home")
   const [trashMails, setTrashMails] = useState<Mail[]>([])
   const [trashCursor, setTrashCursor] = useState<string | null>(null)
   const [isTrashLoading, setIsTrashLoading] = useState(false)
@@ -156,9 +157,12 @@ function App() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [snoozed, setSnoozed] = useState<Record<string, number>>({})
+  const [muted, setMuted] = useState<string[]>([])
 
   // 이미 알고 있는 메일 ID 집합 — 새 메일 감지용 (초기 로드 시에는 트리거 안 함)
   const knownMailKeysRef = useRef<Set<string> | null>(null)
+  // 뮤트 집합 — 폴링 클로저에서 최신 값 참조용
+  const mutedSetRef = useRef<Set<string>>(new Set())
 
   // 삭제 요청이 아직 서버에 반영되지 않은 사이 폴링이 되살리는 것을 막기 위한 tombstone
   const deletedKeysRef = useRef<Set<string>>(new Set())
@@ -183,7 +187,11 @@ function App() {
       const freshKeys = new Set(freshMails.map((m) => `${m.accountId}:${m.id}`))
       if (knownMailKeysRef.current !== null) {
         const newKeys = [...freshKeys].filter((k) => !knownMailKeysRef.current!.has(k))
-        if (newKeys.length > 0) {
+        const newNonMuted = newKeys.filter((k) => {
+          const mail = freshMails.find((m) => `${m.accountId}:${m.id}` === k)
+          return mail && !mutedSetRef.current.has(mail.fromEmail)
+        })
+        if (newNonMuted.length > 0) {
           playNotificationSound(getSoundPreference())
           notifyNewMail()
         }
@@ -221,6 +229,7 @@ function App() {
             fetchNotifications().then(setNotifications),
             fetchDrafts().then(setDrafts),
             fetchSnoozed().then(setSnoozed),
+            fetchMuted().then(setMuted),
           ])
         }
       })
@@ -256,15 +265,21 @@ function App() {
   const allMails = realMails
   const sendableAccounts = accounts.filter((a) => COMPOSE_SUPPORTED.includes(a.provider))
 
+  const mutedSet = useMemo(() => {
+    const s = new Set(muted)
+    mutedSetRef.current = s
+    return s
+  }, [muted])
+
   const unreadCountByAccount = useMemo(() => {
     const counts: Record<string, number> = {}
     for (const mail of allMails) {
-      if (!mail.isRead) {
+      if (!mail.isRead && !mutedSet.has(mail.fromEmail)) {
         counts[mail.accountId] = (counts[mail.accountId] ?? 0) + 1
       }
     }
     return counts
-  }, [allMails])
+  }, [allMails, mutedSet])
 
   const unreadCountByFolder = useMemo(() => {
     const counts: Record<string, number> = {}
@@ -328,11 +343,11 @@ function App() {
     const q = searchQuery.trim().toLowerCase()
 
     if (!q) {
-      // 스누즈 필터 적용 후 정렬
+      // 스누즈 + 뮤트 필터 적용 후 정렬
       return [...categoryMails]
         .filter((m) => {
           const until = snoozed[snoozeKey(m.accountId, m.id)]
-          return !until || until <= now
+          return (!until || until <= now) && !mutedSet.has(m.fromEmail)
         })
         .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
     }
@@ -348,7 +363,7 @@ function App() {
     const merged = new Map<string, Mail>()
     for (const m of [...clientMatches, ...(serverSearchResults ?? [])]) merged.set(`${m.accountId}:${m.id}`, m)
     return [...merged.values()].sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
-  }, [allMails, categoryMails, searchQuery, serverSearchResults, snoozed])
+  }, [allMails, categoryMails, searchQuery, serverSearchResults, snoozed, mutedSet])
 
   const selectedMailStub =
     visibleMails.find((mail) => mail.id === selectedMailId)
@@ -628,13 +643,16 @@ function App() {
   }
 
   const handleMarkAllRead = async (accountId?: string) => {
-    const targets = realMails.filter((m) => !m.isRead && (accountId === undefined || m.accountId === accountId))
+    // 로컬 상태 즉시 반영
     setRealMails((prev) => prev.map((m) => {
       if (!m.isRead && (accountId === undefined || m.accountId === accountId)) return { ...m, isRead: true }
       return m
     }))
-    const groups = groupIdsByAccount(targets)
-    await Promise.all([...groups.entries()].map(([accId, ids]) => bulkMarkRead(accId, ids, true)))
+    // 서버에서 전체 미읽은 메일 처리 (페이지에 로드되지 않은 메일 포함)
+    const targetAccounts = accountId
+      ? [accountId]
+      : [...new Set(realMails.filter((m) => !m.isRead).map((m) => m.accountId))]
+    await Promise.all(targetAccounts.map((id) => markAllMailsRead(id)))
   }
 
   const handleDeleteBeforeDate = async (cutoff: Date, accountId?: string) => {
@@ -697,6 +715,24 @@ function App() {
     setFocusedMailId(null)
     setCheckedMailIds(new Set())
     setComposeState(null)
+  }
+
+  const goToMuted = () => {
+    setView("muted")
+    setSelectedMailId(null)
+    setFocusedMailId(null)
+    setCheckedMailIds(new Set())
+    setComposeState(null)
+  }
+
+  const handleMuteSender = async (fromEmail: string) => {
+    if (mutedSet.has(fromEmail)) {
+      setMuted((prev) => prev.filter((e) => e !== fromEmail))
+      await unmuteSender(fromEmail)
+    } else {
+      setMuted((prev) => [...prev, fromEmail])
+      await muteSender(fromEmail)
+    }
   }
 
   const handleUnsnooze = async (mailId: string, accountId: string) => {
@@ -1196,6 +1232,7 @@ function App() {
     setNotifications([])
     setDrafts([])
     setSnoozed({})
+    setMuted([])
     for (const timer of Object.values(pendingSendTimers.current)) window.clearTimeout(timer)
     pendingSendTimers.current = {}
     goHome()
@@ -1340,6 +1377,8 @@ function App() {
       onMove={handleMoveMailFromInbox}
       onToggleFolder={handleToggleMailFolder}
       onSnooze={handleSnooze}
+      onMute={handleMuteSender}
+      isMuted={!!selectedMailStub && mutedSet.has(selectedMailStub.fromEmail)}
     />
   )
 
@@ -1427,6 +1466,7 @@ function App() {
         draftCount={drafts.length}
         isSnoozeView={view === "snoozed"}
         snoozeCount={Object.values(snoozed).filter((until) => until > Date.now()).length}
+        isMutedView={view === "muted"}
         folders={folders}
         selectedFolderId={selectedFolderId}
         isFolderView={view === "folder"}
@@ -1438,6 +1478,7 @@ function App() {
         onGoMemo={goToMemo}
         onGoDrafts={goToDrafts}
         onGoSnooze={goToSnooze}
+        onGoMuted={goToMuted}
         onSelectFolder={goToFolder}
         onCreateFolder={handleCreateFolder}
         onRenameFolder={handleRenameFolder}
@@ -1466,6 +1507,8 @@ function App() {
                       ? "임시보관함"
                       : view === "snoozed"
                       ? "스누즈"
+                      : view === "muted"
+                      ? "뮤트"
                       : view === "folder"
                       ? (folders.find((f) => f.id === selectedFolderId)?.name ?? "분류 메일함")
                       : selectedAccountId
@@ -1577,6 +1620,14 @@ function App() {
             accounts={accounts}
             snoozed={snoozed}
             onUnsnooze={handleUnsnooze}
+            onSelectMail={handleSnoozedMailSelect}
+          />
+        ) : view === "muted" ? (
+          <MutedView
+            mails={allMails}
+            accounts={accounts}
+            muted={muted}
+            onUnmute={(email) => handleMuteSender(email)}
             onSelectMail={handleSnoozedMailSelect}
           />
         ) : view === "folder" || view === "archive" ? (

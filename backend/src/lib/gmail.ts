@@ -383,6 +383,26 @@ export async function restoreFromTrashBulk(accessToken: string, ids: string[]): 
   await batchModifyMessages(accessToken, ids, { addLabelIds: ["INBOX"], removeLabelIds: ["TRASH"] })
 }
 
+export async function markAllInboxUnreadAsRead(accessToken: string): Promise<void> {
+  let pageToken: string | undefined
+  const allIds: string[] = []
+  do {
+    const params = new URLSearchParams({ maxResults: "500", q: "is:unread in:inbox" })
+    if (pageToken) params.set("pageToken", pageToken)
+    const res = await fetch(`${GMAIL_API_BASE}/messages?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) break
+    const json = (await res.json()) as { messages?: { id: string }[]; nextPageToken?: string }
+    for (const m of json.messages ?? []) allIds.push(m.id)
+    pageToken = json.nextPageToken
+  } while (pageToken)
+
+  for (let i = 0; i < allIds.length; i += 1000) {
+    await batchModifyMessages(accessToken, allIds.slice(i, i + 1000), { removeLabelIds: ["UNREAD"] })
+  }
+}
+
 export async function emptyTrash(accessToken: string): Promise<void> {
   let pageToken: string | undefined
   const allIds: string[] = []

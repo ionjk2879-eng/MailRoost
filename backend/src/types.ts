@@ -150,6 +150,8 @@ export interface MailOrgState {
   signatures: Record<string, string>
   // key: assignmentKey(accountId, mailId) -> 스누즈 해제 시각(Unix ms). 그 시각이 지나면 자동 표시.
   snoozed: Record<string, number>
+  // 뮤트된 발신자 이메일 목록. 해당 발신자의 메일은 받은편지함에 표시되지 않는다.
+  muted: string[]
 }
 
 // 전달(forward)로 보낼 때 원본 첨부를 다시 첨부하기 위한 참조. filename/mimeType은

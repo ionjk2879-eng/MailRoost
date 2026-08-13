@@ -19,7 +19,7 @@ export function parseAssignmentKey(key: string): { accountId: string; mailId: st
 }
 
 export function emptyMailOrgState(): MailOrgState {
-  return { folders: [], assignments: {}, archived: {}, rules: [], classified: {}, accountOrder: [], signatures: {}, snoozed: {} }
+  return { folders: [], assignments: {}, archived: {}, rules: [], classified: {}, accountOrder: [], signatures: {}, snoozed: {}, muted: [] }
 }
 
 // 이 기능이 추가되기 전에는 assignments가 accountId+mailId당 분류 메일함 id 문자열 하나였고
@@ -57,6 +57,7 @@ export function normalizeMailOrgState(
     accountOrder: state.accountOrder ?? [],
     signatures: state.signatures ?? {},
     snoozed: state.snoozed ?? {},
+    muted: state.muted ?? [],
   }
 }
 

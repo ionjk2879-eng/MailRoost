@@ -302,6 +302,14 @@ export async function deleteMail(id: string, accountId: string): Promise<{ ok: b
   return { ok: true }
 }
 
+export async function markAllMailsRead(accountId: string): Promise<void> {
+  await fetch("/api/mail/mark-all-read", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId }),
+  })
+}
+
 export async function bulkMarkRead(accountId: string, mailIds: string[], read: boolean): Promise<void> {
   if (mailIds.length === 0) return
   await fetch("/api/mail/bulk/read", {
@@ -629,6 +637,31 @@ export async function unsnoozeMail(accountId: string, mailId: string): Promise<b
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ accountId, mailId }),
+  })
+  return res.ok
+}
+
+export async function fetchMuted(): Promise<string[]> {
+  const res = await fetch("/api/muted")
+  if (!res.ok) return []
+  const data = (await res.json()) as { muted: string[] }
+  return data.muted
+}
+
+export async function muteSender(email: string): Promise<boolean> {
+  const res = await fetch("/api/muted", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  })
+  return res.ok
+}
+
+export async function unmuteSender(email: string): Promise<boolean> {
+  const res = await fetch("/api/muted", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
   })
   return res.ok
 }

@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, FileEdit, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2 } from "lucide-react"
+import { AlarmClock, Archive, FileEdit, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2, VolumeX } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -104,6 +104,7 @@ interface AccountSidebarProps {
   draftCount: number
   isSnoozeView: boolean
   snoozeCount: number
+  isMutedView: boolean
   folders: MailFolder[]
   selectedFolderId: string | null
   isFolderView: boolean
@@ -115,6 +116,7 @@ interface AccountSidebarProps {
   onGoMemo: () => void
   onGoDrafts: () => void
   onGoSnooze: () => void
+  onGoMuted: () => void
   onSelectFolder: (folderId: string) => void
   onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
   onRenameFolder: (folderId: string, name: string, color: string) => Promise<{ ok: boolean; error?: string }>
@@ -140,6 +142,7 @@ export function AccountSidebar({
   draftCount,
   isSnoozeView,
   snoozeCount,
+  isMutedView,
   folders,
   selectedFolderId,
   isFolderView,
@@ -151,6 +154,7 @@ export function AccountSidebar({
   onGoMemo,
   onGoDrafts,
   onGoSnooze,
+  onGoMuted,
   onSelectFolder,
   onCreateFolder,
   onRenameFolder,
@@ -343,6 +347,18 @@ export function AccountSidebar({
                   <span>스누즈</span>
                 </SidebarMenuButton>
                 {snoozeCount > 0 && <SidebarMenuBadge>{snoozeCount}</SidebarMenuBadge>}
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isMutedView}
+                  onClick={() => {
+                    onGoMuted()
+                    closeOnMobile()
+                  }}
+                >
+                  <VolumeX />
+                  <span>뮤트</span>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>

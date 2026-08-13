@@ -617,6 +617,20 @@ export async function imapMarkAsReadBulk(config: ImapConfig, uids: string[], rea
   })
 }
 
+export async function imapMarkAllInboxUnreadAsRead(config: ImapConfig): Promise<void> {
+  await withImap(config, async (client) => {
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) return
+    const searchResult = await client.command("UID SEARCH UNSEEN")
+    if (!searchResult.ok) return
+    const line = searchResult.lines.find((l) => /^\*\s+SEARCH/i.test(l))
+    if (!line) return
+    const uids = line.replace(/^\*\s+SEARCH\s*/i, "").trim().split(/\s+/).filter(Boolean)
+    if (uids.length === 0) return
+    await client.command(`UID STORE ${uids.join(",")} +FLAGS.SILENT (\\Seen)`)
+  })
+}
+
 export async function imapToggleStarBulk(config: ImapConfig, uids: string[], starred: boolean): Promise<void> {
   if (uids.length === 0) return
   const flag = starred ? "+FLAGS" : "-FLAGS"
@@ -700,6 +714,10 @@ export async function naverGetMailDetail(
 
 export async function naverMarkAsReadBulk(email: string, appPassword: string, uids: string[], read: boolean): Promise<void> {
   return imapMarkAsReadBulk(naverConfig(email, appPassword), uids, read)
+}
+
+export async function naverMarkAllInboxUnreadAsRead(email: string, appPassword: string): Promise<void> {
+  return imapMarkAllInboxUnreadAsRead(naverConfig(email, appPassword))
 }
 
 export async function naverToggleStarBulk(email: string, appPassword: string, uids: string[], starred: boolean): Promise<void> {
@@ -798,6 +816,10 @@ export async function daumGetMailDetail(
 
 export async function daumMarkAsReadBulk(email: string, password: string, uids: string[], read: boolean): Promise<void> {
   return imapMarkAsReadBulk(daumConfig(email, password), uids, read)
+}
+
+export async function daumMarkAllInboxUnreadAsRead(email: string, password: string): Promise<void> {
+  return imapMarkAllInboxUnreadAsRead(daumConfig(email, password))
 }
 
 export async function daumToggleStarBulk(email: string, password: string, uids: string[], starred: boolean): Promise<void> {

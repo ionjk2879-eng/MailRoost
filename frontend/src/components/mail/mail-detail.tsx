@@ -1,4 +1,4 @@
-import { Archive, Check, ChevronLeft, Clock, Download, Eye, Folder, FolderInput, Forward, Inbox, MailOpen, Paperclip, Reply, ReplyAll, Star, Trash2 } from "lucide-react"
+import { Archive, Check, ChevronLeft, Clock, Download, Eye, Folder, FolderInput, Forward, Inbox, MailOpen, Paperclip, Reply, ReplyAll, Star, Trash2, VolumeX } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -27,6 +27,8 @@ interface MailDetailProps {
   onMove?: (mailId: string, accountId: string, folderId: string | null) => void
   onToggleFolder?: (mailId: string, accountId: string, folderId: string, assign: boolean) => void
   onSnooze?: (mailId: string, accountId: string, until: number) => void
+  onMute?: (fromEmail: string) => void
+  isMuted?: boolean
 }
 
 function getSnoozeOptions(): Array<{ label: string; subtitle: string; until: number }> {
@@ -105,6 +107,8 @@ export function MailDetail({
   onMove,
   onToggleFolder,
   onSnooze,
+  onMute,
+  isMuted,
 }: MailDetailProps) {
   const [moveOpen, setMoveOpen] = useState(false)
   const moveRef = useRef<HTMLDivElement>(null)
@@ -304,6 +308,17 @@ export function MailDetail({
                   </div>
                 )}
               </div>
+            )}
+            {onMute && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn("size-8", isMuted && "text-primary")}
+                title={isMuted ? "뮤트 해제" : "이 발신자 뮤트"}
+                onClick={() => onMute(mail.fromEmail)}
+              >
+                <VolumeX className="size-4" />
+              </Button>
             )}
             <Button
               variant="ghost"
