@@ -1,4 +1,4 @@
-import { Loader2, Pencil, RefreshCw, Search, X } from "lucide-react"
+import { Loader2, Pencil, RefreshCw, Search, Settings, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { GroupImperativeHandle, Layout } from "react-resizable-panels"
 import { AccountSidebar } from "@/components/mail/account-sidebar"
@@ -11,6 +11,7 @@ import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
 import { DraftsView } from "@/components/drafts/drafts-view"
 import { NotificationBell } from "@/components/notifications/notification-bell"
+import { SettingsSheet } from "@/components/settings/settings-sheet"
 import { Button } from "@/components/ui/button"
 import {
   ResizableHandle,
@@ -70,6 +71,7 @@ import {
 } from "@/lib/api"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply } from "@/types/mail"
+import { getSoundPreference, notifyNewMail, playNotificationSound } from "@/lib/push"
 
 const SNAP_SIZE = 45
 const SNAP_ZONE = 3
@@ -149,6 +151,10 @@ function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [failedAccountIds, setFailedAccountIds] = useState<string[]>([])
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
+  // 이미 알고 있는 메일 ID 집합 — 새 메일 감지용 (초기 로드 시에는 트리거 안 함)
+  const knownMailKeysRef = useRef<Set<string> | null>(null)
 
   // 삭제 요청이 아직 서버에 반영되지 않은 사이 폴링이 되살리는 것을 막기 위한 tombstone
   const deletedKeysRef = useRef<Set<string>>(new Set())
@@ -167,8 +173,20 @@ function App() {
       setRealAccounts(accounts)
       setFailedAccountIds(failed ?? [])
       const failedSet = new Set(failed ?? [])
+      const freshMails = filterOutDeleted(mails)
+
+      // 새 메일 감지: 이전에 알고 있던 키에 없는 메일이 왔을 때 소리 + 푸시
+      const freshKeys = new Set(freshMails.map((m) => `${m.accountId}:${m.id}`))
+      if (knownMailKeysRef.current !== null) {
+        const newKeys = [...freshKeys].filter((k) => !knownMailKeysRef.current!.has(k))
+        if (newKeys.length > 0) {
+          playNotificationSound(getSoundPreference())
+          notifyNewMail()
+        }
+      }
+      knownMailKeysRef.current = freshKeys
+
       setRealMails((prev) => {
-        const freshMails = filterOutDeleted(mails)
         if (failedSet.size === 0) return freshMails
         // 실패한 계정의 기존 메일은 그대로 유지하고 성공한 계정 메일만 교체
         const kept = prev.filter((m) => failedSet.has(m.accountId))
@@ -1421,6 +1439,15 @@ function App() {
             onMarkAllRead={handleMarkAllNotificationsRead}
             onDismiss={handleDismissNotification}
           />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            title="설정"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Settings className="size-4" />
+          </Button>
           {view === "inbox" && sendableAccounts.length > 0 && (
             <Button size="sm" className="gap-2" onClick={handleOpenCompose}>
               <Pencil className="size-4" />
@@ -1562,6 +1589,7 @@ function App() {
           </div>
         </div>
       )}
+    <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </SidebarProvider>
   )
 }

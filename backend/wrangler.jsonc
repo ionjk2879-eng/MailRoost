@@ -14,4 +14,8 @@
       "id": "40211436f424442ba0281acc1c24b1c9"
     }
   ],
+  "vars": {
+    "VAPID_PUBLIC_KEY": "BALF8UfCdC06w2as3arkS8S3HZaBQ4fLkEVAIXCcT4eZ82T6Ndci0NiAeBrXkqexTbdaLSjWnUPaTvw9pOSxP8o",
+    "VAPID_SUBJECT": "mailto:noreply@mailroost.app"
+  }
 }

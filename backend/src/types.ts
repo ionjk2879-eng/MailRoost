@@ -3,6 +3,16 @@ export interface Env {
   ASSETS: Fetcher
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
+  VAPID_PUBLIC_KEY: string
+  VAPID_PRIVATE_JWK: string
+  VAPID_SUBJECT: string
+}
+
+export interface StoredPushSubscription {
+  endpoint: string
+  keys: { p256dh: string; auth: string }
+  deviceId: string
+  subscribedAt: number
 }
 
 export type Provider = "gmail" | "naver" | "daum" | "imap"
