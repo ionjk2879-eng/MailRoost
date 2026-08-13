@@ -166,7 +166,7 @@ async function batchGetMessages(accessToken: string, ids: string[]): Promise<Gma
   const body =
     ids
       .map((id, i) => {
-        const path = `/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`
+        const path = `/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`
         return `--${boundary}\r\nContent-Type: application/http\r\nContent-ID: <item${i}>\r\n\r\nGET ${path}\r\n\r\n`
       })
       .join("") + `--${boundary}--`
@@ -267,7 +267,7 @@ export async function listTrashMails(
 
 export async function toggleStar(accessToken: string, messageId: string, starred: boolean): Promise<void> {
   const body = starred ? { addLabelIds: ["STARRED"] } : { removeLabelIds: ["STARRED"] }
-  const res = await fetch(`${GMAIL_API_BASE}/messages/${messageId}/modify`, {
+  const res = await fetch(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/modify`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -325,7 +325,7 @@ function extractBody(payload: GmailMessagePart | undefined): { text?: string; ht
 }
 
 async function modifyLabels(accessToken: string, messageId: string, body: object): Promise<void> {
-  const res = await fetch(`${GMAIL_API_BASE}/messages/${messageId}/modify`, {
+  const res = await fetch(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/modify`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -342,7 +342,7 @@ export async function markAsUnread(accessToken: string, messageId: string): Prom
 }
 
 export async function trashMail(accessToken: string, messageId: string): Promise<void> {
-  const res = await fetch(`${GMAIL_API_BASE}/messages/${messageId}/trash`, {
+  const res = await fetch(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/trash`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
   })
@@ -454,7 +454,7 @@ export async function sendGmailMessage(
 }
 
 export async function getMailDetail(accessToken: string, accountId: string, messageId: string): Promise<Mail> {
-  const res = await fetch(`${GMAIL_API_BASE}/messages/${messageId}?format=full`, {
+  const res = await fetch(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}?format=full`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!res.ok) throw new Error(`Gmail message fetch failed: ${res.status}`)
@@ -478,7 +478,7 @@ export async function getAttachment(
   messageId: string,
   attachmentId: string,
 ): Promise<{ bytes: Uint8Array } | null> {
-  const res = await fetch(`${GMAIL_API_BASE}/messages/${messageId}/attachments/${attachmentId}`, {
+  const res = await fetch(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (res.status === 404) return null

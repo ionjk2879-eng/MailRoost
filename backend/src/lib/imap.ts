@@ -121,8 +121,23 @@ class ImapClient {
   }
 }
 
+// IMAP 명령은 \r\n으로 끝나므로, 따옴표로 감싸는 값 안에 CR/LF가 그대로 남아있으면
+// 명령이 거기서 조기 종료되고 이어지는 텍스트가 별도의 명령으로 주입될 수 있다 — 반드시 걷어낸다.
 function quoteImap(value: string): string {
-  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
+  const sanitized = value.replace(/[\r\n]/g, "")
+  return `"${sanitized.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
+}
+
+// UID는 항상 순수 숫자다. 이 값들은 quoteImap 없이 그대로 명령 문자열에 꽂혀 들어가므로
+// (예: `UID STORE ${uid} +FLAGS ...`), 검증 없이 통과시키면 개행 등을 포함시켜 그 IMAP 세션에
+// 임의의 추가 명령을 주입할 수 있다. 호출 지점(API 라우트)의 mailId가 항상 신뢰할 수 있는
+// 값이라고 가정하지 않고, 실제로 명령을 만드는 이 계층에서 한 번 더 막는다.
+function assertValidUid(uid: string): void {
+  if (!/^\d+$/.test(uid)) throw new Error(`잘못된 메일 UID입니다: ${uid}`)
+}
+
+function assertValidUids(uids: string[]): void {
+  for (const uid of uids) assertValidUid(uid)
 }
 
 // ── Generic IMAP connection config ──────────────────────────────────────────
@@ -386,9 +401,9 @@ export async function imapSearchInbox(
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
 
-    const escaped = query.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+    const quoted = quoteImap(query)
     const searchResult = await client.command(
-      `UID SEARCH CHARSET UTF-8 OR FROM "${escaped}" OR SUBJECT "${escaped}" TEXT "${escaped}"`,
+      `UID SEARCH CHARSET UTF-8 OR FROM ${quoted} OR SUBJECT ${quoted} TEXT ${quoted}`,
     )
     if (!searchResult.ok) return []
     const line = searchResult.lines.find((l) => /^\*\s+SEARCH/i.test(l))
@@ -425,6 +440,7 @@ export async function imapListTrash(
 // 실제 메일은 여전히 INBOX에 있음 — 사용자 정의 분류는 앱 내부 표시 전용이라 서버에서 옮기지 않는다.
 export async function imapFetchByUids(config: ImapConfig, accountId: string, uids: string[]): Promise<Mail[]> {
   if (uids.length === 0) return []
+  assertValidUids(uids)
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
@@ -436,6 +452,7 @@ export async function imapFetchByUids(config: ImapConfig, accountId: string, uid
 }
 
 export async function imapMarkAsRead(config: ImapConfig, uid: string): Promise<void> {
+  assertValidUid(uid)
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
@@ -445,6 +462,7 @@ export async function imapMarkAsRead(config: ImapConfig, uid: string): Promise<v
 }
 
 export async function imapToggleStar(config: ImapConfig, uid: string, starred: boolean): Promise<void> {
+  assertValidUid(uid)
   const flag = starred ? "+FLAGS" : "-FLAGS"
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
@@ -455,6 +473,7 @@ export async function imapToggleStar(config: ImapConfig, uid: string, starred: b
 }
 
 export async function imapMarkAsUnread(config: ImapConfig, uid: string): Promise<void> {
+  assertValidUid(uid)
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
@@ -465,6 +484,7 @@ export async function imapMarkAsUnread(config: ImapConfig, uid: string): Promise
 
 // 삭제 = 휴지통 폴더가 있으면 그쪽으로 이동, 없으면 기존처럼 영구 삭제로 폴백
 export async function imapDeleteMail(config: ImapConfig, uid: string): Promise<void> {
+  assertValidUid(uid)
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
@@ -484,6 +504,7 @@ export async function imapDeleteMail(config: ImapConfig, uid: string): Promise<v
 // 휴지통에서 완전히 삭제 (영구 삭제)
 export async function imapPermanentDeleteBulk(config: ImapConfig, uids: string[]): Promise<void> {
   if (uids.length === 0) return
+  assertValidUids(uids)
   await withImap(config, async (client) => {
     const trash = await imapFindTrashMailbox(client)
     if (!trash) throw new Error("휴지통 폴더를 찾을 수 없습니다.")
@@ -499,6 +520,7 @@ export async function imapPermanentDeleteBulk(config: ImapConfig, uids: string[]
 // 휴지통에서 받은편지함으로 복구
 export async function imapRestoreFromTrashBulk(config: ImapConfig, uids: string[]): Promise<void> {
   if (uids.length === 0) return
+  assertValidUids(uids)
   await withImap(config, async (client) => {
     const trash = await imapFindTrashMailbox(client)
     if (!trash) throw new Error("휴지통 폴더를 찾을 수 없습니다.")
@@ -541,6 +563,7 @@ async function imapFetchRawByUid(
   config: ImapConfig,
   uid: string,
 ): Promise<{ raw: string; flags: string[]; internalDate?: string } | null> {
+  assertValidUid(uid)
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
@@ -608,6 +631,7 @@ export async function imapVerify(config: ImapConfig): Promise<void> {
 
 export async function imapMarkAsReadBulk(config: ImapConfig, uids: string[], read: boolean): Promise<void> {
   if (uids.length === 0) return
+  assertValidUids(uids)
   const flag = read ? "+FLAGS" : "-FLAGS"
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
@@ -633,6 +657,7 @@ export async function imapMarkAllInboxUnreadAsRead(config: ImapConfig): Promise<
 
 export async function imapToggleStarBulk(config: ImapConfig, uids: string[], starred: boolean): Promise<void> {
   if (uids.length === 0) return
+  assertValidUids(uids)
   const flag = starred ? "+FLAGS" : "-FLAGS"
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
@@ -645,6 +670,7 @@ export async function imapToggleStarBulk(config: ImapConfig, uids: string[], sta
 // 삭제 = 휴지통 폴더가 있으면 그쪽으로 이동, 없으면 기존처럼 영구 삭제로 폴백
 export async function imapDeleteMailBulk(config: ImapConfig, uids: string[]): Promise<void> {
   if (uids.length === 0) return
+  assertValidUids(uids)
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
