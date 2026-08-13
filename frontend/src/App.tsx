@@ -909,10 +909,23 @@ function App() {
     keyword: string,
     targetFolderId: string | null,
     category: MailCategory | null,
+    applyToExisting?: boolean,
   ): Promise<{ ok: boolean; error?: string }> => {
     const result = await apiCreateRule(field, keyword, targetFolderId, category)
     if (!result.ok) return { ok: false, error: result.error }
     setRules((prev) => [...prev, result.rule])
+
+    // "지금 불러온 메일에도 적용": 규칙은 원래 새로 도착하는 메일에만 적용되므로, 이미 받아둔 메일까지
+    // 옮기고 싶으면 지금 화면에 로드돼 있는 것들 중 조건에 맞는 것만 한 번 찾아서 같이 옮겨준다.
+    if (applyToExisting && targetFolderId) {
+      const haystackOf = (m: Mail) => (field === "from" ? `${m.fromName} ${m.fromEmail}` : m.subject).toLowerCase()
+      const q = keyword.toLowerCase()
+      const matches = allMails.filter(
+        (m) => haystackOf(m).includes(q) && !(m.folderIds ?? []).includes(targetFolderId),
+      )
+      if (matches.length > 0) await applyMove(matches, targetFolderId, "inbox")
+    }
+
     return { ok: true }
   }
 

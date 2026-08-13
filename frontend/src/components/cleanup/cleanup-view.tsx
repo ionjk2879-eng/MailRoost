@@ -31,6 +31,7 @@ interface CleanupViewProps {
     keyword: string,
     targetFolderId: string | null,
     category: MailCategory | null,
+    applyToExisting?: boolean,
   ) => Promise<{ ok: boolean; error?: string }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
   onDeleteRule: (ruleId: string) => void
@@ -438,6 +439,7 @@ function AutoClassifyTab({
     keyword: string,
     targetFolderId: string | null,
     category: MailCategory | null,
+    applyToExisting?: boolean,
   ) => Promise<{ ok: boolean; error?: string }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
   onDeleteRule: (ruleId: string) => void
@@ -482,6 +484,7 @@ function AutoClassifyTab({
 
   // "folder:<id>" 또는 "category:<name>" 형태로 인코딩해 하나의 select로 둘 다 고른다.
   const [destination, setDestination] = useState(`folder:${folderOptions[0].id}`)
+  const [applyToExisting, setApplyToExisting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
 
@@ -500,6 +503,7 @@ function AutoClassifyTab({
       trimmed,
       kind === "folder" ? value : null,
       kind === "category" ? (value as MailCategory) : null,
+      kind === "folder" && applyToExisting,
     )
     setIsCreating(false)
     if (!result.ok) {
@@ -507,6 +511,7 @@ function AutoClassifyTab({
       return
     }
     setKeyword("")
+    setApplyToExisting(false)
   }
 
   return (
@@ -582,6 +587,17 @@ function AutoClassifyTab({
             {isCreating ? <Loader2 className="size-3.5 animate-spin" /> : "추가"}
           </Button>
         </form>
+        {destination.startsWith("folder:") && (
+          <label className="text-muted-foreground mt-3 flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={applyToExisting}
+              onChange={(e) => setApplyToExisting(e.target.checked)}
+              className="size-3.5"
+            />
+            지금 불러온 메일 중에도 조건에 맞는 게 있으면 바로 이동
+          </label>
+        )}
         {folders.length === 0 && (
           <p className="text-muted-foreground mt-3 flex items-start gap-1.5 text-xs">
             <AlertTriangle className="mt-0.5 size-3 shrink-0" />
