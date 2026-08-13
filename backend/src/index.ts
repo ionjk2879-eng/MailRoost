@@ -5,8 +5,6 @@ import naver from "./routes/naver"
 import daum from "./routes/daum"
 import imapGeneric from "./routes/imap-generic"
 import api from "./routes/api"
-import { processDueScheduledMails } from "./lib/scheduledSend"
-
 const app = new Hono<{ Bindings: Env }>()
 
 app.route("/auth", auth)
@@ -26,8 +24,4 @@ app.onError((err, c) => {
 
 export default {
   fetch: app.fetch,
-  // 1분마다 도래한 예약발송 메일을 스캔해서 실제로 보낸다 (wrangler.jsonc의 triggers.crons).
-  scheduled: async (_event, env, ctx) => {
-    ctx.waitUntil(processDueScheduledMails(env, Date.now()))
-  },
 } satisfies ExportedHandler<Env>

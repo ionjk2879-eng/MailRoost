@@ -4,9 +4,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { Account, AutoClassifyRule, Mail, MailCategory, MailFolder, QuickReply, ScheduledMail } from "@/types/mail"
+import type { Account, AutoClassifyRule, Mail, MailCategory, MailFolder, QuickReply } from "@/types/mail"
 
-type MainTab = "mailbox" | "auto" | "quickreply" | "scheduled" | "shortcuts"
+type MainTab = "mailbox" | "auto" | "quickreply" | "shortcuts"
 type MailboxSubTab = "manage" | "unread" | "bydate"
 
 const CATEGORY_LABELS: Record<MailCategory, string> = {
@@ -38,8 +38,6 @@ interface CleanupViewProps {
   onCreateQuickReply: (title: string, body: string) => Promise<{ ok: boolean; error?: string }>
   onUpdateQuickReply: (id: string, title: string, body: string) => Promise<{ ok: boolean; error?: string }>
   onDeleteQuickReply: (id: string) => void
-  scheduledMails: ScheduledMail[]
-  onCancelScheduledMail: (id: string) => void
 }
 
 export const SHORTCUTS = [
@@ -775,58 +773,6 @@ function QuickReplyTab({
   )
 }
 
-// backend/src/lib/scheduledSend.ts의 MAX_RETRIES와 맞춘 표시용 값.
-const SCHEDULED_MAX_RETRIES = 5
-
-function ScheduledMailTab({
-  accounts,
-  scheduledMails,
-  onCancelScheduledMail,
-}: {
-  accounts: Account[]
-  scheduledMails: ScheduledMail[]
-  onCancelScheduledMail: (id: string) => void
-}) {
-  const accountLabel = (accountId: string) => {
-    const a = accounts.find((acc) => acc.id === accountId)
-    if (!a) return "(삭제된 계정)"
-    return a.provider === "gmail" || a.provider === "naver" || a.provider === "daum" ? a.email : a.label
-  }
-
-  const sorted = [...scheduledMails].sort((a, b) => a.sendAt - b.sendAt)
-
-  return (
-    <div className="max-w-2xl space-y-2">
-      {sorted.map((m) => (
-        <div key={m.id} className="flex items-start justify-between gap-3 rounded-lg border p-3">
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{m.subject || "(제목 없음)"}</p>
-            <p className="text-muted-foreground mt-0.5 truncate text-xs">
-              {accountLabel(m.accountId)} → {m.to}
-            </p>
-            <p className="text-primary mt-1 text-xs">{new Date(m.sendAt).toLocaleString()}에 발송 예정</p>
-            {!!m.retryCount && (
-              <p className="text-destructive mt-0.5 text-xs">
-                발송 실패로 재시도 중 ({m.retryCount}/{SCHEDULED_MAX_RETRIES}회)
-              </p>
-            )}
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive h-7 shrink-0 text-xs"
-            onClick={() => onCancelScheduledMail(m.id)}
-          >
-            취소
-          </Button>
-        </div>
-      ))}
-      {sorted.length === 0 && (
-        <p className="text-muted-foreground py-8 text-center text-sm">예약된 메일이 없습니다.</p>
-      )}
-    </div>
-  )
-}
 
 export function CleanupView({
   accounts,
@@ -844,8 +790,6 @@ export function CleanupView({
   onCreateQuickReply,
   onUpdateQuickReply,
   onDeleteQuickReply,
-  scheduledMails,
-  onCancelScheduledMail,
 }: CleanupViewProps) {
   const [mainTab, setMainTab] = useState<MainTab>("mailbox")
 
@@ -853,7 +797,6 @@ export function CleanupView({
     { key: "mailbox", label: "메일함 관리" },
     { key: "auto", label: "자동분류" },
     { key: "quickreply", label: "빠른 답장" },
-    { key: "scheduled", label: "예약발송" },
     { key: "shortcuts", label: "단축키" },
   ]
 
@@ -910,14 +853,6 @@ export function CleanupView({
             onCreateQuickReply={onCreateQuickReply}
             onUpdateQuickReply={onUpdateQuickReply}
             onDeleteQuickReply={onDeleteQuickReply}
-          />
-        )}
-
-        {mainTab === "scheduled" && (
-          <ScheduledMailTab
-            accounts={accounts}
-            scheduledMails={scheduledMails}
-            onCancelScheduledMail={onCancelScheduledMail}
           />
         )}
 

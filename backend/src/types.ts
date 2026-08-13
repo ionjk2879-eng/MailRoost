@@ -150,34 +150,13 @@ export interface ForwardedAttachmentRef {
   mimeType: string
 }
 
-// 예약발송. 도래 시각(sendAt)이 지나면 cron이 스캔해서 실제로 보내고 항목을 지운다.
-// 로그인 사용자는 userId, 게스트는 sessionId만 채운다 — 계정 조회/소유권 확인 방식이 서로 다르기 때문.
-export interface ScheduledMail {
-  id: string
-  userId?: string
-  sessionId?: string
-  accountId: string
-  to: string
-  cc?: string
-  bcc?: string
-  subject: string
-  body: string
-  forwardedAttachments?: ForwardedAttachmentRef[]
-  sendAt: number
-  createdAt: number
-  // 발송 실패 후 재시도한 횟수. MAX_RETRIES(lib/scheduledSend.ts)에 도달하면 포기하고 실패 알림을 남긴다.
-  retryCount?: number
-}
-
-// 사이트 내부 알림함 전용 — 일반 새 메일 도착은 여기 포함되지 않고, 예약발송
-// 재시도/최종 실패처럼 사용자가 바로 확인하지 않으면 놓치기 쉬운 백그라운드 이벤트만 쌓인다.
+// 사이트 내부 알림함 전용
 export interface AppNotification {
   id: string
   userId?: string
   sessionId?: string
-  type: "scheduled-retry" | "scheduled-failed"
+  type: string
   message: string
-  scheduledMailId?: string
   createdAt: number
   read: boolean
 }

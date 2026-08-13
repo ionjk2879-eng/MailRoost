@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Draft, Env, ForwardedAttachmentRef, ImapAccountRecord, Mail, MailCategory, MailFolder, MailOrgState, MemoItem, QuickReply, ScheduledMail, StoredSession } from "../types"
+import type { Account, AutoClassifyRule, ConnectedAccountRecord, DaumAccountRecord, Draft, Env, ForwardedAttachmentRef, ImapAccountRecord, Mail, MailCategory, MailFolder, MailOrgState, MemoItem, QuickReply, StoredSession } from "../types"
 import { getUserAccounts, getUserById, saveUserAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import {
@@ -73,7 +73,6 @@ import type { OutgoingAttachment } from "../lib/mime"
 import { getUserMemos, saveUserMemos } from "../lib/memo"
 import { deleteNotification, listAllNotifications, saveNotification } from "../lib/notifications"
 import { getUserQuickReplies, saveUserQuickReplies } from "../lib/quickReplies"
-import { deleteScheduledMail, listAllScheduledMails, saveScheduledMail } from "../lib/scheduledMail"
 import { readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
 const api = new Hono<{ Bindings: Env }>()
@@ -1619,78 +1618,6 @@ api.post("/mail/send", async (c) => {
     accountMap[accountId] = updatedRecord
     await persistAccounts(c.env, sessionId, session, accountMap)
   }
-  return c.json({ ok: true })
-})
-
-// ── 예약발송 ──────────────────────────────────────────────────────────────────
-
-api.get("/scheduled-mails", async (c) => {
-  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
-  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
-  const session = await readSession(c.env, sessionId)
-
-  const all = await listAllScheduledMails(c.env)
-  const mine = all
-    .filter((m) => (session.userId ? m.userId === session.userId : m.sessionId === sessionId))
-    .sort((a, b) => a.sendAt - b.sendAt)
-  return c.json({ scheduledMails: mine })
-})
-
-api.post("/scheduled-mails", async (c) => {
-  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
-  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
-
-  const body = await c.req
-    .json<{
-      accountId?: string
-      to?: string
-      cc?: string
-      bcc?: string
-      subject?: string
-      body?: string
-      forwardedAttachments?: ForwardedAttachmentRef[]
-      sendAt?: number
-    }>()
-    .catch(() => null)
-  const { accountId, to, cc, bcc, subject, body: mailBody, forwardedAttachments, sendAt } = body ?? {}
-  if (!accountId || !to || !subject || !mailBody || !sendAt) return c.json({ error: "필수 항목이 누락되었습니다." }, 400)
-  if (sendAt <= Date.now()) return c.json({ error: "예약 시각은 미래여야 합니다." }, 400)
-
-  const session = await readSession(c.env, sessionId)
-  const accountMap = await resolveAccounts(c.env, session)
-  if (!accountMap[accountId]) return c.json({ error: "계정을 찾을 수 없습니다." }, 404)
-
-  const scheduledMail: ScheduledMail = {
-    id: crypto.randomUUID(),
-    userId: session.userId,
-    sessionId: session.userId ? undefined : sessionId,
-    accountId,
-    to,
-    cc,
-    bcc,
-    subject,
-    body: mailBody,
-    forwardedAttachments,
-    sendAt,
-    createdAt: Date.now(),
-  }
-  await saveScheduledMail(c.env, scheduledMail)
-  return c.json({ scheduledMail })
-})
-
-api.delete("/scheduled-mails/:id", async (c) => {
-  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
-  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
-  const session = await readSession(c.env, sessionId)
-
-  const id = c.req.param("id")
-  const all = await listAllScheduledMails(c.env)
-  const target = all.find((m) => m.id === id)
-  if (!target) return c.json({ error: "not found" }, 404)
-  const owns = session.userId ? target.userId === session.userId : target.sessionId === sessionId
-  if (!owns) return c.json({ error: "not found" }, 404)
-
-  await deleteScheduledMail(c.env, id)
   return c.json({ ok: true })
 })
 

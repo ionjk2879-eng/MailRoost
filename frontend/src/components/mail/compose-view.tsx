@@ -1,16 +1,22 @@
-import { ChevronLeft, Clock, MessageSquarePlus, Paperclip, X } from "lucide-react"
+import { ChevronLeft, MessageSquarePlus, Paperclip, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RecipientInput, type RecipientOption } from "@/components/mail/recipient-input"
-import { createDraft, deleteDraft, scheduleMail, updateDraft } from "@/lib/api"
-import type { Account, Draft, ForwardedAttachmentRef, Mail, QuickReply, ScheduledMail } from "@/types/mail"
+import { createDraft, deleteDraft, sendMail, updateDraft } from "@/lib/api"
+import type { Account, Draft, ForwardedAttachmentRef, Mail, QuickReply } from "@/types/mail"
 
 export const COMPOSE_SUPPORTED: Array<Account["provider"]> = ["gmail", "naver", "daum", "imap"]
 
-// 서명 앞에 붙이는 구분자. 메일 클라이언트들이 흔히 쓰는 "-- " 관례를 따른다.
 const SIGNATURE_MARKER = "\n\n-- \n"
+const DRAFT_SAVE_DEBOUNCE_MS = 1500
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+}
 
 interface ComposeViewProps {
   accounts: Account[]
@@ -28,31 +34,8 @@ interface ComposeViewProps {
   onBack?: () => void
   onCancel: () => void
   onSent: () => void
-  onScheduled?: (mail: ScheduledMail) => void
-  onUndoSendQueued?: (mail: ScheduledMail) => void
   onDraftSaved?: (draft: Draft) => void
   onDraftDeleted?: (id: string) => void
-}
-
-// 작성을 멈춘 뒤 이만큼 지나면 임시보관함에 자동저장한다.
-const DRAFT_SAVE_DEBOUNCE_MS = 1500
-
-// "보내기"를 누르면 실제로는 이만큼 뒤로 예약해두고, 그 사이 "실행취소"를 누르면 취소한다.
-// 예약발송 인프라(같은 라우트/cron)를 그대로 재사용한다.
-const UNDO_SEND_WINDOW_MS = 10_000
-
-// datetime-local input이 요구하는 "로컬 시각" 형식으로 최소값(지금부터 5분 뒤)을 만든다.
-function minScheduleValue(): string {
-  const d = new Date(Date.now() + 5 * 60 * 1000)
-  d.setSeconds(0, 0)
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes}B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 
 export function ComposeView({
@@ -71,8 +54,6 @@ export function ComposeView({
   onBack,
   onCancel,
   onSent,
-  onScheduled,
-  onUndoSendQueued,
   onDraftSaved,
   onDraftDeleted,
 }: ComposeViewProps) {
@@ -92,12 +73,9 @@ export function ComposeView({
   const [forwardedAttachments, setForwardedAttachments] = useState(defaultForwardedAttachments)
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
-  const [showSchedule, setShowSchedule] = useState(false)
-  const [scheduleAt, setScheduleAt] = useState("")
   const [quickReplyOpen, setQuickReplyOpen] = useState(false)
   const quickReplyRef = useRef<HTMLDivElement>(null)
 
-  // 받은 메일의 보낸사람 목록에서 받는사람 자동완성 후보를 뽑는다.
   const recipientOptions = useMemo<RecipientOption[]>(() => {
     const seen = new Map<string, RecipientOption>()
     for (const m of mails) {
@@ -107,7 +85,6 @@ export function ComposeView({
     return [...seen.values()]
   }, [mails])
 
-  // 임시보관함 자동저장: draftId는 렌더와 무관하게 최신 값을 유지해야 해서 ref로 들고 있는다.
   const draftIdRef = useRef<string | null>(defaultDraftId ?? null)
   const sentRef = useRef(false)
   const skipFirstAutosaveRef = useRef(true)
@@ -151,11 +128,7 @@ export function ComposeView({
   }, [accountId, to, cc, bcc, subject, body, forwardedAttachments])
 
   useEffect(() => {
-    // 디바운스가 끝나기 전에 뒤로가기/취소로 화면을 나가도 마지막 내용을 놓치지 않게 저장한다
-    // (발송에 성공했으면 sentRef가 막아준다).
-    return () => {
-      saveDraft()
-    }
+    return () => { saveDraft() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -168,9 +141,6 @@ export function ComposeView({
     return () => document.removeEventListener("mousedown", handler)
   }, [quickReplyOpen])
 
-  // 계정을 고르면(또는 처음 열릴 때) 그 계정의 서명을 본문 끝에 자동으로 붙인다.
-  // 계정을 바꾸면 이전 서명은 지우고 새 서명으로 교체한다. accounts는 세션 동안 거의 안 바뀌므로
-  // 의도적으로 accountId 변경에만 반응시킨다.
   useEffect(() => {
     const signature = accounts.find((a) => a.id === accountId)?.signature?.trim()
     setBody((prev) => {
@@ -190,7 +160,6 @@ export function ComposeView({
     setForwardedAttachments((prev) => prev.filter((a) => a.attachmentId !== attachmentId))
   }
 
-  // 발송/예약에 성공하면 자동저장된 임시보관 항목을 지운다 (없으면 아무 일도 안 함).
   const discardDraftAfterSend = () => {
     sentRef.current = true
     const id = draftIdRef.current
@@ -206,48 +175,16 @@ export function ComposeView({
       setError("보내는 계정을 선택해주세요.")
       return
     }
-    const attachments = forwardedAttachments.length > 0 ? forwardedAttachments : undefined
-
-    if (showSchedule && scheduleAt) {
-      const sendAt = new Date(scheduleAt).getTime()
-      if (Number.isNaN(sendAt) || sendAt <= Date.now()) {
-        setError("예약 시각은 현재보다 미래여야 합니다.")
-        return
-      }
-      setError(null)
-      setIsSending(true)
-      const result = await scheduleMail(
-        accountId,
-        to.trim(),
-        subject.trim(),
-        body,
-        sendAt,
-        cc.trim() || undefined,
-        bcc.trim() || undefined,
-        attachments,
-      )
-      setIsSending(false)
-      if (!result.ok) {
-        setError(result.error ?? "예약발송 등록에 실패했습니다.")
-        return
-      }
-      discardDraftAfterSend()
-      onScheduled?.(result.scheduledMail)
-      onSent()
-      return
-    }
-
     setError(null)
     setIsSending(true)
-    const result = await scheduleMail(
+    const result = await sendMail(
       accountId,
       to.trim(),
       subject.trim(),
       body,
-      Date.now() + UNDO_SEND_WINDOW_MS,
       cc.trim() || undefined,
       bcc.trim() || undefined,
-      attachments,
+      forwardedAttachments.length > 0 ? forwardedAttachments : undefined,
     )
     setIsSending(false)
     if (!result.ok) {
@@ -255,7 +192,6 @@ export function ComposeView({
       return
     }
     discardDraftAfterSend()
-    onUndoSendQueued?.(result.scheduledMail)
     onSent()
   }
 
@@ -305,20 +241,12 @@ export function ComposeView({
               <Label htmlFor="compose-to">받는 사람</Label>
               <div className="flex gap-2">
                 {!showCc && (
-                  <button
-                    type="button"
-                    onClick={() => setShowCc(true)}
-                    className="text-muted-foreground hover:text-foreground text-xs"
-                  >
+                  <button type="button" onClick={() => setShowCc(true)} className="text-muted-foreground hover:text-foreground text-xs">
                     참조
                   </button>
                 )}
                 {!showBcc && (
-                  <button
-                    type="button"
-                    onClick={() => setShowBcc(true)}
-                    className="text-muted-foreground hover:text-foreground text-xs"
-                  >
+                  <button type="button" onClick={() => setShowBcc(true)} className="text-muted-foreground hover:text-foreground text-xs">
                     숨은참조
                   </button>
                 )}
@@ -373,10 +301,7 @@ export function ComposeView({
               <Label>첨부파일</Label>
               <div className="flex flex-wrap gap-2">
                 {forwardedAttachments.map((att) => (
-                  <div
-                    key={att.attachmentId}
-                    className="bg-muted flex items-center gap-1.5 rounded-md py-1 pr-1 pl-2 text-xs"
-                  >
+                  <div key={att.attachmentId} className="bg-muted flex items-center gap-1.5 rounded-md py-1 pr-1 pl-2 text-xs">
                     <Paperclip className="size-3.5 shrink-0" />
                     <span className="max-w-[160px] truncate">{att.filename}</span>
                     <span className="text-muted-foreground shrink-0">{formatFileSize(att.size)}</span>
@@ -437,40 +362,13 @@ export function ComposeView({
         </div>
       )}
       {sendableAccounts.length > 0 && (
-        <div className="flex shrink-0 flex-col gap-2 border-t p-4">
-          {showSchedule && (
-            <div className="flex items-center gap-2">
-              <Clock className="text-muted-foreground size-4 shrink-0" />
-              <input
-                type="datetime-local"
-                value={scheduleAt}
-                min={minScheduleValue()}
-                onChange={(e) => setScheduleAt(e.target.value)}
-                className="border-input bg-background h-9 flex-1 rounded-md border px-3 text-sm focus:outline-none"
-              />
-            </div>
-          )}
-          <div className="flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setShowSchedule((v) => !v)
-                if (showSchedule) setScheduleAt("")
-              }}
-              className={`flex items-center gap-1 text-xs ${showSchedule ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <Clock className="size-3.5" />
-              예약발송
-            </button>
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="outline" disabled={isSending} onClick={onCancel}>
-                취소
-              </Button>
-              <Button type="submit" disabled={isSending || (showSchedule && !scheduleAt)}>
-                {isSending ? (showSchedule ? "예약 중..." : "전송 중...") : showSchedule ? "예약 등록" : "보내기"}
-              </Button>
-            </div>
-          </div>
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t p-4">
+          <Button type="button" variant="outline" disabled={isSending} onClick={onCancel}>
+            취소
+          </Button>
+          <Button type="submit" disabled={isSending}>
+            {isSending ? "전송 중..." : "보내기"}
+          </Button>
         </div>
       )}
     </form>

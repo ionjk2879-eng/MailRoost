@@ -1,4 +1,4 @@
-import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
+import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -350,42 +350,6 @@ export async function sendMail(
   })
   const data = (await res.json().catch(() => ({}))) as { error?: string }
   if (!res.ok) return { ok: false, error: data.error ?? "메일 전송에 실패했습니다." }
-  return { ok: true }
-}
-
-export async function fetchScheduledMails(): Promise<ScheduledMail[]> {
-  const res = await fetch("/api/scheduled-mails")
-  if (!res.ok) return []
-  const data = (await res.json()) as { scheduledMails: ScheduledMail[] }
-  return data.scheduledMails
-}
-
-export async function scheduleMail(
-  accountId: string,
-  to: string,
-  subject: string,
-  body: string,
-  sendAt: number,
-  cc?: string,
-  bcc?: string,
-  forwardedAttachments?: ForwardedAttachmentRef[],
-): Promise<{ ok: true; scheduledMail: ScheduledMail } | { ok: false; error: string }> {
-  const res = await fetch("/api/scheduled-mails", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accountId, to, cc, bcc, subject, body, sendAt, forwardedAttachments }),
-  })
-  const data = (await res.json().catch(() => ({}))) as { scheduledMail?: ScheduledMail; error?: string }
-  if (!res.ok || !data.scheduledMail) return { ok: false, error: data.error ?? "예약발송 등록에 실패했습니다." }
-  return { ok: true, scheduledMail: data.scheduledMail }
-}
-
-export async function cancelScheduledMail(id: string): Promise<{ ok: boolean; error?: string }> {
-  const res = await fetch(`/api/scheduled-mails/${encodeURIComponent(id)}`, { method: "DELETE" })
-  if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string }
-    return { ok: false, error: data.error ?? "예약발송 취소에 실패했습니다." }
-  }
   return { ok: true }
 }
 

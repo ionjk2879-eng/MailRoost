@@ -10,7 +10,6 @@ import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
 import { DraftsView } from "@/components/drafts/drafts-view"
 import { NotificationBell } from "@/components/notifications/notification-bell"
-import { UndoSendToast } from "@/components/mail/undo-send-toast"
 import { Button } from "@/components/ui/button"
 import {
   ResizableHandle,
@@ -25,7 +24,6 @@ import { LandingView } from "@/components/home/landing-view"
 import {
   bulkDeleteMails,
   bulkMarkRead,
-  cancelScheduledMail,
   createFolder as apiCreateFolder,
   createMemo,
   createQuickReply,
@@ -49,7 +47,6 @@ import {
   fetchNotifications,
   fetchQuickReplies,
   fetchRules,
-  fetchScheduledMails,
   fetchTrashMails,
   logout,
   markAllNotificationsRead,
@@ -71,7 +68,7 @@ import {
   updateRule as apiUpdateRule,
 } from "@/lib/api"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply, ScheduledMail } from "@/types/mail"
+import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply } from "@/types/mail"
 
 function isRealAccountId(accountId: string): boolean {
   return accountId.includes(":")
@@ -103,11 +100,8 @@ function App() {
   const [rules, setRules] = useState<AutoClassifyRule[]>([])
   const [memos, setMemos] = useState<MemoItem[]>([])
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
-  const [scheduledMails, setScheduledMails] = useState<ScheduledMail[]>([])
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [drafts, setDrafts] = useState<Draft[]>([])
-  // "보내기 취소" 유예시간 동안 대기 중인 예약발송(짧은 지연 후 실제 발송됨). 취소하면 작성 화면으로 되돌린다.
-  const [pendingSends, setPendingSends] = useState<ScheduledMail[]>([])
   const pendingSendTimers = useRef<Record<string, number>>({})
   const [composeState, setComposeState] = useState<{
     accountId?: string
@@ -178,7 +172,6 @@ function App() {
             fetchRules().then(setRules),
             fetchMemos().then(setMemos),
             fetchQuickReplies().then(setQuickReplies),
-            fetchScheduledMails().then(setScheduledMails),
             fetchNotifications().then(setNotifications),
             fetchDrafts().then(setDrafts),
           ])
@@ -826,54 +819,6 @@ function App() {
     }
   }
 
-  const handleScheduled = (mail: ScheduledMail) => {
-    setScheduledMails((prev) => [...prev, mail])
-  }
-
-  const handleCancelScheduledMail = async (id: string) => {
-    const removed = scheduledMails.find((m) => m.id === id)
-    setScheduledMails((prev) => prev.filter((m) => m.id !== id))
-    const result = await cancelScheduledMail(id)
-    if (!result.ok) {
-      if (removed) setScheduledMails((prev) => [...prev, removed])
-      showError(result.error ?? "예약발송 취소에 실패했습니다.")
-    }
-  }
-
-  // "보내기"를 누르면 실제로는 짧게 예약해두고(compose-view.tsx의 UNDO_SEND_WINDOW_MS), 그 사이
-  // 취소할 수 있는 토스트를 띄운다. 유예시간이 지나면 조용히 목록에서만 지운다 (이미 예약은 그대로 진행됨).
-  const handleUndoSendQueued = (mail: ScheduledMail) => {
-    setPendingSends((prev) => [...prev, mail])
-    const timer = window.setTimeout(() => {
-      setPendingSends((prev) => prev.filter((m) => m.id !== mail.id))
-      delete pendingSendTimers.current[mail.id]
-    }, Math.max(0, mail.sendAt - Date.now()))
-    pendingSendTimers.current[mail.id] = timer
-  }
-
-  const handleUndoSend = async (id: string) => {
-    const mail = pendingSends.find((m) => m.id === id)
-    setPendingSends((prev) => prev.filter((m) => m.id !== id))
-    const timer = pendingSendTimers.current[id]
-    if (timer !== undefined) {
-      window.clearTimeout(timer)
-      delete pendingSendTimers.current[id]
-    }
-    await cancelScheduledMail(id)
-    if (mail) {
-      setComposeState({
-        accountId: mail.accountId,
-        to: mail.to,
-        cc: mail.cc,
-        bcc: mail.bcc,
-        subject: mail.subject,
-        body: mail.body,
-        forwardedAttachments: mail.forwardedAttachments,
-        title: "실행취소된 메일",
-      })
-      setSelectedMailId(null)
-    }
-  }
 
   const handleMarkNotificationRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
@@ -1163,12 +1108,10 @@ function App() {
     setRules([])
     setMemos([])
     setQuickReplies([])
-    setScheduledMails([])
     setNotifications([])
     setDrafts([])
     for (const timer of Object.values(pendingSendTimers.current)) window.clearTimeout(timer)
     pendingSendTimers.current = {}
-    setPendingSends([])
     goHome()
   }
 
@@ -1288,8 +1231,6 @@ function App() {
       defaultBody={composeState.body}
       defaultForwardedAttachments={composeState.forwardedAttachments}
       defaultDraftId={composeState.draftId}
-      onScheduled={handleScheduled}
-      onUndoSendQueued={handleUndoSendQueued}
       onDraftSaved={handleDraftSaved}
       onDraftDeleted={handleDraftDeleted}
       onBack={isMobile ? handleCancelCompose : undefined}
@@ -1353,8 +1294,6 @@ function App() {
       defaultBody={composeState.body}
       defaultForwardedAttachments={composeState.forwardedAttachments}
       defaultDraftId={composeState.draftId}
-      onScheduled={handleScheduled}
-      onUndoSendQueued={handleUndoSendQueued}
       onDraftSaved={handleDraftSaved}
       onDraftDeleted={handleDraftDeleted}
       onBack={isMobile ? handleCancelCompose : undefined}
@@ -1496,8 +1435,6 @@ function App() {
               onCreateQuickReply={handleCreateQuickReply}
               onUpdateQuickReply={handleUpdateQuickReply}
               onDeleteQuickReply={handleDeleteQuickReply}
-              scheduledMails={scheduledMails}
-              onCancelScheduledMail={handleCancelScheduledMail}
             />
           </div>
         ) : view === "trash" ? (
@@ -1607,10 +1544,6 @@ function App() {
           </div>
         </div>
       )}
-      <UndoSendToast
-        pendingSends={pendingSends.map((m) => ({ id: m.id, subject: m.subject, sendAt: m.sendAt }))}
-        onUndo={handleUndoSend}
-      />
     </SidebarProvider>
   )
 }
