@@ -459,13 +459,12 @@ api.get("/folders/:id/mail", async (c) => {
 
   const idsByAccount = new Map<string, string[]>()
   for (const key of keys) {
-    const parsed = parseAssignmentKey(key)
+    const parsed = parseAssignmentKey(key, Object.keys(accountMap))
     if (!parsed) continue
     const list = idsByAccount.get(parsed.accountId)
     if (list) list.push(parsed.mailId)
     else idsByAccount.set(parsed.accountId, [parsed.mailId])
   }
-  console.log(`[folder-mail][debug] folderId=${folderId} keys=${keys.length} idsByAccount=${JSON.stringify([...idsByAccount.entries()])}`)
 
   let accountsChanged = false
   const perAccountResults = await Promise.all(
@@ -474,23 +473,22 @@ api.get("/folders/:id/mail", async (c) => {
       if (!record) return []
 
       try {
-        let fetched: Mail[]
         if (record.provider === "naver") {
-          fetched = await naverFetchByUids(record.email, record.appPassword, accountId, mailIds)
-        } else if (record.provider === "daum") {
-          fetched = await daumFetchByUids(record.email, record.password, accountId, mailIds)
-        } else if (record.provider === "imap") {
-          fetched = await imapFetchByUids({ host: record.host, port: record.port, email: record.email, password: record.password }, accountId, mailIds)
-        } else {
-          const fresh = await ensureFreshToken(c.env, record)
-          if (fresh.accessToken !== record.accessToken) {
-            accountMap[accountId] = fresh
-            accountsChanged = true
-          }
-          fetched = await gmailFetchByIds(fresh.accessToken, accountId, mailIds)
+          return await naverFetchByUids(record.email, record.appPassword, accountId, mailIds)
         }
-        console.log(`[folder-mail][debug] account=${accountId} provider=${record.provider} requested=${mailIds.length} got=${fetched.length}`)
-        return fetched
+        if (record.provider === "daum") {
+          return await daumFetchByUids(record.email, record.password, accountId, mailIds)
+        }
+        if (record.provider === "imap") {
+          return await imapFetchByUids({ host: record.host, port: record.port, email: record.email, password: record.password }, accountId, mailIds)
+        }
+
+        const fresh = await ensureFreshToken(c.env, record)
+        if (fresh.accessToken !== record.accessToken) {
+          accountMap[accountId] = fresh
+          accountsChanged = true
+        }
+        return await gmailFetchByIds(fresh.accessToken, accountId, mailIds)
       } catch (err) {
         console.error(`[folder-mail] account ${accountId} failed, skipping:`, err)
         return []
@@ -1888,7 +1886,7 @@ api.delete("/notifications/:id", async (c) => {
 
 // ── 스누즈 ───────────────────────────────────────────────────────────────────
 // 외부 API 키: "accountId||mailId" (||는 accountId/mailId에 절대 등장하지 않음)
-// 내부 KV 키: assignmentKey(accountId, mailId) (제어문자 구분자)
+// 내부 KV 키: assignmentKey(accountId, mailId) (구분자 없이 이어붙임 — lib/mailOrg.ts 참고)
 
 function toApiSnoozeKey(accountId: string, mailId: string): string {
   return `${accountId}||${mailId}`
@@ -1898,6 +1896,7 @@ api.get("/snooze", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ snoozed: {} })
   const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
   const org = await resolveMailOrg(c.env, session)
 
   // 만료된 항목 정리 후 반환
@@ -1915,7 +1914,7 @@ api.get("/snooze", async (c) => {
   // 내부 키 → API 키 변환
   const result: Record<string, number> = {}
   for (const [k, until] of Object.entries(active)) {
-    const parsed = parseAssignmentKey(k)
+    const parsed = parseAssignmentKey(k, Object.keys(accountMap))
     if (parsed) result[toApiSnoozeKey(parsed.accountId, parsed.mailId)] = until
   }
   return c.json({ snoozed: result })

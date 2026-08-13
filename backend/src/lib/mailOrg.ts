@@ -1,21 +1,27 @@
 import type { Env, MailOrgState } from "../types"
 
-// accountId 자체에 콜론이 포함될 수 있어(예: imap:host:email) 구분자로 콜론 대신
-// 계정 ID/메일 ID에 나타나지 않는 제어문자를 사용한다.
-const KEY_DELIMITER = ""
-
 // 보관함은 사용자 정의 분류와 동일한 배정 메커니즘을 쓰는 예약된 가상 폴더 ID.
 // org.folders 목록에는 들어가지 않으므로 이름변경/삭제 대상이 되지 않는다.
 export const ARCHIVE_FOLDER_ID = "archive"
 
+// accountId와 mailId 사이에 구분자 없이 그냥 이어붙인다 (accountId 자체에 콜론이 포함될 수 있어
+// -예: imap:host:email- 구분자를 넣더라도 accountId만 보고는 어차피 못 나눈다). 대신 되돌릴 때
+// (parseAssignmentKey)는 지금 연결된 계정 id 목록과 접두사 대조로 나눈다.
 export function assignmentKey(accountId: string, mailId: string): string {
-  return `${accountId}${KEY_DELIMITER}${mailId}`
+  return `${accountId}${mailId}`
 }
 
-export function parseAssignmentKey(key: string): { accountId: string; mailId: string } | null {
-  const idx = key.indexOf(KEY_DELIMITER)
-  if (idx === -1) return null
-  return { accountId: key.slice(0, idx), mailId: key.slice(idx + 1) }
+export function parseAssignmentKey(
+  key: string,
+  accountIds: Iterable<string>,
+): { accountId: string; mailId: string } | null {
+  let bestAccountId: string | null = null
+  for (const accountId of accountIds) {
+    if (!key.startsWith(accountId)) continue
+    if (bestAccountId === null || accountId.length > bestAccountId.length) bestAccountId = accountId
+  }
+  if (bestAccountId === null) return null
+  return { accountId: bestAccountId, mailId: key.slice(bestAccountId.length) }
 }
 
 export function emptyMailOrgState(): MailOrgState {
