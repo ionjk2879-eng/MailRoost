@@ -21,7 +21,13 @@ export function parseAssignmentKey(
     if (bestAccountId === null || accountId.length > bestAccountId.length) bestAccountId = accountId
   }
   if (bestAccountId === null) return null
-  return { accountId: bestAccountId, mailId: key.slice(bestAccountId.length) }
+  let mailId = key.slice(bestAccountId.length)
+  // 아주 예전 버전은 실제 제어문자(U+0001)를 구분자로 썼던 적이 있어, 그때 만들어진 키가
+  // 남아있으면 accountId 바로 뒤에 그 문자가 하나 끼어있을 수 있다 — 남아있으면 걷어낸다.
+  // charCodeAt으로 비교하는 이유: 문자열 리터럴에 이 문자를 그대로 박아두면 편집기에 안 보여서
+  // 빈 문자열로 잘못 굳어버릴 수 있다 (바로 이 함수가 고치는 버그의 원인이 그거였다).
+  if (mailId.charCodeAt(0) === 1) mailId = mailId.slice(1)
+  return { accountId: bestAccountId, mailId }
 }
 
 export function emptyMailOrgState(): MailOrgState {
