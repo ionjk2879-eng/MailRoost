@@ -32,6 +32,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // /auth/* 는 OAuth 리다이렉트 경로라 서버가 직접 처리해야 함 — 캐시 금지
+        navigateFallbackDenylist: [/^\/auth\//],
         runtimeCaching: [
           {
             urlPattern: /^\/api\/.*/i,
