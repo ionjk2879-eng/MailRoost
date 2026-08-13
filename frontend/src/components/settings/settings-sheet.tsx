@@ -81,22 +81,22 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <SheetContent side="right" className="w-80">
-        <SheetHeader>
+      <SheetContent side="right" className="w-96">
+        <SheetHeader className="border-b pb-4">
           <SheetTitle>설정</SheetTitle>
         </SheetHeader>
 
-        <div className="mt-6 flex flex-col gap-6">
+        <div className="flex flex-col gap-7 overflow-y-auto px-4 pb-6">
           {/* 테마 */}
           <section className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">테마</h3>
-            <div className="flex gap-1.5">
+            <div className="flex gap-2">
               {THEME_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
                   onClick={() => handleThemeChange(opt.value)}
-                  className={`flex flex-1 flex-col items-center gap-1.5 rounded-md border py-2.5 text-xs transition-colors ${
+                  className={`flex flex-1 flex-col items-center gap-1.5 rounded-md border py-3 text-xs transition-colors ${
                     theme === opt.value
                       ? "border-primary bg-primary/5 text-primary font-medium"
                       : "hover:bg-muted/50 text-muted-foreground"
@@ -141,13 +141,15 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
 
           {/* 알림 소리 */}
           <section className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">알림 소리</h3>
-            <p className="text-muted-foreground text-xs -mt-1">앱이 열려있을 때 새 메일 도착 시 재생됩니다</p>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-sm font-medium">알림 소리</h3>
+              <p className="text-muted-foreground text-xs">앱이 열려있을 때 새 메일 도착 시 재생됩니다</p>
+            </div>
+            <div className="flex flex-col gap-2">
               {SOUND_OPTIONS.map((opt) => (
                 <div
                   key={opt.value}
-                  className={`flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 transition-colors ${
+                  className={`flex cursor-pointer items-center justify-between rounded-md border px-3.5 py-2.5 transition-colors ${
                     sound === opt.value
                       ? "border-primary bg-primary/5"
                       : "hover:bg-muted/50"
