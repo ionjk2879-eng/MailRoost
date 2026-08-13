@@ -1,5 +1,6 @@
 import { Loader2, Pencil, RefreshCw, Search, X } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import type { GroupImperativeHandle, Layout } from "react-resizable-panels"
 import { AccountSidebar } from "@/components/mail/account-sidebar"
 import { CategoryTabs } from "@/components/mail/category-tabs"
 import { COMPOSE_SUPPORTED, ComposeView } from "@/components/mail/compose-view"
@@ -70,6 +71,21 @@ import {
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailCategory, MailFolder, MemoItem, QuickReply } from "@/types/mail"
 
+const SNAP_SIZE = 45
+const SNAP_ZONE = 3
+
+function useSnapPanel() {
+  const groupRef = useRef<GroupImperativeHandle | null>(null)
+  const onLayoutChange = useCallback((layout: Layout) => {
+    const leftSize = layout["list-panel"]
+    if (leftSize === undefined) return
+    if (Math.abs(leftSize - SNAP_SIZE) < SNAP_ZONE && Math.abs(leftSize - SNAP_SIZE) > 0.01) {
+      groupRef.current?.setLayout({ "list-panel": SNAP_SIZE, "detail-panel": 100 - SNAP_SIZE })
+    }
+  }, [])
+  return { groupRef, onLayoutChange }
+}
+
 function isRealAccountId(accountId: string): boolean {
   return accountId.includes(":")
 }
@@ -86,6 +102,8 @@ function groupIdsByAccount(mails: Mail[]): Map<string, string[]> {
 
 function App() {
   const isMobile = useIsMobile()
+  const mailSnap = useSnapPanel()
+  const folderSnap = useSnapPanel()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
   const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts">("home")
@@ -1480,12 +1498,12 @@ function App() {
               {selectedMailId || composeState ? folderDetailPane : folderListPane}
             </div>
           ) : (
-            <ResizablePanelGroup orientation="horizontal" className="flex-1">
-              <ResizablePanel defaultSize="45" minSize="35" maxSize="60" className="overflow-hidden">
+            <ResizablePanelGroup groupRef={folderSnap.groupRef} onLayoutChange={folderSnap.onLayoutChange} orientation="horizontal" className="flex-1">
+              <ResizablePanel id="list-panel" defaultSize="45" minSize="35" maxSize="60" className="overflow-hidden">
                 {folderListPane}
               </ResizablePanel>
               <ResizableHandle withHandle />
-              <ResizablePanel defaultSize="55" minSize="35" className="overflow-hidden">
+              <ResizablePanel id="detail-panel" defaultSize="55" minSize="35" className="overflow-hidden">
                 {folderDetailPane}
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -1495,12 +1513,12 @@ function App() {
             {selectedMailId || composeState ? mailDetailPane : mailListPane}
           </div>
         ) : (
-          <ResizablePanelGroup orientation="horizontal" className="flex-1">
-            <ResizablePanel defaultSize="45" minSize="35" maxSize="60" className="overflow-hidden">
+          <ResizablePanelGroup groupRef={mailSnap.groupRef} onLayoutChange={mailSnap.onLayoutChange} orientation="horizontal" className="flex-1">
+            <ResizablePanel id="list-panel" defaultSize="45" minSize="35" maxSize="60" className="overflow-hidden">
               {mailListPane}
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize="55" minSize="35" className="overflow-hidden">
+            <ResizablePanel id="detail-panel" defaultSize="55" minSize="35" className="overflow-hidden">
               {mailDetailPane}
             </ResizablePanel>
           </ResizablePanelGroup>
