@@ -6,6 +6,8 @@ export interface Env {
   VAPID_PUBLIC_KEY: string
   VAPID_PRIVATE_JWK: string
   VAPID_SUBJECT: string
+  // 저장된 계정 자격증명(비밀번호/토큰) 암호화용 AES-GCM 키 (32바이트, base64). lib/crypto.ts 참고.
+  ACCOUNT_ENCRYPTION_KEY: string
 }
 
 export interface StoredPushSubscription {

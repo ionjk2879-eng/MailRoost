@@ -1,4 +1,5 @@
 import type { ConnectedAccountRecord, Env, UserRecord } from "../types"
+import { decryptAccountsMap, encryptAccountsMap } from "./crypto"
 
 export async function getUserByEmail(env: Env, email: string): Promise<UserRecord | null> {
   const ref = await env.TOKENS.get(`user:email:${email}`)
@@ -23,7 +24,8 @@ export async function saveUser(env: Env, user: UserRecord): Promise<void> {
 export async function getUserAccounts(env: Env, userId: string): Promise<Record<string, ConnectedAccountRecord>> {
   const raw = await env.TOKENS.get(`user:accounts:${userId}`)
   if (!raw) return {}
-  return (JSON.parse(raw) as { accounts: Record<string, ConnectedAccountRecord> }).accounts
+  const { accounts } = JSON.parse(raw) as { accounts: Record<string, ConnectedAccountRecord> }
+  return decryptAccountsMap(env, accounts)
 }
 
 export async function saveUserAccounts(
@@ -31,5 +33,6 @@ export async function saveUserAccounts(
   userId: string,
   accounts: Record<string, ConnectedAccountRecord>,
 ): Promise<void> {
-  await env.TOKENS.put(`user:accounts:${userId}`, JSON.stringify({ accounts }))
+  const encrypted = await encryptAccountsMap(env, accounts)
+  await env.TOKENS.put(`user:accounts:${userId}`, JSON.stringify({ accounts: encrypted }))
 }
