@@ -1548,7 +1548,7 @@ function App() {
                 {folderListPane}
               </ResizablePanel>
               <ResizableHandle withHandle />
-              <ResizablePanel defaultSize="62" className="overflow-hidden">
+              <ResizablePanel defaultSize="62" minSize="35" className="overflow-hidden">
                 {folderDetailPane}
               </ResizablePanel>
             </ResizablePanelGroup>
@@ -1563,7 +1563,7 @@ function App() {
               {mailListPane}
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel defaultSize="62" className="overflow-hidden">
+            <ResizablePanel defaultSize="62" minSize="35" className="overflow-hidden">
               {mailDetailPane}
             </ResizablePanel>
           </ResizablePanelGroup>
