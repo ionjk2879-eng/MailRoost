@@ -957,6 +957,13 @@ api.get("/mail", async (c) => {
   const IMAP_PAGE = 50
   const GMAIL_PAGE = 50
 
+  // 이번 요청에서 새로 확정된 분류 결과 (저장 직전에 최신 상태 위에 다시 얹기 위해 델타로 기록해둔다 —
+  // 20초 폴링이나 여러 탭이 겹쳐 동시에 /api/mail을 호출하면, 서로 다른 요청이 각자 읽은 오래된
+  // 스냅샷을 통째로 덮어쓰면서 상대방이 방금 쓴 변경(다른 메일의 분류 배정 등)을 날려버릴 수 있다.)
+  const newlyClassifiedKeys = new Set<string>()
+  const newlyArchivedKeys = new Set<string>()
+  const newlyAssignedFolder = new Map<string, string>()
+
   // 새로 도착한(한 번도 평가한 적 없는) 메일만 규칙과 대조한다 — 사용자가 수동으로 받은편지함으로
   // 되돌린 메일이 새로고침할 때마다 다시 자동분류되는 것을 막기 위함.
   function classifyIfNew(accountId: string, mail: Mail): void {
@@ -966,12 +973,18 @@ api.get("/mail", async (c) => {
       if (!rule.enabled || !rule.targetFolderId) continue
       const haystack = (rule.field === "from" ? `${mail.fromName} ${mail.fromEmail}` : mail.subject).toLowerCase()
       if (haystack.includes(rule.keyword.toLowerCase())) {
-        if (rule.targetFolderId === ARCHIVE_FOLDER_ID) org.archived[key] = true
-        else toggleFolderAssignment(org, accountId, mail.id, rule.targetFolderId, true)
+        if (rule.targetFolderId === ARCHIVE_FOLDER_ID) {
+          org.archived[key] = true
+          newlyArchivedKeys.add(key)
+        } else {
+          toggleFolderAssignment(org, accountId, mail.id, rule.targetFolderId, true)
+          newlyAssignedFolder.set(key, rule.targetFolderId)
+        }
         break
       }
     }
     org.classified[key] = true
+    newlyClassifiedKeys.add(key)
     orgChanged = true
   }
 
@@ -1045,7 +1058,18 @@ api.get("/mail", async (c) => {
   }
 
   if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
-  if (orgChanged) await persistMailOrg(c.env, sessionId, session, org)
+  if (orgChanged) {
+    // 저장 직전에 최신 상태를 다시 읽어와 이번 요청에서 새로 확정된 분류 결과만 얹는다 —
+    // 그 사이 다른 요청(겹친 폴링 등)이 쓴 변경을 통째로 덮어쓰지 않도록.
+    const latestOrg = await resolveMailOrg(c.env, session)
+    for (const key of newlyClassifiedKeys) latestOrg.classified[key] = true
+    for (const key of newlyArchivedKeys) latestOrg.archived[key] = true
+    for (const [key, folderId] of newlyAssignedFolder) {
+      const current = latestOrg.assignments[key] ?? []
+      if (!current.includes(folderId)) latestOrg.assignments[key] = [...current, folderId]
+    }
+    await persistMailOrg(c.env, sessionId, session, latestOrg)
+  }
 
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   const nextCursor = Object.keys(nextCursorMap).length > 0 ? encodeCursor(nextCursorMap) : null
