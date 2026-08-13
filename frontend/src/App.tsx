@@ -96,6 +96,10 @@ function useSnapPanel() {
   return { groupRef, onLayoutChange }
 }
 
+// 캐시 미스일 때 매번 새 배열 리터럴([])을 리턴하면 참조가 매 렌더링마다 바뀌어서, 이 값에
+// 의존하는 useEffect들이 불필요하게 다시 실행된다 — 안정적인 참조 하나를 재사용한다.
+const EMPTY_MAILS: Mail[] = []
+
 function isRealAccountId(accountId: string): boolean {
   return accountId.includes(":")
 }
@@ -135,7 +139,17 @@ function App() {
   const [isTrashLoadingMore, setIsTrashLoadingMore] = useState(false)
   const [folders, setFolders] = useState<MailFolder[]>([])
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
-  const [folderMails, setFolderMails] = useState<Mail[]>([])
+  // folderId별로 캐싱해둬서, 이미 열어본 분류 메일함/보관함으로 다시 전환할 때 네트워크 왕복 없이 바로 보여준다.
+  const [folderMailsCache, setFolderMailsCache] = useState<Record<string, Mail[]>>({})
+  const folderMails = selectedFolderId ? (folderMailsCache[selectedFolderId] ?? EMPTY_MAILS) : EMPTY_MAILS
+  const setFolderMails = (updater: Mail[] | ((prev: Mail[]) => Mail[])) => {
+    if (!selectedFolderId) return
+    setFolderMailsCache((prev) => {
+      const current = prev[selectedFolderId] ?? []
+      const next = typeof updater === "function" ? (updater as (p: Mail[]) => Mail[])(current) : updater
+      return { ...prev, [selectedFolderId]: next }
+    })
+  }
   const [isFolderLoading, setIsFolderLoading] = useState(false)
   const [rules, setRules] = useState<AutoClassifyRule[]>([])
   const [memos, setMemos] = useState<MemoItem[]>([])
@@ -842,9 +856,11 @@ function App() {
   }
 
   const loadFolderMails = (folderId: string) => {
-    setIsFolderLoading(true)
+    // 이미 캐시된 폴더면 로딩 스피너 없이 캐시를 그대로 보여주고, 최신 상태로 조용히 갱신만 한다.
+    const isCached = folderId in folderMailsCache
+    if (!isCached) setIsFolderLoading(true)
     return fetchFolderMails(folderId)
-      .then(setFolderMails)
+      .then((mails) => setFolderMailsCache((prev) => ({ ...prev, [folderId]: mails })))
       .finally(() => setIsFolderLoading(false))
   }
 
@@ -1306,7 +1322,7 @@ function App() {
     setTrashMails([])
     setTrashCursor(null)
     setFolders([])
-    setFolderMails([])
+    setFolderMailsCache({})
     setSelectedFolderId(null)
     setRules([])
     setMemos([])
@@ -1324,7 +1340,9 @@ function App() {
     setRealAccounts((prev) => prev.filter((a) => a.id !== accountId))
     setRealMails((prev) => prev.filter((m) => m.accountId !== accountId))
     setTrashMails((prev) => prev.filter((m) => m.accountId !== accountId))
-    setFolderMails((prev) => prev.filter((m) => m.accountId !== accountId))
+    setFolderMailsCache((prev) =>
+      Object.fromEntries(Object.entries(prev).map(([id, mails]) => [id, mails.filter((m) => m.accountId !== accountId)])),
+    )
     setMailDetails((prev) => {
       const next = { ...prev }
       for (const key of Object.keys(next)) {
