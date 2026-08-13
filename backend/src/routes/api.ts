@@ -166,6 +166,22 @@ async function persistMailOrg(
   }
 }
 
+// org를 최신 상태로 읽어와 mutator를 적용하고 곧바로 저장한다. 읽기와 쓰기 사이에 await가 없어서
+// (mutator는 동기 함수) 그 사이 다른 요청이 쓴 변경을 이 요청이 덮어쓸 여지가 사실상 없다 — 20초
+// 자동 폴링이나 여러 탭에서 온 요청이 겹쳐도 안전하다. mutator 안에서 org 내용(폴더/규칙 존재
+// 여부 등)을 검증하면, 항상 이 시점의 최신 상태를 기준으로 검증하는 셈이라 오히려 더 정확하다.
+async function mutateMailOrg<T>(
+  env: Env,
+  sessionId: string,
+  session: StoredSession,
+  mutator: (org: MailOrgState) => T,
+): Promise<T> {
+  const org = await resolveMailOrg(env, session)
+  const result = mutator(org)
+  await persistMailOrg(env, sessionId, session, org)
+  return result
+}
+
 async function resolveMemos(env: Env, session: StoredSession): Promise<MemoItem[]> {
   if (session.userId) return getUserMemos(env, session.userId)
   return session.memos ?? []
@@ -307,10 +323,10 @@ api.patch("/accounts/:id/signature", async (c) => {
   const accountMap = await resolveAccounts(c.env, session)
   if (!accountMap[accountId]) return c.json({ error: "계정을 찾을 수 없습니다." }, 404)
 
-  const org = await resolveMailOrg(c.env, session)
-  if (signature.trim()) org.signatures[accountId] = signature
-  else delete org.signatures[accountId]
-  await persistMailOrg(c.env, sessionId, session, org)
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    if (signature.trim()) org.signatures[accountId] = signature
+    else delete org.signatures[accountId]
+  })
   return c.json({ ok: true, signature: signature.trim() ? signature : undefined })
 })
 
@@ -326,9 +342,9 @@ api.post("/accounts/reorder", async (c) => {
   const accountMap = await resolveAccounts(c.env, session)
   const validOrder = order.filter((id) => id in accountMap)
 
-  const org = await resolveMailOrg(c.env, session)
-  org.accountOrder = validOrder
-  await persistMailOrg(c.env, sessionId, session, org)
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    org.accountOrder = validOrder
+  })
   return c.json({ ok: true })
 })
 
@@ -366,20 +382,14 @@ api.post("/folders", async (c) => {
   if (name.length > 40) return c.json({ error: "분류 메일함 이름이 너무 깁니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
-  const org = await resolveMailOrg(c.env, session)
-  if (org.folders.some((f) => f.name === name)) {
-    return c.json({ error: "이미 같은 이름의 분류 메일함이 있습니다." }, 400)
-  }
-
-  const folder: MailFolder = {
-    id: crypto.randomUUID(),
-    name,
-    color: randomFolderColor(),
-    createdAt: Date.now(),
-  }
-  org.folders.push(folder)
-  await persistMailOrg(c.env, sessionId, session, org)
-  return c.json({ folder })
+  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
+    if (org.folders.some((f) => f.name === name)) return { ok: false as const, error: "이미 같은 이름의 분류 메일함이 있습니다." }
+    const folder: MailFolder = { id: crypto.randomUUID(), name, color: randomFolderColor(), createdAt: Date.now() }
+    org.folders.push(folder)
+    return { ok: true as const, folder }
+  })
+  if (!result.ok) return c.json({ error: result.error }, 400)
+  return c.json({ folder: result.folder })
 })
 
 api.delete("/folders/:id", async (c) => {
@@ -388,15 +398,14 @@ api.delete("/folders/:id", async (c) => {
 
   const folderId = c.req.param("id")
   const session = await readSession(c.env, sessionId)
-  const org = await resolveMailOrg(c.env, session)
-
-  org.folders = org.folders.filter((f) => f.id !== folderId)
-  for (const key of Object.keys(org.assignments)) {
-    const next = org.assignments[key].filter((id) => id !== folderId)
-    if (next.length > 0) org.assignments[key] = next
-    else delete org.assignments[key]
-  }
-  await persistMailOrg(c.env, sessionId, session, org)
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    org.folders = org.folders.filter((f) => f.id !== folderId)
+    for (const key of Object.keys(org.assignments)) {
+      const next = org.assignments[key].filter((id) => id !== folderId)
+      if (next.length > 0) org.assignments[key] = next
+      else delete org.assignments[key]
+    }
+  })
   return c.json({ ok: true })
 })
 
@@ -414,18 +423,18 @@ api.patch("/folders/:id", async (c) => {
   }
 
   const session = await readSession(c.env, sessionId)
-  const org = await resolveMailOrg(c.env, session)
-
-  const folder = org.folders.find((f) => f.id === folderId)
-  if (!folder) return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
-  if (org.folders.some((f) => f.id !== folderId && f.name === name)) {
-    return c.json({ error: "이미 같은 이름의 분류 메일함이 있습니다." }, 400)
-  }
-
-  folder.name = name
-  if (body?.color !== undefined) folder.color = body.color
-  await persistMailOrg(c.env, sessionId, session, org)
-  return c.json({ folder })
+  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
+    const folder = org.folders.find((f) => f.id === folderId)
+    if (!folder) return { ok: false as const, status: 404 as const, error: "분류 메일함을 찾을 수 없습니다." }
+    if (org.folders.some((f) => f.id !== folderId && f.name === name)) {
+      return { ok: false as const, status: 400 as const, error: "이미 같은 이름의 분류 메일함이 있습니다." }
+    }
+    folder.name = name
+    if (body?.color !== undefined) folder.color = body.color
+    return { ok: true as const, folder }
+  })
+  if (!result.ok) return c.json({ error: result.error }, result.status)
+  return c.json({ folder: result.folder })
 })
 
 api.post("/folders/reorder", async (c) => {
@@ -437,10 +446,11 @@ api.post("/folders/reorder", async (c) => {
   if (!Array.isArray(order)) return c.json({ error: "bad request" }, 400)
 
   const session = await readSession(c.env, sessionId)
-  const org = await resolveMailOrg(c.env, session)
-  org.folders = applyOrder(org.folders, order, (f) => f.id)
-  await persistMailOrg(c.env, sessionId, session, org)
-  return c.json({ folders: org.folders })
+  const folders = await mutateMailOrg(c.env, sessionId, session, (org) => {
+    org.folders = applyOrder(org.folders, order, (f) => f.id)
+    return org.folders
+  })
+  return c.json({ folders })
 })
 
 api.get("/folders/:id/mail", async (c) => {
@@ -721,23 +731,24 @@ api.post("/rules", async (c) => {
   if (category && !VALID_CATEGORIES.includes(category)) return c.json({ error: "잘못된 카테고리입니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
-  const org = await resolveMailOrg(c.env, session)
-  if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
-    return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
-  }
-
-  const rule: AutoClassifyRule = {
-    id: crypto.randomUUID(),
-    field,
-    keyword,
-    targetFolderId,
-    category,
-    enabled: true,
-    createdAt: Date.now(),
-  }
-  org.rules.push(rule)
-  await persistMailOrg(c.env, sessionId, session, org)
-  return c.json({ rule })
+  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
+    if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
+      return { ok: false as const, error: "분류 메일함을 찾을 수 없습니다." }
+    }
+    const rule: AutoClassifyRule = {
+      id: crypto.randomUUID(),
+      field,
+      keyword,
+      targetFolderId,
+      category,
+      enabled: true,
+      createdAt: Date.now(),
+    }
+    org.rules.push(rule)
+    return { ok: true as const, rule }
+  })
+  if (!result.ok) return c.json({ error: result.error }, 404)
+  return c.json({ rule: result.rule })
 })
 
 api.patch("/rules/:id", async (c) => {
@@ -756,36 +767,43 @@ api.patch("/rules/:id", async (c) => {
     .catch(() => null)
 
   const session = await readSession(c.env, sessionId)
-  const org = await resolveMailOrg(c.env, session)
-  const rule = org.rules.find((r) => r.id === ruleId)
-  if (!rule) return c.json({ error: "규칙을 찾을 수 없습니다." }, 404)
+  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
+    const rule = org.rules.find((r) => r.id === ruleId)
+    if (!rule) return { ok: false as const, status: 404 as const, error: "규칙을 찾을 수 없습니다." }
 
-  if (body?.field !== undefined) {
-    if (body.field !== "from" && body.field !== "subject") return c.json({ error: "잘못된 조건입니다." }, 400)
-    rule.field = body.field
-  }
-  if (body?.keyword !== undefined) {
-    const keyword = body.keyword.trim()
-    if (!keyword) return c.json({ error: "키워드를 입력해주세요." }, 400)
-    rule.keyword = keyword
-  }
-  if (body?.targetFolderId !== undefined) {
-    const targetFolderId = body.targetFolderId
-    if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
-      return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
+    if (body?.field !== undefined) {
+      if (body.field !== "from" && body.field !== "subject") {
+        return { ok: false as const, status: 400 as const, error: "잘못된 조건입니다." }
+      }
+      rule.field = body.field
     }
-    rule.targetFolderId = targetFolderId
-  }
-  if (body?.category !== undefined) {
-    const category = body.category as MailCategory | null
-    if (category && !VALID_CATEGORIES.includes(category)) return c.json({ error: "잘못된 카테고리입니다." }, 400)
-    rule.category = category
-  }
-  if (!rule.targetFolderId && !rule.category) return c.json({ error: "이동할 분류 메일함이나 카테고리를 선택해주세요." }, 400)
-  if (body?.enabled !== undefined) rule.enabled = body.enabled
-
-  await persistMailOrg(c.env, sessionId, session, org)
-  return c.json({ rule })
+    if (body?.keyword !== undefined) {
+      const keyword = body.keyword.trim()
+      if (!keyword) return { ok: false as const, status: 400 as const, error: "키워드를 입력해주세요." }
+      rule.keyword = keyword
+    }
+    if (body?.targetFolderId !== undefined) {
+      const targetFolderId = body.targetFolderId
+      if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
+        return { ok: false as const, status: 404 as const, error: "분류 메일함을 찾을 수 없습니다." }
+      }
+      rule.targetFolderId = targetFolderId
+    }
+    if (body?.category !== undefined) {
+      const category = body.category as MailCategory | null
+      if (category && !VALID_CATEGORIES.includes(category)) {
+        return { ok: false as const, status: 400 as const, error: "잘못된 카테고리입니다." }
+      }
+      rule.category = category
+    }
+    if (!rule.targetFolderId && !rule.category) {
+      return { ok: false as const, status: 400 as const, error: "이동할 분류 메일함이나 카테고리를 선택해주세요." }
+    }
+    if (body?.enabled !== undefined) rule.enabled = body.enabled
+    return { ok: true as const, rule }
+  })
+  if (!result.ok) return c.json({ error: result.error }, result.status)
+  return c.json({ rule: result.rule })
 })
 
 api.delete("/rules/:id", async (c) => {
@@ -794,9 +812,9 @@ api.delete("/rules/:id", async (c) => {
 
   const ruleId = c.req.param("id")
   const session = await readSession(c.env, sessionId)
-  const org = await resolveMailOrg(c.env, session)
-  org.rules = org.rules.filter((r) => r.id !== ruleId)
-  await persistMailOrg(c.env, sessionId, session, org)
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    org.rules = org.rules.filter((r) => r.id !== ruleId)
+  })
   return c.json({ ok: true })
 })
 
@@ -905,26 +923,27 @@ api.post("/saved-filters", async (c) => {
   if (!name) return c.json({ error: "이름을 입력해주세요." }, 400)
 
   const session = await readSession(c.env, sessionId)
-  const org = await resolveMailOrg(c.env, session)
-  if (body?.folderId && !org.folders.some((f) => f.id === body.folderId)) {
-    return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
-  }
-
-  const filter: SavedFilter = {
-    id: crypto.randomUUID(),
-    name,
-    accountId: body?.accountId ?? null,
-    from: body?.from?.trim() ?? "",
-    subject: body?.subject?.trim() ?? "",
-    isUnread: body?.isUnread ?? null,
-    isStarred: body?.isStarred ?? null,
-    hasAttachment: body?.hasAttachment ?? null,
-    folderId: body?.folderId ?? null,
-    createdAt: Date.now(),
-  }
-  org.savedFilters.push(filter)
-  await persistMailOrg(c.env, sessionId, session, org)
-  return c.json({ filter })
+  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
+    if (body?.folderId && !org.folders.some((f) => f.id === body.folderId)) {
+      return { ok: false as const, error: "분류 메일함을 찾을 수 없습니다." }
+    }
+    const filter: SavedFilter = {
+      id: crypto.randomUUID(),
+      name,
+      accountId: body?.accountId ?? null,
+      from: body?.from?.trim() ?? "",
+      subject: body?.subject?.trim() ?? "",
+      isUnread: body?.isUnread ?? null,
+      isStarred: body?.isStarred ?? null,
+      hasAttachment: body?.hasAttachment ?? null,
+      folderId: body?.folderId ?? null,
+      createdAt: Date.now(),
+    }
+    org.savedFilters.push(filter)
+    return { ok: true as const, filter }
+  })
+  if (!result.ok) return c.json({ error: result.error }, 404)
+  return c.json({ filter: result.filter })
 })
 
 api.delete("/saved-filters/:id", async (c) => {
@@ -933,9 +952,9 @@ api.delete("/saved-filters/:id", async (c) => {
 
   const filterId = c.req.param("id")
   const session = await readSession(c.env, sessionId)
-  const org = await resolveMailOrg(c.env, session)
-  org.savedFilters = org.savedFilters.filter((f) => f.id !== filterId)
-  await persistMailOrg(c.env, sessionId, session, org)
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    org.savedFilters = org.savedFilters.filter((f) => f.id !== filterId)
+  })
   return c.json({ ok: true })
 })
 
@@ -958,30 +977,31 @@ api.post("/mail/move", async (c) => {
   const fromFolderId = body?.fromFolderId ?? null
 
   const session = await readSession(c.env, sessionId)
-  const org = await resolveMailOrg(c.env, session)
-
-  if (folderId !== null && folderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === folderId)) {
-    return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
-  }
-
-  // 보관은 분류 메일함 배정과 독립적이라 라벨을 그대로 둔 채 보관 여부만 바꾼다.
-  // 분류 메일함으로 이동은 기존 배정을 지우지 않고 그 분류 메일함만 추가한다(여러 개에 동시에 속할 수 있음).
-  for (const { accountId, mailId } of items) {
-    const key = assignmentKey(accountId, mailId)
-    if (folderId === ARCHIVE_FOLDER_ID) {
-      org.archived[key] = true
-    } else if (folderId !== null) {
-      toggleFolderAssignment(org, accountId, mailId, folderId, true)
-    } else if (fromFolderId === ARCHIVE_FOLDER_ID) {
-      delete org.archived[key]
-    } else if (fromFolderId) {
-      toggleFolderAssignment(org, accountId, mailId, fromFolderId, false)
-    } else {
-      delete org.archived[key]
-      delete org.assignments[key]
+  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
+    if (folderId !== null && folderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === folderId)) {
+      return { ok: false as const, error: "분류 메일함을 찾을 수 없습니다." }
     }
-  }
-  await persistMailOrg(c.env, sessionId, session, org)
+
+    // 보관은 분류 메일함 배정과 독립적이라 라벨을 그대로 둔 채 보관 여부만 바꾼다.
+    // 분류 메일함으로 이동은 기존 배정을 지우지 않고 그 분류 메일함만 추가한다(여러 개에 동시에 속할 수 있음).
+    for (const { accountId, mailId } of items) {
+      const key = assignmentKey(accountId, mailId)
+      if (folderId === ARCHIVE_FOLDER_ID) {
+        org.archived[key] = true
+      } else if (folderId !== null) {
+        toggleFolderAssignment(org, accountId, mailId, folderId, true)
+      } else if (fromFolderId === ARCHIVE_FOLDER_ID) {
+        delete org.archived[key]
+      } else if (fromFolderId) {
+        toggleFolderAssignment(org, accountId, mailId, fromFolderId, false)
+      } else {
+        delete org.archived[key]
+        delete org.assignments[key]
+      }
+    }
+    return { ok: true as const }
+  })
+  if (!result.ok) return c.json({ error: result.error }, 404)
   return c.json({ ok: true })
 })
 
@@ -1000,13 +1020,12 @@ api.post("/mail/folders/toggle", async (c) => {
   }
 
   const session = await readSession(c.env, sessionId)
-  const org = await resolveMailOrg(c.env, session)
-  if (!org.folders.some((f) => f.id === folderId)) {
-    return c.json({ error: "분류 메일함을 찾을 수 없습니다." }, 404)
-  }
-
-  toggleFolderAssignment(org, accountId, mailId, folderId, assign)
-  await persistMailOrg(c.env, sessionId, session, org)
+  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
+    if (!org.folders.some((f) => f.id === folderId)) return { ok: false as const, error: "분류 메일함을 찾을 수 없습니다." }
+    toggleFolderAssignment(org, accountId, mailId, folderId, assign)
+    return { ok: true as const }
+  })
+  if (!result.ok) return c.json({ error: result.error }, 404)
   return c.json({ ok: true })
 })
 
@@ -1359,20 +1378,13 @@ api.post("/trash/restore", async (c) => {
   }
 
   // 복구된 메일에 사용자 정의 분류 메일함 배정이나 보관 상태가 남아있으면 정리한다 (실제로는 받은편지함으로 돌아왔으므로)
-  const org = await resolveMailOrg(c.env, session)
-  let orgChanged = false
-  for (const mailId of mailIds) {
-    const key = assignmentKey(accountId, mailId)
-    if (key in org.assignments) {
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    for (const mailId of mailIds) {
+      const key = assignmentKey(accountId, mailId)
       delete org.assignments[key]
-      orgChanged = true
-    }
-    if (key in org.archived) {
       delete org.archived[key]
-      orgChanged = true
     }
-  }
-  if (orgChanged) await persistMailOrg(c.env, sessionId, session, org)
+  })
 
   return c.json({ ok: true })
 })
@@ -1897,19 +1909,17 @@ api.get("/snooze", async (c) => {
   if (!sessionId) return c.json({ snoozed: {} })
   const session = await readSession(c.env, sessionId)
   const accountMap = await resolveAccounts(c.env, session)
-  const org = await resolveMailOrg(c.env, session)
 
   // 만료된 항목 정리 후 반환
-  const now = Date.now()
-  const active: Record<string, number> = {}
-  for (const [k, until] of Object.entries(org.snoozed ?? {})) {
-    if (until > now) active[k] = until
-  }
-  // 만료 항목이 있으면 저장
-  if (Object.keys(active).length < Object.keys(org.snoozed ?? {}).length) {
-    org.snoozed = active
-    await persistMailOrg(c.env, sessionId, session, org)
-  }
+  const active = await mutateMailOrg(c.env, sessionId, session, (org) => {
+    const now = Date.now()
+    const next: Record<string, number> = {}
+    for (const [k, until] of Object.entries(org.snoozed ?? {})) {
+      if (until > now) next[k] = until
+    }
+    org.snoozed = next
+    return next
+  })
 
   // 내부 키 → API 키 변환
   const result: Record<string, number> = {}
@@ -1927,10 +1937,10 @@ api.post("/snooze", async (c) => {
   const body = await c.req.json<{ accountId: string; mailId: string; until: number }>()
   if (!body.accountId || !body.mailId || !body.until) return c.json({ error: "invalid" }, 400)
 
-  const org = await resolveMailOrg(c.env, session)
-  org.snoozed = org.snoozed ?? {}
-  org.snoozed[assignmentKey(body.accountId, body.mailId)] = body.until
-  await persistMailOrg(c.env, sessionId, session, org)
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    org.snoozed = org.snoozed ?? {}
+    org.snoozed[assignmentKey(body.accountId, body.mailId)] = body.until
+  })
   return c.json({ ok: true })
 })
 
@@ -1941,10 +1951,10 @@ api.delete("/snooze", async (c) => {
   const body = await c.req.json<{ accountId: string; mailId: string }>()
   if (!body.accountId || !body.mailId) return c.json({ error: "invalid" }, 400)
 
-  const org = await resolveMailOrg(c.env, session)
-  org.snoozed = org.snoozed ?? {}
-  delete org.snoozed[assignmentKey(body.accountId, body.mailId)]
-  await persistMailOrg(c.env, sessionId, session, org)
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    org.snoozed = org.snoozed ?? {}
+    delete org.snoozed[assignmentKey(body.accountId, body.mailId)]
+  })
   return c.json({ ok: true })
 })
 
@@ -1965,11 +1975,9 @@ api.post("/muted", async (c) => {
   const body = await c.req.json<{ email: string }>().catch(() => null)
   if (!body?.email) return c.json({ error: "invalid" }, 400)
 
-  const org = await resolveMailOrg(c.env, session)
-  if (!(org.muted ?? []).includes(body.email)) {
-    org.muted = [...(org.muted ?? []), body.email]
-    await persistMailOrg(c.env, sessionId, session, org)
-  }
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    if (!(org.muted ?? []).includes(body.email)) org.muted = [...(org.muted ?? []), body.email]
+  })
   return c.json({ ok: true })
 })
 
@@ -1980,9 +1988,9 @@ api.delete("/muted", async (c) => {
   const body = await c.req.json<{ email: string }>().catch(() => null)
   if (!body?.email) return c.json({ error: "invalid" }, 400)
 
-  const org = await resolveMailOrg(c.env, session)
-  org.muted = (org.muted ?? []).filter((e) => e !== body.email)
-  await persistMailOrg(c.env, sessionId, session, org)
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    org.muted = (org.muted ?? []).filter((e) => e !== body.email)
+  })
   return c.json({ ok: true })
 })
 
