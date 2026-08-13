@@ -904,6 +904,22 @@ function App() {
     }
   }
 
+  // "지금 불러온 메일에도 적용": 규칙은 원래 새로 도착하는 메일에만 적용되므로, 이미 받아둔 메일까지
+  // 옮기고 싶으면 지금 화면에 로드돼 있는 것들 중 조건에 맞는 것만 한 번 찾아서 같이 옮겨준다.
+  const applyRuleToLoadedMails = async (
+    field: "from" | "subject",
+    keyword: string,
+    targetFolderId: string,
+  ): Promise<number> => {
+    const haystackOf = (m: Mail) => (field === "from" ? `${m.fromName} ${m.fromEmail}` : m.subject).toLowerCase()
+    const q = keyword.toLowerCase()
+    const matches = allMails.filter(
+      (m) => haystackOf(m).includes(q) && !(m.folderIds ?? []).includes(targetFolderId),
+    )
+    if (matches.length > 0) await applyMove(matches, targetFolderId, "inbox")
+    return matches.length
+  }
+
   const handleCreateRule = async (
     field: "from" | "subject",
     keyword: string,
@@ -914,19 +930,17 @@ function App() {
     const result = await apiCreateRule(field, keyword, targetFolderId, category)
     if (!result.ok) return { ok: false, error: result.error }
     setRules((prev) => [...prev, result.rule])
-
-    // "지금 불러온 메일에도 적용": 규칙은 원래 새로 도착하는 메일에만 적용되므로, 이미 받아둔 메일까지
-    // 옮기고 싶으면 지금 화면에 로드돼 있는 것들 중 조건에 맞는 것만 한 번 찾아서 같이 옮겨준다.
-    if (applyToExisting && targetFolderId) {
-      const haystackOf = (m: Mail) => (field === "from" ? `${m.fromName} ${m.fromEmail}` : m.subject).toLowerCase()
-      const q = keyword.toLowerCase()
-      const matches = allMails.filter(
-        (m) => haystackOf(m).includes(q) && !(m.folderIds ?? []).includes(targetFolderId),
-      )
-      if (matches.length > 0) await applyMove(matches, targetFolderId, "inbox")
-    }
-
+    if (applyToExisting && targetFolderId) await applyRuleToLoadedMails(field, keyword, targetFolderId)
     return { ok: true }
+  }
+
+  const handleApplyRuleToExisting = async (
+    ruleId: string,
+  ): Promise<{ ok: boolean; error?: string; count?: number }> => {
+    const rule = rules.find((r) => r.id === ruleId)
+    if (!rule || !rule.targetFolderId) return { ok: false, error: "규칙을 찾을 수 없습니다." }
+    const count = await applyRuleToLoadedMails(rule.field, rule.keyword, rule.targetFolderId)
+    return { ok: true, count }
   }
 
   const handleToggleRule = async (ruleId: string, enabled: boolean) => {
@@ -1668,6 +1682,7 @@ function App() {
               onCreateRule={handleCreateRule}
               onToggleRule={handleToggleRule}
               onDeleteRule={handleDeleteRule}
+              onApplyRuleToExisting={handleApplyRuleToExisting}
               quickReplies={quickReplies}
               onCreateQuickReply={handleCreateQuickReply}
               onUpdateQuickReply={handleUpdateQuickReply}

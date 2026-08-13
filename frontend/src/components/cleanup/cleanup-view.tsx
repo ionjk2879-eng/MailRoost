@@ -35,6 +35,7 @@ interface CleanupViewProps {
   ) => Promise<{ ok: boolean; error?: string }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
   onDeleteRule: (ruleId: string) => void
+  onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number }>
   quickReplies: QuickReply[]
   onCreateQuickReply: (title: string, body: string) => Promise<{ ok: boolean; error?: string }>
   onUpdateQuickReply: (id: string, title: string, body: string) => Promise<{ ok: boolean; error?: string }>
@@ -430,6 +431,7 @@ function AutoClassifyTab({
   onCreateRule,
   onToggleRule,
   onDeleteRule,
+  onApplyRuleToExisting,
 }: {
   mails: Mail[]
   folders: MailFolder[]
@@ -443,6 +445,7 @@ function AutoClassifyTab({
   ) => Promise<{ ok: boolean; error?: string }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
   onDeleteRule: (ruleId: string) => void
+  onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number }>
 }) {
   const folderOptions = [{ id: ARCHIVE_FOLDER_ID, name: "보관함" }, ...folders]
   const [field, setField] = useState<"from" | "subject">("from")
@@ -487,6 +490,8 @@ function AutoClassifyTab({
   const [applyToExisting, setApplyToExisting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
+  const [applyingRuleId, setApplyingRuleId] = useState<string | null>(null)
+  const [applyResult, setApplyResult] = useState<{ ruleId: string; message: string } | null>(null)
 
   const folderName = (id: string) =>
     id === ARCHIVE_FOLDER_ID ? "보관함" : (folders.find((f) => f.id === id)?.name ?? "(삭제된 분류 메일함)")
@@ -512,6 +517,19 @@ function AutoClassifyTab({
     }
     setKeyword("")
     setApplyToExisting(false)
+  }
+
+  const handleApplyToExisting = async (ruleId: string) => {
+    setApplyingRuleId(ruleId)
+    setApplyResult(null)
+    const result = await onApplyRuleToExisting(ruleId)
+    setApplyingRuleId(null)
+    setApplyResult({
+      ruleId,
+      message: result.ok
+        ? `지금 불러온 메일 중 ${result.count ?? 0}개를 옮겼어요.`
+        : (result.error ?? "적용에 실패했습니다."),
+    })
   }
 
   return (
@@ -647,14 +665,35 @@ function AutoClassifyTab({
                   </button>
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-destructive hover:text-destructive text-xs"
-                    onClick={() => onDeleteRule(rule.id)}
-                  >
-                    삭제
-                  </Button>
+                  <div className="flex items-center justify-end gap-1">
+                    {rule.targetFolderId && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        disabled={applyingRuleId === rule.id}
+                        onClick={() => handleApplyToExisting(rule.id)}
+                        title="지금 불러온 메일 중 조건에 맞는 것을 이 분류 메일함으로 옮깁니다"
+                      >
+                        {applyingRuleId === rule.id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          "기존 메일에 적용"
+                        )}
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-destructive hover:text-destructive text-xs"
+                      onClick={() => onDeleteRule(rule.id)}
+                    >
+                      삭제
+                    </Button>
+                  </div>
+                  {applyResult?.ruleId === rule.id && (
+                    <p className="text-muted-foreground mt-1 text-xs">{applyResult.message}</p>
+                  )}
                 </td>
               </tr>
             ))}
@@ -802,6 +841,7 @@ export function CleanupView({
   onCreateRule,
   onToggleRule,
   onDeleteRule,
+  onApplyRuleToExisting,
   quickReplies,
   onCreateQuickReply,
   onUpdateQuickReply,
@@ -860,6 +900,7 @@ export function CleanupView({
             onCreateRule={onCreateRule}
             onToggleRule={onToggleRule}
             onDeleteRule={onDeleteRule}
+            onApplyRuleToExisting={onApplyRuleToExisting}
           />
         )}
 
