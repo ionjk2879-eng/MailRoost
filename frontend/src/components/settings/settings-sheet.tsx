@@ -1,7 +1,13 @@
-import { Bell, BellOff, Moon, Sun, SunMoon, Volume2, VolumeX } from "lucide-react"
+import { Bell, BellOff, LockKeyhole, Mail, Moon, Plus, Sun, SunMoon, Trash2, Volume2, VolumeX } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { ConnectDaumDialog } from "@/components/mail/connect-daum-dialog"
+import { ConnectImapDialog } from "@/components/mail/connect-imap-dialog"
+import { ConnectNaverDialog } from "@/components/mail/connect-naver-dialog"
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { deleteAccount, gmailLoginUrl } from "@/lib/api"
+import type { Account } from "@/types/mail"
 import {
   type NotificationSound,
   getPushEnabled,
@@ -17,6 +23,9 @@ import { type Theme, getStoredTheme, setTheme } from "@/lib/theme"
 interface SettingsSheetProps {
   open: boolean
   onClose: () => void
+  accounts: Account[]
+  onAccountConnected: () => void
+  onAccountDeleted: (accountId: string) => void
 }
 
 const SOUND_OPTIONS: { value: NotificationSound; label: string; description: string }[] = [
@@ -31,13 +40,21 @@ const THEME_OPTIONS: { value: Theme; label: string; icon: React.ReactNode }[] = 
   { value: "system", label: "시스템", icon: <SunMoon className="size-3.5" /> },
 ]
 
-export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
+function ProviderMark({ label, tone }: { label: string; tone: string }) {
+  return <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white ${tone}`}>{label}</span>
+}
+
+export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onAccountDeleted }: SettingsSheetProps) {
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushLoading, setPushLoading] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
   const [sound, setSound] = useState<NotificationSound>("bird")
   const [pushSupported, setPushSupported] = useState(true)
   const [theme, setThemeState] = useState<Theme>("system")
+  const [pendingDelete, setPendingDelete] = useState<Account | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const connectedAccounts = accounts.filter((account) => account.id.includes(":"))
 
   useEffect(() => {
     if (!open) return
@@ -79,14 +96,76 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
     setTheme(value)
   }
 
+  const handleDeleteAccount = async () => {
+    if (!pendingDelete) return
+    setIsDeleting(true)
+    setDeleteError(null)
+    const result = await deleteAccount(pendingDelete.id)
+    setIsDeleting(false)
+    if (!result.ok) {
+      setDeleteError(result.error ?? "계정 연결을 해제하지 못했습니다.")
+      return
+    }
+    onAccountDeleted(pendingDelete.id)
+    setPendingDelete(null)
+  }
+
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) onClose() }}>
-      <SheetContent side="right" className="w-96">
+      <SheetContent side="right" className="w-full sm:max-w-2xl">
         <SheetHeader className="border-b pb-4">
           <SheetTitle>설정</SheetTitle>
         </SheetHeader>
 
         <div className="flex flex-col gap-7 overflow-y-auto px-4 pb-6">
+          <section className="flex flex-col gap-4">
+            <div>
+              <h3 className="text-base font-semibold">연결된 계정</h3>
+              <p className="text-muted-foreground mt-1 text-xs">MailRoost에서 함께 확인할 메일 계정을 관리합니다.</p>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border">
+              {connectedAccounts.length === 0 ? (
+                <div className="text-muted-foreground flex flex-col items-center gap-2 px-4 py-8 text-sm">
+                  <Mail className="size-8 opacity-30" />
+                  연결된 계정이 없습니다.
+                </div>
+              ) : connectedAccounts.map((account) => (
+                <div key={account.id} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
+                  <span className={`size-2.5 shrink-0 rounded-full ${account.color}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{account.label}</p>
+                    <p className="text-muted-foreground truncate text-xs">{account.email}</p>
+                  </div>
+                  <span className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400">
+                    <span className="size-1.5 rounded-full bg-current" />연결됨
+                  </span>
+                  <Button variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-destructive" title="계정 연결 해제" onClick={() => setPendingDelete(account)}>
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <p className="mb-2 text-sm font-medium">새 계정 연결</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button render={<a href={gmailLoginUrl} />} variant="outline" className="h-14 justify-start gap-3 px-3" nativeButton={false}>
+                  <ProviderMark label="G" tone="bg-red-500" />
+                  <span className="text-left text-sm">Gmail</span>
+                  <Plus className="text-muted-foreground ml-auto size-4" />
+                </Button>
+                <ConnectNaverDialog label="네이버 메일" onConnected={onAccountConnected} buttonClassName="h-14 w-full justify-start gap-3 px-3" icon={<ProviderMark label="N" tone="bg-green-500" />} />
+                <ConnectDaumDialog label="다음 메일" onConnected={onAccountConnected} buttonClassName="h-14 w-full justify-start gap-3 px-3" icon={<ProviderMark label="D" tone="bg-blue-500" />} />
+                <ConnectImapDialog label="기타 IMAP" onConnected={onAccountConnected} buttonClassName="h-14 w-full justify-start gap-3 px-3" icon={<ProviderMark label="IM" tone="bg-slate-600" />} />
+              </div>
+            </div>
+            <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
+              <LockKeyhole className="size-3.5" /> 인증 정보는 안전하게 암호화됩니다.
+            </p>
+          </section>
+
+          <div className="border-t" />
           {/* 테마 */}
           <section className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">테마</h3>
@@ -187,6 +266,20 @@ export function SettingsSheet({ open, onClose }: SettingsSheetProps) {
           </section>
         </div>
       </SheetContent>
+
+      <Dialog open={pendingDelete !== null} onOpenChange={(value) => { if (!value) setPendingDelete(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>계정 연결 해제</DialogTitle>
+            <DialogDescription><strong>{pendingDelete?.email}</strong> 계정을 MailRoost에서 제거합니다.</DialogDescription>
+          </DialogHeader>
+          {deleteError && <p className="text-destructive text-sm">{deleteError}</p>}
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" disabled={isDeleting} />}>취소</DialogClose>
+            <Button variant="destructive" onClick={handleDeleteAccount} disabled={isDeleting}>{isDeleting ? "해제 중..." : "연결 해제"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   )
 }

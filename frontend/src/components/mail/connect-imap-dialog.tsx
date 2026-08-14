@@ -19,6 +19,7 @@ interface ConnectImapDialogProps {
   label: string
   onConnected: () => void
   buttonClassName?: string
+  icon?: React.ReactNode
 }
 
 // IMAP 서버 이름에서 SMTP 서버 이름을 추측한다 (imap.example.com -> smtp.example.com).
@@ -28,7 +29,7 @@ function guessSmtpHost(imapHost: string): string {
   return imapHost.startsWith("imap.") ? imapHost.replace(/^imap\./, "smtp.") : `smtp.${imapHost}`
 }
 
-export function ConnectImapDialog({ label, onConnected, buttonClassName }: ConnectImapDialogProps) {
+export function ConnectImapDialog({ label, onConnected, buttonClassName, icon }: ConnectImapDialogProps) {
   const [open, setOpen] = useState(false)
   const [host, setHost] = useState("")
   const [port, setPort] = useState("993")
@@ -83,7 +84,7 @@ export function ConnectImapDialog({ label, onConnected, buttonClassName }: Conne
           <Button variant="outline" size="sm" className={buttonClassName ?? "w-full justify-start gap-2"} />
         }
       >
-        <Plus className="size-4" />
+        {icon ?? <Plus className="size-4" />}
         {label}
       </DialogTrigger>
       <DialogContent>

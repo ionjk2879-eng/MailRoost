@@ -19,9 +19,10 @@ interface ConnectNaverDialogProps {
   label: string
   onConnected: () => void
   buttonClassName?: string
+  icon?: React.ReactNode
 }
 
-export function ConnectNaverDialog({ label, onConnected, buttonClassName }: ConnectNaverDialogProps) {
+export function ConnectNaverDialog({ label, onConnected, buttonClassName, icon }: ConnectNaverDialogProps) {
   const [open, setOpen] = useState(false)
   const [email, setEmail] = useState("")
   const [appPassword, setAppPassword] = useState("")
@@ -51,7 +52,7 @@ export function ConnectNaverDialog({ label, onConnected, buttonClassName }: Conn
           <Button variant="outline" size="sm" className={buttonClassName ?? "w-full justify-start gap-2"} />
         }
       >
-        <Plus className="size-4" />
+        {icon ?? <Plus className="size-4" />}
         {label}
       </DialogTrigger>
       <DialogContent>

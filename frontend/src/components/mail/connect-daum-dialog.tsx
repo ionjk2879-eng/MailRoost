@@ -19,9 +19,10 @@ interface ConnectDaumDialogProps {
   label: string
   onConnected: () => void
   buttonClassName?: string
+  icon?: React.ReactNode
 }
 
-export function ConnectDaumDialog({ label, onConnected, buttonClassName }: ConnectDaumDialogProps) {
+export function ConnectDaumDialog({ label, onConnected, buttonClassName, icon }: ConnectDaumDialogProps) {
   const [open, setOpen] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -51,7 +52,7 @@ export function ConnectDaumDialog({ label, onConnected, buttonClassName }: Conne
           <Button variant="outline" size="sm" className={buttonClassName ?? "w-full justify-start gap-2"} />
         }
       >
-        <Plus className="size-4" />
+        {icon ?? <Plus className="size-4" />}
         {label}
       </DialogTrigger>
       <DialogContent>

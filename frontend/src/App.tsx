@@ -1,4 +1,4 @@
-import { Filter, Loader2, Pencil, RefreshCw, Search, Settings, X } from "lucide-react"
+import { Filter, Loader2, Pencil, RefreshCw, Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { GroupImperativeHandle, Layout } from "react-resizable-panels"
 import { AccountSidebar } from "@/components/mail/account-sidebar"
@@ -1612,11 +1612,10 @@ function App() {
         onApplyFilter={handleApplyFilter}
         onCreateFilter={handleCreateFilter}
         onDeleteFilter={handleDeleteFilter}
-        onAccountConnected={loadAccountsAndMails}
-        onDeleteAccount={handleDeleteAccount}
         onReorderAccounts={handleReorderAccounts}
         onLogout={handleLogout}
         onCompose={sendableAccounts.length > 0 ? handleOpenCompose : undefined}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-3 border-b bg-background px-5">
@@ -1667,15 +1666,6 @@ function App() {
             onMarkAllRead={handleMarkAllNotificationsRead}
             onDismiss={handleDismissNotification}
           />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            title="설정"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings className="size-4" />
-          </Button>
           {view === "inbox" && sendableAccounts.length > 0 && isMobile && (
             <Button size="sm" className="gap-2" onClick={handleOpenCompose}>
               <Pencil className="size-4" />
@@ -1834,7 +1824,13 @@ function App() {
           </div>
         </div>
       )}
-    <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsSheet
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        accounts={accounts}
+        onAccountConnected={loadAccountsAndMails}
+        onAccountDeleted={handleDeleteAccount}
+      />
     </SidebarProvider>
   )
 }

@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, FileEdit, Filter, Folder, FolderPlus, Inbox, ListFilter, LogOut, Mail, Pencil, Plus, Sparkles, StickyNote, Trash2, VolumeX } from "lucide-react"
+import { AlarmClock, Archive, FileEdit, Filter, Folder, FolderPlus, Inbox, ListFilter, LogOut, Pencil, Plus, Settings, Sparkles, StickyNote, Trash2, VolumeX } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -13,9 +13,6 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ConnectNaverDialog } from "@/components/mail/connect-naver-dialog"
-import { ConnectDaumDialog } from "@/components/mail/connect-daum-dialog"
-import { ConnectImapDialog } from "@/components/mail/connect-imap-dialog"
 import {
   Sidebar,
   SidebarContent,
@@ -30,7 +27,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { deleteAccount, gmailLoginUrl } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import type { Account, MailFolder, SavedFilter } from "@/types/mail"
 
@@ -127,11 +123,10 @@ interface AccountSidebarProps {
   onApplyFilter: (filter: SavedFilter) => void
   onCreateFilter: (input: Omit<SavedFilter, "id" | "createdAt">) => Promise<{ ok: boolean; error?: string }>
   onDeleteFilter: (filterId: string) => void
-  onAccountConnected: () => void
-  onDeleteAccount: (accountId: string) => void
   onReorderAccounts: (order: string[]) => void
   onLogout: () => void
   onCompose?: () => void
+  onOpenSettings: () => void
 }
 
 export function AccountSidebar({
@@ -171,16 +166,12 @@ export function AccountSidebar({
   onApplyFilter,
   onCreateFilter,
   onDeleteFilter,
-  onAccountConnected,
-  onDeleteAccount,
   onReorderAccounts,
   onLogout,
   onCompose,
+  onOpenSettings,
 }: AccountSidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar()
-  const [pendingDelete, setPendingDelete] = useState<Account | null>(null)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState("")
   const [createFolderError, setCreateFolderError] = useState<string | null>(null)
@@ -204,10 +195,6 @@ export function AccountSidebar({
   const [isCreatingFilter, setIsCreatingFilter] = useState(false)
   const accountDrag = useDragReorder(accounts.map((a) => a.id), onReorderAccounts)
   const folderDrag = useDragReorder(folders.map((f) => f.id), onReorderFolders)
-  const connectedGmailCount = accounts.filter((a) => a.provider === "gmail").length
-  const connectedNaverCount = accounts.filter((a) => a.provider === "naver").length
-  const connectedDaumCount = accounts.filter((a) => a.provider === "daum").length
-  const connectedImapCount = accounts.filter((a) => a.provider === "imap").length
   const hasRealAccounts = accounts.some((a) => a.id.includes(":"))
   const totalUnread = Object.values(unreadCountByAccount).reduce(
     (sum, count) => sum + count,
@@ -216,20 +203,6 @@ export function AccountSidebar({
 
   const closeOnMobile = () => {
     if (isMobile) setOpenMobile(false)
-  }
-
-  const handleConfirmDelete = async () => {
-    if (!pendingDelete) return
-    setIsDeleting(true)
-    setDeleteError(null)
-    const result = await deleteAccount(pendingDelete.id)
-    setIsDeleting(false)
-    if (!result.ok) {
-      setDeleteError(result.error ?? "삭제에 실패했습니다.")
-      return
-    }
-    setPendingDelete(null)
-    onDeleteAccount(pendingDelete.id)
   }
 
   const handleCreateFolder = async (e: React.FormEvent) => {
@@ -312,9 +285,7 @@ export function AccountSidebar({
           }}
           className="flex cursor-pointer items-center gap-2 rounded-md text-xl font-bold tracking-tight outline-none transition-opacity hover:opacity-75 focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-xl shadow-sm">
-            <Mail className="size-4.5" />
-          </span>
+          <img src="/favicon.svg" alt="" className="size-8 rounded-lg shadow-sm" />
           <span>Mail<span className="text-primary">Roost</span></span>
         </button>
         {onCompose && (
@@ -438,7 +409,6 @@ export function AccountSidebar({
             <SidebarMenu>
               {accounts.map((account) => {
                 const unread = unreadCountByAccount[account.id] ?? 0
-                const isReal = account.id.includes(":")
                 const displayText =
                   account.provider === "gmail" || account.provider === "naver"
                     ? account.email
@@ -470,24 +440,7 @@ export function AccountSidebar({
                       />
                       <span className="truncate">{displayText}</span>
                     </SidebarMenuButton>
-                    {isReal ? (
-                      <button
-                        type="button"
-                        aria-label="계정 삭제"
-                        onClick={() => {
-                          setDeleteError(null)
-                          setPendingDelete(account)
-                        }}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-0 transition-opacity hover:text-destructive group-hover/item:opacity-100 focus-visible:opacity-100"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    ) : (
-                      unread > 0 && <SidebarMenuBadge>{unread}</SidebarMenuBadge>
-                    )}
-                    {isReal && unread > 0 && (
-                      <SidebarMenuBadge className="group-hover/item:hidden">{unread}</SidebarMenuBadge>
-                    )}
+                    {unread > 0 && <SidebarMenuBadge>{unread}</SidebarMenuBadge>}
                   </SidebarMenuItem>
                 )
               })}
@@ -625,27 +578,10 @@ export function AccountSidebar({
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="flex-col gap-2 p-3">
-        <Button
-          render={<a href={gmailLoginUrl} />}
-          variant="outline"
-          size="sm"
-          className="w-full justify-start gap-2"
-        >
-          <Plus className="size-4" />
-          {connectedGmailCount > 0 ? "Gmail 계정 추가" : "Gmail 계정 연결"}
+        <Button variant="ghost" size="sm" className="text-muted-foreground w-full justify-start gap-2" onClick={onOpenSettings}>
+          <Settings className="size-4" />
+          설정
         </Button>
-        <ConnectNaverDialog
-          label={connectedNaverCount > 0 ? "네이버 계정 추가" : "네이버 계정 연결"}
-          onConnected={onAccountConnected}
-        />
-        <ConnectDaumDialog
-          label={connectedDaumCount > 0 ? "다음 계정 추가" : "다음 메일 연결"}
-          onConnected={onAccountConnected}
-        />
-        <ConnectImapDialog
-          label={connectedImapCount > 0 ? "IMAP 계정 추가" : "IMAP 계정 연결"}
-          onConnected={onAccountConnected}
-        />
         {hasRealAccounts && (
           <Button
             variant="ghost"
@@ -658,30 +594,6 @@ export function AccountSidebar({
           </Button>
         )}
       </SidebarFooter>
-
-      <Dialog
-        open={pendingDelete !== null}
-        onOpenChange={(open) => { if (!open) setPendingDelete(null) }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>계정 연결 해제</DialogTitle>
-            <DialogDescription>
-              <strong>{pendingDelete?.email}</strong> 계정을 MailRoost에서 삭제합니다.
-              저장된 토큰이 제거되며, 다시 연결하려면 계정을 다시 추가해야 합니다.
-            </DialogDescription>
-          </DialogHeader>
-          {deleteError && <p className="text-destructive text-sm">{deleteError}</p>}
-          <DialogFooter>
-            <DialogClose render={<Button type="button" variant="outline" disabled={isDeleting} />}>
-              취소
-            </DialogClose>
-            <Button variant="destructive" onClick={handleConfirmDelete} disabled={isDeleting}>
-              {isDeleting ? "삭제 중..." : "삭제"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
         <DialogContent>
