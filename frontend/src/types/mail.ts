@@ -23,6 +23,7 @@ export const ARCHIVE_FOLDER_ID = "archive"
 
 export interface AutoClassifyRule {
   id: string
+  name?: string
   field: "from" | "subject"
   keyword: string
   targetFolderId: string | null

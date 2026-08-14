@@ -720,7 +720,7 @@ api.post("/rules", async (c) => {
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
 
   const body = await c.req
-    .json<{ field?: string; keyword?: string; targetFolderId?: string | null; category?: string | null }>()
+    .json<{ name?: string; field?: string; keyword?: string; targetFolderId?: string | null; category?: string | null }>()
     .catch(() => null)
   const field = body?.field
   const keyword = body?.keyword?.trim()
@@ -738,6 +738,7 @@ api.post("/rules", async (c) => {
     }
     const rule: AutoClassifyRule = {
       id: crypto.randomUUID(),
+      name: body?.name?.trim() || `${field === "from" ? "발신자" : "제목"} · ${keyword}`,
       field,
       keyword,
       targetFolderId,
@@ -759,6 +760,7 @@ api.patch("/rules/:id", async (c) => {
   const ruleId = c.req.param("id")
   const body = await c.req
     .json<{
+      name?: string
       field?: string
       keyword?: string
       targetFolderId?: string | null
@@ -771,6 +773,12 @@ api.patch("/rules/:id", async (c) => {
   const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
     const rule = org.rules.find((r) => r.id === ruleId)
     if (!rule) return { ok: false as const, status: 404 as const, error: "규칙을 찾을 수 없습니다." }
+
+    if (body?.name !== undefined) {
+      const name = body.name.trim()
+      if (!name) return { ok: false as const, status: 400 as const, error: "규칙 이름을 입력해주세요." }
+      rule.name = name
+    }
 
     if (body?.field !== undefined) {
       if (body.field !== "from" && body.field !== "subject") {

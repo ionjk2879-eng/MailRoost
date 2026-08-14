@@ -1038,14 +1038,25 @@ function App() {
     targetFolderId: string | null,
     category: MailCategory | null,
     applyToExisting?: boolean,
+    name?: string,
   ): Promise<{ ok: boolean; error?: string; count?: number }> => {
-    const result = await apiCreateRule(field, keyword, targetFolderId, category)
+    const result = await apiCreateRule(field, keyword, targetFolderId, category, name)
     if (!result.ok) return { ok: false, error: result.error }
     setRules((prev) => [...prev, result.rule])
     if (applyToExisting && targetFolderId) {
       const applyResult = await applyRuleToExistingAndRefresh(result.rule.id, targetFolderId)
       return { ok: true, count: applyResult.count }
     }
+    return { ok: true }
+  }
+
+  const handleUpdateRule = async (
+    ruleId: string,
+    patch: Partial<Pick<AutoClassifyRule, "name" | "field" | "keyword" | "targetFolderId" | "category" | "enabled">>,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const result = await apiUpdateRule(ruleId, patch)
+    if (!result.ok) return result
+    setRules((prev) => prev.map((rule) => rule.id === ruleId ? result.rule : rule))
     return { ok: true }
   }
 
@@ -1771,6 +1782,7 @@ function App() {
               rules={rules}
               onCreateRule={handleCreateRule}
               onToggleRule={handleToggleRule}
+              onUpdateRule={handleUpdateRule}
               onDeleteRule={handleDeleteRule}
               onApplyRuleToExisting={handleApplyRuleToExisting}
               quickReplies={quickReplies}

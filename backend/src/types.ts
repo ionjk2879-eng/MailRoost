@@ -111,6 +111,7 @@ export interface MailFolder {
 // 최소 하나는 있어야 한다.
 export interface AutoClassifyRule {
   id: string
+  name?: string
   field: "from" | "subject"
   keyword: string
   targetFolderId: string | null

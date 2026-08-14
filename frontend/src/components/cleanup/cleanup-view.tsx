@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { AutoRulesView } from "@/components/cleanup/auto-rules-view"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Account, AutoClassifyRule, Mail, MailCategory, MailFolder, QuickReply } from "@/types/mail"
 
@@ -32,8 +33,10 @@ interface CleanupViewProps {
     targetFolderId: string | null,
     category: MailCategory | null,
     applyToExisting?: boolean,
+    name?: string,
   ) => Promise<{ ok: boolean; error?: string; count?: number }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
+  onUpdateRule: (ruleId: string, patch: Partial<Pick<AutoClassifyRule, "name" | "field" | "keyword" | "targetFolderId" | "category" | "enabled">>) => Promise<{ ok: boolean; error?: string }>
   onDeleteRule: (ruleId: string) => void
   onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number; alreadyClassified?: number }>
   quickReplies: QuickReply[]
@@ -424,7 +427,7 @@ function MailboxManageTab({
   )
 }
 
-function AutoClassifyTab({
+export function AutoClassifyTab({
   mails,
   folders,
   rules,
@@ -854,6 +857,7 @@ export function CleanupView({
   rules,
   onCreateRule,
   onToggleRule,
+  onUpdateRule,
   onDeleteRule,
   onApplyRuleToExisting,
   quickReplies,
@@ -907,11 +911,11 @@ export function CleanupView({
         )}
 
         {mainTab === "auto" && (
-          <AutoClassifyTab
-            mails={mails}
+          <AutoRulesView
             folders={folders}
             rules={rules}
             onCreateRule={onCreateRule}
+            onUpdateRule={onUpdateRule}
             onToggleRule={onToggleRule}
             onDeleteRule={onDeleteRule}
             onApplyRuleToExisting={onApplyRuleToExisting}
