@@ -24,7 +24,7 @@ function base64ToBytes(b64: string): Uint8Array {
 
 async function getAesKey(env: Env): Promise<CryptoKey> {
   if (cachedKey && cachedKeyMaterial === env.ACCOUNT_ENCRYPTION_KEY) return cachedKey
-  if (!env.ACCOUNT_ENCRYPTION_KEY) throw new Error("ACCOUNT_ENCRYPTION_KEY가 설정되어 있지 않습니다.")
+  if (!env.ACCOUNT_ENCRYPTION_KEY) throw new Error("no-key")
   const raw = base64ToBytes(env.ACCOUNT_ENCRYPTION_KEY)
   cachedKey = await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"])
   cachedKeyMaterial = env.ACCOUNT_ENCRYPTION_KEY
@@ -55,10 +55,12 @@ async function decryptSecret(env: Env, encoded: string): Promise<string> {
 // encryptField가 다시 호출되면서 자연스럽게 암호화된 형태로 바뀐다(별도 마이그레이션 불필요).
 export async function decryptField(env: Env, value: string): Promise<string> {
   if (!value.startsWith(ENC_PREFIX)) return value
+  if (!env.ACCOUNT_ENCRYPTION_KEY) return value  // 암호화된 값인데 키가 없으면 그대로 반환 (계정 접근 불가 상태)
   return decryptSecret(env, value)
 }
 
 export async function encryptField(env: Env, value: string): Promise<string> {
+  if (!env.ACCOUNT_ENCRYPTION_KEY) return value
   return encryptSecret(env, value)
 }
 
