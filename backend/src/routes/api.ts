@@ -1271,14 +1271,12 @@ api.get("/trash", async (c) => {
         if (record.provider === "naver") {
           const offset = cursorState.offset ?? 0
           const { mails, hasMore } = await naverListTrash(record.email, record.appPassword, accountId, IMAP_PAGE, offset)
-          console.log(`[trash] provider=naver accountId=${accountId} count=${mails.length}`)
           return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
         }
 
         if (record.provider === "daum" || record.provider === "imap") {
           const offset = cursorState.offset ?? 0
           const { mails, hasMore } = await fetchImapTrash(accountId, record, IMAP_PAGE, offset)
-          console.log(`[trash] provider=${record.provider} accountId=${accountId} count=${mails.length}`)
           return { accountId, mails, cursor: hasMore ? { offset: offset + IMAP_PAGE } : undefined }
         }
 
@@ -1286,7 +1284,6 @@ api.get("/trash", async (c) => {
         const updatedRecord = fresh.accessToken !== record.accessToken ? fresh : undefined
         const pageToken = cursorState.pageToken
         const { mails, nextPageToken } = await gmailListTrash(fresh.accessToken, accountId, GMAIL_PAGE, pageToken)
-        console.log(`[trash] provider=gmail accountId=${accountId} count=${mails.length}`)
         return { accountId, mails, cursor: nextPageToken ? { pageToken: nextPageToken } : undefined, updatedRecord }
       } catch (err) {
         console.error(`[trash] account ${accountId} failed, skipping:`, err)
@@ -1328,23 +1325,28 @@ api.post("/trash/bulk-delete", async (c) => {
 
   if (record.provider === "naver") {
     await naverPermanentDeleteBulk(record.email, record.appPassword, mailIds)
-    return c.json({ ok: true })
-  }
-  if (record.provider === "daum") {
+  } else if (record.provider === "daum") {
     await daumPermanentDeleteBulk(record.email, record.password, mailIds)
-    return c.json({ ok: true })
-  }
-  if (record.provider === "imap") {
+  } else if (record.provider === "imap") {
     await imapPermanentDeleteBulk({ host: record.host, port: record.port, email: record.email, password: record.password }, mailIds)
-    return c.json({ ok: true })
+  } else {
+    const fresh = await ensureFreshToken(c.env, record)
+    if (fresh.accessToken !== record.accessToken) {
+      accountMap[accountId] = fresh
+      await persistAccounts(c.env, sessionId, session, accountMap)
+    }
+    await gmailBatchDelete(fresh.accessToken, mailIds)
   }
 
-  const fresh = await ensureFreshToken(c.env, record)
-  if (fresh.accessToken !== record.accessToken) {
-    accountMap[accountId] = fresh
-    await persistAccounts(c.env, sessionId, session, accountMap)
-  }
-  await gmailBatchDelete(fresh.accessToken, mailIds)
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    for (const mailId of mailIds) {
+      const key = assignmentKey(accountId, mailId)
+      delete org.assignments[key]
+      delete org.archived[key]
+      delete org.snoozed[key]
+      delete org.classified[key]
+    }
+  })
   return c.json({ ok: true })
 })
 
@@ -1377,12 +1379,15 @@ api.post("/trash/restore", async (c) => {
     await gmailRestoreFromTrash(fresh.accessToken, mailIds)
   }
 
-  // 복구된 메일에 사용자 정의 분류 메일함 배정이나 보관 상태가 남아있으면 정리한다 (실제로는 받은편지함으로 돌아왔으므로)
+  // 복구된 메일에 남아있는 모든 org 상태를 정리한다 — 받은편지함으로 돌아온 것이므로
+  // classified도 함께 지워서 현재 규칙으로 재분류될 수 있게 한다.
   await mutateMailOrg(c.env, sessionId, session, (org) => {
     for (const mailId of mailIds) {
       const key = assignmentKey(accountId, mailId)
       delete org.assignments[key]
       delete org.archived[key]
+      delete org.snoozed[key]
+      delete org.classified[key]
     }
   })
 
@@ -1669,31 +1674,30 @@ api.post("/mail/bulk-delete", async (c) => {
   const record = accountMap[accountId]
   if (!record) return c.json({ error: "not found" }, 404)
 
-  console.log(`[bulk-delete] provider=${record.provider} accountId=${accountId} mailIds=${JSON.stringify(mailIds)}`)
-
   if (record.provider === "naver") {
     await naverDeleteMailBulk(record.email, record.appPassword, mailIds)
-    console.log(`[bulk-delete] naver delete done`)
-    return c.json({ ok: true })
-  }
-  if (record.provider === "daum") {
+  } else if (record.provider === "daum") {
     await daumDeleteMailBulk(record.email, record.password, mailIds)
-    console.log(`[bulk-delete] daum delete done`)
-    return c.json({ ok: true })
-  }
-  if (record.provider === "imap") {
+  } else if (record.provider === "imap") {
     await imapDeleteMailBulk({ host: record.host, port: record.port, email: record.email, password: record.password }, mailIds)
-    console.log(`[bulk-delete] imap delete done`)
-    return c.json({ ok: true })
+  } else {
+    const fresh = await ensureFreshToken(c.env, record)
+    if (fresh.accessToken !== record.accessToken) {
+      accountMap[accountId] = fresh
+      await persistAccounts(c.env, sessionId, session, accountMap)
+    }
+    await gmailTrashBulk(fresh.accessToken, mailIds)
   }
 
-  const fresh = await ensureFreshToken(c.env, record)
-  if (fresh.accessToken !== record.accessToken) {
-    accountMap[accountId] = fresh
-    await persistAccounts(c.env, sessionId, session, accountMap)
-  }
-  await gmailTrashBulk(fresh.accessToken, mailIds)
-  console.log(`[bulk-delete] gmail trash done`)
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    for (const mailId of mailIds) {
+      const key = assignmentKey(accountId, mailId)
+      delete org.assignments[key]
+      delete org.archived[key]
+      delete org.snoozed[key]
+      delete org.classified[key]
+    }
+  })
   return c.json({ ok: true })
 })
 
@@ -1778,23 +1782,26 @@ api.delete("/mail/:id", async (c) => {
 
   if (record.provider === "naver") {
     await naverDeleteMail(record.email, record.appPassword, mailId)
-    return c.json({ ok: true })
-  }
-  if (record.provider === "daum") {
+  } else if (record.provider === "daum") {
     await daumDeleteMail(record.email, record.password, mailId)
-    return c.json({ ok: true })
-  }
-  if (record.provider === "imap") {
+  } else if (record.provider === "imap") {
     await imapDeleteMail({ host: record.host, port: record.port, email: record.email, password: record.password }, mailId)
-    return c.json({ ok: true })
+  } else {
+    const fresh = await ensureFreshToken(c.env, record)
+    if (fresh.accessToken !== record.accessToken) {
+      accountMap[accountId] = fresh
+      await persistAccounts(c.env, sessionId, session, accountMap)
+    }
+    await gmailTrash(fresh.accessToken, mailId)
   }
 
-  const fresh = await ensureFreshToken(c.env, record)
-  if (fresh.accessToken !== record.accessToken) {
-    accountMap[accountId] = fresh
-    await persistAccounts(c.env, sessionId, session, accountMap)
-  }
-  await gmailTrash(fresh.accessToken, mailId)
+  await mutateMailOrg(c.env, sessionId, session, (org) => {
+    const key = assignmentKey(accountId, mailId)
+    delete org.assignments[key]
+    delete org.archived[key]
+    delete org.snoozed[key]
+    delete org.classified[key]
+  })
   return c.json({ ok: true })
 })
 
