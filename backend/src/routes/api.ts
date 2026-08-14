@@ -877,12 +877,13 @@ api.post("/rules/:id/apply", async (c) => {
   // 저장 직전에 최신 상태를 다시 읽어와 이번에 새로 찾은 배정만 얹는다 (겹친 요청이 서로 덮어쓰지 않도록).
   const latestOrg = await resolveMailOrg(c.env, session)
   let count = 0
+  let alreadyClassified = 0
   accountIds.forEach((accountId, i) => {
     for (const mail of perAccountMatches[i]) {
       if (isArchived(latestOrg, accountId, mail.id)) continue
       const key = assignmentKey(accountId, mail.id)
       const current = latestOrg.assignments[key] ?? []
-      if (current.includes(targetFolderId)) continue
+      if (current.includes(targetFolderId)) { alreadyClassified++; continue }
       latestOrg.assignments[key] = [...current, targetFolderId]
       latestOrg.classified[key] = true
       count++
@@ -890,7 +891,7 @@ api.post("/rules/:id/apply", async (c) => {
   })
   await persistMailOrg(c.env, sessionId, session, latestOrg)
 
-  return c.json({ ok: true, count })
+  return c.json({ ok: true, count, alreadyClassified })
 })
 
 // ── 저장된 검색/스마트 필터 ──────────────────────────────────────────────────

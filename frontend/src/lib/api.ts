@@ -134,11 +134,11 @@ export async function deleteRule(id: string): Promise<{ ok: boolean; error?: str
   return { ok: true }
 }
 
-export async function applyRuleToExisting(id: string): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+export async function applyRuleToExisting(id: string): Promise<{ ok: true; count: number; alreadyClassified: number } | { ok: false; error: string }> {
   const res = await fetch(`/api/rules/${encodeURIComponent(id)}/apply`, { method: "POST" })
-  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; count?: number; error?: string }
+  const data = (await res.json().catch(() => ({}))) as { ok?: boolean; count?: number; alreadyClassified?: number; error?: string }
   if (!res.ok || !data.ok) return { ok: false, error: data.error ?? "적용에 실패했습니다." }
-  return { ok: true, count: data.count ?? 0 }
+  return { ok: true, count: data.count ?? 0, alreadyClassified: data.alreadyClassified ?? 0 }
 }
 
 export async function fetchSavedFilters(): Promise<SavedFilter[]> {

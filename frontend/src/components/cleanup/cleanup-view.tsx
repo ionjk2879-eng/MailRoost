@@ -35,7 +35,7 @@ interface CleanupViewProps {
   ) => Promise<{ ok: boolean; error?: string; count?: number }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
   onDeleteRule: (ruleId: string) => void
-  onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number }>
+  onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number; alreadyClassified?: number }>
   quickReplies: QuickReply[]
   onCreateQuickReply: (title: string, body: string) => Promise<{ ok: boolean; error?: string }>
   onUpdateQuickReply: (id: string, title: string, body: string) => Promise<{ ok: boolean; error?: string }>
@@ -445,7 +445,7 @@ function AutoClassifyTab({
   ) => Promise<{ ok: boolean; error?: string; count?: number }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
   onDeleteRule: (ruleId: string) => void
-  onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number }>
+  onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number; alreadyClassified?: number }>
 }) {
   const folderOptions = [{ id: ARCHIVE_FOLDER_ID, name: "보관함" }, ...folders]
   const [field, setField] = useState<"from" | "subject">("from")
@@ -538,7 +538,9 @@ function AutoClassifyTab({
       message: result.ok
         ? result.count != null && result.count > 0
           ? `기존 메일 ${result.count}개를 분류 메일함으로 옮겼어요.`
-          : "조건에 맞는 기존 메일이 없어요."
+          : result.alreadyClassified != null && result.alreadyClassified > 0
+            ? `조건에 맞는 메일 ${result.alreadyClassified}개가 이미 이 분류 메일함에 있어요.`
+            : "조건에 맞는 기존 메일이 없어요."
         : (result.error ?? "적용에 실패했습니다."),
     })
   }

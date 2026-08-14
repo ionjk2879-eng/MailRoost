@@ -927,19 +927,19 @@ function App() {
   const applyRuleToExistingAndRefresh = async (
     ruleId: string,
     targetFolderId: string,
-  ): Promise<{ ok: boolean; error?: string; count?: number }> => {
+  ): Promise<{ ok: boolean; error?: string; count?: number; alreadyClassified?: number }> => {
     const result = await apiApplyRuleToExisting(ruleId)
     if (!result.ok) return { ok: false, error: result.error }
     if (result.count > 0) {
       await loadAccountsAndMails()
       if (selectedFolderId === targetFolderId) await loadFolderMails(targetFolderId)
     }
-    return { ok: true, count: result.count }
+    return { ok: true, count: result.count, alreadyClassified: result.alreadyClassified }
   }
 
   const handleApplyRuleToExisting = async (
     ruleId: string,
-  ): Promise<{ ok: boolean; error?: string; count?: number }> => {
+  ): Promise<{ ok: boolean; error?: string; count?: number; alreadyClassified?: number }> => {
     const rule = rules.find((r) => r.id === ruleId)
     if (!rule?.targetFolderId) return { ok: false, error: "규칙을 찾을 수 없습니다." }
     return applyRuleToExistingAndRefresh(ruleId, rule.targetFolderId)

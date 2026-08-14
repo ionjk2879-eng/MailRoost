@@ -402,9 +402,15 @@ export async function imapSearchInbox(
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
 
     const quoted = quoteImap(query)
-    const searchResult = await client.command(
+    // CHARSET UTF-8을 지원하지 않는 서버는 BAD 응답을 돌려준다 — 그 경우 CHARSET 없이 재시도한다.
+    let searchResult = await client.command(
       `UID SEARCH CHARSET UTF-8 OR FROM ${quoted} OR SUBJECT ${quoted} TEXT ${quoted}`,
     )
+    if (!searchResult.ok) {
+      searchResult = await client.command(
+        `UID SEARCH OR FROM ${quoted} OR SUBJECT ${quoted} TEXT ${quoted}`,
+      )
+    }
     if (!searchResult.ok) return []
     const line = searchResult.lines.find((l) => /^\*\s+SEARCH/i.test(l))
     if (!line) return []
