@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, FileEdit, Filter, Folder, FolderPlus, Inbox, ListFilter, LogOut, Pencil, Plus, Sparkles, StickyNote, Trash2, VolumeX } from "lucide-react"
+import { AlarmClock, Archive, FileEdit, Filter, Folder, FolderPlus, Inbox, ListFilter, LogOut, Mail, Pencil, Plus, Sparkles, StickyNote, Trash2, VolumeX } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -131,6 +131,7 @@ interface AccountSidebarProps {
   onDeleteAccount: (accountId: string) => void
   onReorderAccounts: (order: string[]) => void
   onLogout: () => void
+  onCompose?: () => void
 }
 
 export function AccountSidebar({
@@ -174,6 +175,7 @@ export function AccountSidebar({
   onDeleteAccount,
   onReorderAccounts,
   onLogout,
+  onCompose,
 }: AccountSidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar()
   const [pendingDelete, setPendingDelete] = useState<Account | null>(null)
@@ -300,20 +302,29 @@ export function AccountSidebar({
   }
 
   return (
-    <Sidebar>
-      <SidebarHeader className="px-4 py-3">
+    <Sidebar className="border-r bg-sidebar/95">
+      <SidebarHeader className="gap-4 border-b px-4 py-5">
         <button
           type="button"
           onClick={() => {
             onGoHome()
             closeOnMobile()
           }}
-          className="cursor-pointer rounded-md text-lg font-semibold outline-none transition-opacity hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex cursor-pointer items-center gap-2 rounded-md text-xl font-bold tracking-tight outline-none transition-opacity hover:opacity-75 focus-visible:ring-2 focus-visible:ring-ring"
         >
-          MailRoost
+          <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-xl shadow-sm">
+            <Mail className="size-4.5" />
+          </span>
+          <span>Mail<span className="text-primary">Roost</span></span>
         </button>
+        {onCompose && (
+          <Button className="h-10 w-full justify-start gap-2 rounded-lg shadow-sm" onClick={onCompose}>
+            <Plus className="size-4" />
+            새 메일 작성
+          </Button>
+        )}
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="px-2 py-2">
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>

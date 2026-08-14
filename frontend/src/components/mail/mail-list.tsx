@@ -38,11 +38,13 @@ interface MailListProps {
 
 function formatTime(iso: string): string {
   const date = new Date(iso)
+  const today = new Date()
+  if (date.toDateString() === today.toDateString()) {
+    return date.toLocaleString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+  }
   return date.toLocaleString("ko-KR", {
     month: "numeric",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   })
 }
 
@@ -115,7 +117,7 @@ export function MailList({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* 상단 선택 툴바 */}
-      <div className="flex shrink-0 items-center gap-1 border-b px-3 py-1.5">
+      <div className="flex h-11 shrink-0 items-center gap-1 border-b bg-muted/20 px-4">
         {/* 체크박스 + 드롭다운 */}
         <div ref={filterRef} className="relative flex items-center">
           <button
@@ -314,18 +316,18 @@ export function MailList({
                 }}
                 onClick={handleRowClick}
                 className={cn(
-                  "group flex w-full min-w-0 flex-col items-start gap-1 border-b border-l-2 border-l-transparent px-3 py-3 text-left text-sm transition-colors",
+                  "group flex w-full min-w-0 flex-col items-start gap-1.5 border-b border-l-2 border-l-transparent px-4 py-3.5 text-left text-sm transition-colors",
                   // 마우스 오버는 중립적인 muted 톤으로, 실제 열려있는(선택된) 메일은 accent + 왼쪽 테두리로
                   // 뚜렷하게 구분한다 — 둘 다 같은 accent를 쓰면 호버가 마치 "이게 선택된 메일"처럼 보여 헷갈린다.
                   "hover:bg-muted/60",
-                  !mail.isRead && "border-l-primary bg-primary/[0.04]",
-                  !isSelecting && selectedMailId === mail.id && "border-l-primary bg-accent",
+                  !mail.isRead && "border-l-primary bg-primary/[0.035]",
+                  !isSelecting && selectedMailId === mail.id && "border-l-primary bg-primary/[0.09]",
                   isChecked && "bg-primary/5",
                   // J/K 키보드 포커스 표시 (열려있는 메일과 별개로 표시되어야 하므로 ring을 씀)
                   focusedMailId === mail.id && "ring-primary/50 ring-2 ring-inset",
                 )}
               >
-                <div className="flex w-full min-w-0 items-center gap-2">
+                <div className="flex w-full min-w-0 items-center gap-2.5">
                   {/* 체크박스 (평소엔 안읽음 표시, 호버/선택 시 체크박스로 전환) */}
                   <div className="relative flex size-4 shrink-0 items-center justify-center">
                     {!mail.isRead && !isChecked && (
@@ -364,16 +366,16 @@ export function MailList({
                       }
                     />
                   )}
-                  <span className={cn("min-w-0 flex-1 truncate", !mail.isRead && "font-semibold")}>
+                  <span className={cn("min-w-0 flex-1 truncate text-[13px]", !mail.isRead && "font-semibold text-foreground")}>
                     {mail.fromName}
                   </span>
-                  <span className="text-muted-foreground ml-auto shrink-0 text-xs">
+                  <span className="text-muted-foreground ml-auto shrink-0 text-[11px]">
                     {formatTime(mail.receivedAt)}
                   </span>
                 </div>
 
                 <div className="flex w-full min-w-0 items-center gap-2 pl-6">
-                  <span className={cn("min-w-0 flex-1 truncate", !mail.isRead && "font-semibold")}>
+                  <span className={cn("min-w-0 flex-1 truncate text-[13px]", !mail.isRead && "font-semibold")}>
                     {mail.subject}
                   </span>
                   <button

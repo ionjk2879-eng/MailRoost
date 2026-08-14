@@ -150,10 +150,10 @@ export function MailDetail({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 flex-col gap-3 p-6">
+      <div className="flex shrink-0 flex-col gap-4 border-b bg-background px-7 py-5">
         {onBack && <BackButton onBack={onBack} />}
         <div className="flex min-w-0 flex-col gap-1.5">
-          <h2 className="text-lg font-semibold break-words">{mail.subject}</h2>
+          <h2 className="text-xl font-semibold leading-snug tracking-tight break-words">{mail.subject}</h2>
           <div className="flex flex-wrap items-center gap-1">
             {onReply && (
               <Button
@@ -332,8 +332,8 @@ export function MailDetail({
             </Button>
           </div>
         </div>
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar className="shrink-0">
+        <div className="flex min-w-0 items-center gap-3 border-t pt-4">
+          <Avatar className="size-9 shrink-0">
             <AvatarFallback>{mail.fromName.slice(0, 1)}</AvatarFallback>
           </Avatar>
           <div className="flex min-w-0 flex-1 flex-col text-sm">
@@ -409,8 +409,8 @@ export function MailDetail({
             className="h-full w-full border-0"
           />
         ) : (
-          <div className="h-full overflow-auto p-6">
-            <p className="text-sm whitespace-pre-wrap">{mail.body}</p>
+          <div className="h-full overflow-auto px-8 py-7">
+            <p className="max-w-3xl text-[15px] leading-7 whitespace-pre-wrap">{mail.body}</p>
           </div>
         )}
       </div>

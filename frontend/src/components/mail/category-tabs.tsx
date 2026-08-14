@@ -19,12 +19,12 @@ export function CategoryTabs({ counts, selected, onSelect }: CategoryTabsProps) 
   const total = Object.values(counts).reduce((sum, n) => sum + n, 0)
 
   return (
-    <div className="flex items-center gap-1 overflow-x-auto border-b px-2">
+    <div className="flex items-center gap-1 overflow-x-auto border-b bg-background px-4 pt-1">
       <button
         type="button"
         onClick={() => onSelect(null)}
         className={cn(
-          "shrink-0 border-b-2 px-3 py-2 text-sm transition-colors",
+          "shrink-0 border-b-2 px-3 py-2.5 text-sm transition-colors",
           selected === null
             ? "border-primary text-foreground font-medium"
             : "text-muted-foreground border-transparent hover:text-foreground",
@@ -38,7 +38,7 @@ export function CategoryTabs({ counts, selected, onSelect }: CategoryTabsProps) 
           type="button"
           onClick={() => onSelect(c.id)}
           className={cn(
-            "shrink-0 border-b-2 px-3 py-2 text-sm transition-colors",
+            "shrink-0 border-b-2 px-3 py-2.5 text-sm transition-colors",
             selected === c.id
               ? "border-primary text-foreground font-medium"
               : "text-muted-foreground border-transparent hover:text-foreground",

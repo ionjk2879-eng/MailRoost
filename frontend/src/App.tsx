@@ -1410,26 +1410,26 @@ function App() {
         </div>
       )}
       {/* 검색 바 */}
-      <div className="relative border-b px-3 py-2">
-        <Search className="text-muted-foreground absolute left-5 top-1/2 size-3.5 -translate-y-1/2" />
+      <div className="relative border-b bg-background px-4 py-3">
+        <Search className="text-muted-foreground absolute left-7 top-1/2 size-4 -translate-y-1/2" />
         <input
           type="text"
-          placeholder="검색..."
+          placeholder="메일 검색"
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value)
             if (activeFilter) setActiveFilter(null)
           }}
-          className="bg-muted/50 focus:bg-muted w-full rounded-md py-1.5 pr-7 pl-7 text-sm outline-none transition-colors placeholder:text-muted-foreground"
+          className="bg-muted/50 focus:bg-background focus:ring-ring/40 h-10 w-full rounded-lg border border-transparent py-2 pr-9 pl-9 text-sm outline-none transition-all placeholder:text-muted-foreground focus:border-border focus:ring-2"
         />
         {searchQuery && isServerSearching && (
-          <Loader2 className="text-muted-foreground absolute right-5 top-1/2 size-3.5 -translate-y-1/2 animate-spin" />
+          <Loader2 className="text-muted-foreground absolute right-7 top-1/2 size-3.5 -translate-y-1/2 animate-spin" />
         )}
         {searchQuery && !isServerSearching && (
           <button
             type="button"
             onClick={() => setSearchQuery("")}
-            className="text-muted-foreground hover:text-foreground absolute right-5 top-1/2 -translate-y-1/2"
+            className="text-muted-foreground hover:text-foreground absolute right-7 top-1/2 -translate-y-1/2"
           >
             <X className="size-3.5" />
           </button>
@@ -1616,11 +1616,12 @@ function App() {
         onDeleteAccount={handleDeleteAccount}
         onReorderAccounts={handleReorderAccounts}
         onLogout={handleLogout}
+        onCompose={sendableAccounts.length > 0 ? handleOpenCompose : undefined}
       />
       <SidebarInset>
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+        <header className="flex h-16 shrink-0 items-center gap-3 border-b bg-background px-5">
           <SidebarTrigger />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          <span className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight">
             {view === "home"
               ? "홈"
               : view === "cleanup"
@@ -1675,7 +1676,7 @@ function App() {
           >
             <Settings className="size-4" />
           </Button>
-          {view === "inbox" && sendableAccounts.length > 0 && (
+          {view === "inbox" && sendableAccounts.length > 0 && isMobile && (
             <Button size="sm" className="gap-2" onClick={handleOpenCompose}>
               <Pencil className="size-4" />
               메일 쓰기
@@ -1785,11 +1786,11 @@ function App() {
           </div>
         ) : (
           <ResizablePanelGroup groupRef={mailSnap.groupRef} onLayoutChange={mailSnap.onLayoutChange} orientation="horizontal" className="flex-1">
-            <ResizablePanel id="list-panel" defaultSize="45" minSize="35" maxSize="60" className="overflow-hidden">
+            <ResizablePanel id="list-panel" defaultSize="40" minSize="34" maxSize="54" className="overflow-hidden bg-background">
               {mailListPane}
             </ResizablePanel>
             <ResizableHandle withHandle />
-            <ResizablePanel id="detail-panel" defaultSize="55" minSize="35" className="overflow-hidden">
+            <ResizablePanel id="detail-panel" defaultSize="60" minSize="42" className="overflow-hidden bg-background">
               {mailDetailPane}
             </ResizablePanel>
           </ResizablePanelGroup>
