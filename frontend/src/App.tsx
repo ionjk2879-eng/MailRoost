@@ -6,6 +6,7 @@ import { CategoryTabs } from "@/components/mail/category-tabs"
 import { COMPOSE_SUPPORTED, ComposeView } from "@/components/mail/compose-view"
 import { MailDetail } from "@/components/mail/mail-detail"
 import { MailList } from "@/components/mail/mail-list"
+import { MailFilterMenu } from "@/components/mail/mail-filter-menu"
 import { CleanupView, SHORTCUTS } from "@/components/cleanup/cleanup-view"
 import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
@@ -1393,46 +1394,42 @@ function App() {
           setActiveFilter(null)
         }}
       />
-      {activeFilter && (
-        <div className="bg-primary/5 flex items-center justify-between gap-2 border-b px-3 py-1.5 text-sm">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <Filter className="text-primary size-3.5 shrink-0" />
-            <span className="truncate">{activeFilter.name}</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => setActiveFilter(null)}
-            className="text-muted-foreground hover:text-foreground shrink-0"
-            aria-label="필터 해제"
-          >
-            <X className="size-3.5" />
-          </button>
-        </div>
-      )}
       {/* 검색 바 */}
-      <div className="relative border-b bg-background px-4 py-3">
-        <Search className="text-muted-foreground absolute left-7 top-1/2 size-4 -translate-y-1/2" />
-        <input
-          type="text"
-          placeholder="메일 검색"
-          value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value)
-            if (activeFilter) setActiveFilter(null)
-          }}
-          className="bg-muted/50 focus:bg-background focus:ring-ring/40 h-10 w-full rounded-lg border border-transparent py-2 pr-9 pl-9 text-sm outline-none transition-all placeholder:text-muted-foreground focus:border-border focus:ring-2"
-        />
-        {searchQuery && isServerSearching && (
-          <Loader2 className="text-muted-foreground absolute right-7 top-1/2 size-3.5 -translate-y-1/2 animate-spin" />
-        )}
-        {searchQuery && !isServerSearching && (
-          <button
-            type="button"
-            onClick={() => setSearchQuery("")}
-            className="text-muted-foreground hover:text-foreground absolute right-7 top-1/2 -translate-y-1/2"
-          >
-            <X className="size-3.5" />
-          </button>
+      <div className="border-b bg-background px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="메일 검색"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                if (activeFilter) setActiveFilter(null)
+              }}
+              className="bg-muted/50 focus:bg-background focus:ring-ring/40 h-10 w-full rounded-lg border border-transparent py-2 pr-9 pl-9 text-sm outline-none transition-all placeholder:text-muted-foreground focus:border-border focus:ring-2"
+            />
+            {searchQuery && isServerSearching && <Loader2 className="text-muted-foreground absolute right-3 top-1/2 size-3.5 -translate-y-1/2 animate-spin" />}
+            {searchQuery && !isServerSearching && <button type="button" onClick={() => setSearchQuery("")} className="text-muted-foreground hover:text-foreground absolute right-3 top-1/2 -translate-y-1/2"><X className="size-3.5" /></button>}
+          </div>
+          <MailFilterMenu
+            accounts={accounts}
+            folders={folders}
+            savedFilters={savedFilters}
+            activeFilterId={activeFilter?.id ?? null}
+            onApply={handleApplyFilter}
+            onClear={() => setActiveFilter(null)}
+            onCreate={handleCreateFilter}
+            onDelete={handleDeleteFilter}
+          />
+        </div>
+        {activeFilter && (
+          <div className="mt-2 flex items-center">
+            <span className="bg-primary/10 text-primary flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium">
+              <Filter className="size-3" /><span className="truncate">{activeFilter.name}</span>
+              <button type="button" onClick={() => setActiveFilter(null)} aria-label="필터 해제" className="hover:text-foreground"><X className="size-3" /></button>
+            </span>
+          </div>
         )}
       </div>
       <div className="min-h-0 flex-1">
@@ -1593,8 +1590,6 @@ function App() {
         folders={folders}
         selectedFolderId={selectedFolderId}
         isFolderView={view === "folder"}
-        savedFilters={savedFilters}
-        activeFilterId={activeFilter?.id ?? null}
         onSelectAccount={goToInbox}
         onGoHome={goHome}
         onGoCleanup={goToCleanup}
@@ -1609,9 +1604,6 @@ function App() {
         onRenameFolder={handleRenameFolder}
         onDeleteFolder={handleDeleteFolder}
         onReorderFolders={handleReorderFolders}
-        onApplyFilter={handleApplyFilter}
-        onCreateFilter={handleCreateFilter}
-        onDeleteFilter={handleDeleteFilter}
         onReorderAccounts={handleReorderAccounts}
         onLogout={handleLogout}
         onCompose={sendableAccounts.length > 0 ? handleOpenCompose : undefined}

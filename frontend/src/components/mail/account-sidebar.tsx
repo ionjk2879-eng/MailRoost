@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, FileEdit, Filter, Folder, FolderPlus, Inbox, ListFilter, LogOut, Pencil, Plus, Settings, Sparkles, StickyNote, Trash2, VolumeX } from "lucide-react"
+import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Settings, Sparkles, StickyNote, Trash2, VolumeX } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -20,7 +20,6 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuBadge,
@@ -29,7 +28,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import type { Account, MailFolder, SavedFilter } from "@/types/mail"
+import type { Account, MailFolder } from "@/types/mail"
 
 // 목록을 드래그로 재정렬하기 위한 최소한의 네이티브 HTML5 DnD 헬퍼.
 // 리스트마다 독립적인 인스턴스를 써야 하므로 훅으로 분리했다.
@@ -105,8 +104,6 @@ interface AccountSidebarProps {
   folders: MailFolder[]
   selectedFolderId: string | null
   isFolderView: boolean
-  savedFilters: SavedFilter[]
-  activeFilterId: string | null
   onSelectAccount: (accountId: string | null) => void
   onGoHome: () => void
   onGoCleanup: () => void
@@ -121,9 +118,6 @@ interface AccountSidebarProps {
   onRenameFolder: (folderId: string, name: string, color: string) => Promise<{ ok: boolean; error?: string }>
   onDeleteFolder: (folderId: string) => void
   onReorderFolders: (order: string[]) => void
-  onApplyFilter: (filter: SavedFilter) => void
-  onCreateFilter: (input: Omit<SavedFilter, "id" | "createdAt">) => Promise<{ ok: boolean; error?: string }>
-  onDeleteFilter: (filterId: string) => void
   onReorderAccounts: (order: string[]) => void
   onLogout: () => void
   onCompose?: () => void
@@ -148,8 +142,6 @@ export function AccountSidebar({
   folders,
   selectedFolderId,
   isFolderView,
-  savedFilters,
-  activeFilterId,
   onSelectAccount,
   onGoHome,
   onGoCleanup,
@@ -164,9 +156,6 @@ export function AccountSidebar({
   onRenameFolder,
   onDeleteFolder,
   onReorderFolders,
-  onApplyFilter,
-  onCreateFilter,
-  onDeleteFilter,
   onReorderAccounts,
   onLogout,
   onCompose,
@@ -183,17 +172,9 @@ export function AccountSidebar({
   const [renameColor, setRenameColor] = useState("#8b5cf6")
   const [renameError, setRenameError] = useState<string | null>(null)
   const [isRenaming, setIsRenaming] = useState(false)
-  const [isCreateFilterOpen, setIsCreateFilterOpen] = useState(false)
-  const [filterName, setFilterName] = useState("")
-  const [filterAccountId, setFilterAccountId] = useState("all")
-  const [filterFrom, setFilterFrom] = useState("")
-  const [filterSubject, setFilterSubject] = useState("")
-  const [filterReadState, setFilterReadState] = useState<"all" | "unread" | "read">("all")
-  const [filterStarredOnly, setFilterStarredOnly] = useState(false)
-  const [filterHasAttachment, setFilterHasAttachment] = useState(false)
-  const [filterFolderId, setFilterFolderId] = useState("all")
-  const [createFilterError, setCreateFilterError] = useState<string | null>(null)
-  const [isCreatingFilter, setIsCreatingFilter] = useState(false)
+  const [mailMenuOpen, setMailMenuOpen] = useState(true)
+  const [accountsOpen, setAccountsOpen] = useState(true)
+  const [foldersOpen, setFoldersOpen] = useState(true)
   const accountDrag = useDragReorder(accounts.map((a) => a.id), onReorderAccounts)
   const folderDrag = useDragReorder(folders.map((f) => f.id), onReorderFolders)
   const hasRealAccounts = accounts.some((a) => a.id.includes(":"))
@@ -220,43 +201,6 @@ export function AccountSidebar({
     }
     setIsCreateFolderOpen(false)
     setNewFolderName("")
-  }
-
-  const resetFilterForm = () => {
-    setFilterName("")
-    setFilterAccountId("all")
-    setFilterFrom("")
-    setFilterSubject("")
-    setFilterReadState("all")
-    setFilterStarredOnly(false)
-    setFilterHasAttachment(false)
-    setFilterFolderId("all")
-    setCreateFilterError(null)
-  }
-
-  const handleCreateFilter = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const name = filterName.trim()
-    if (!name) return
-    setIsCreatingFilter(true)
-    setCreateFilterError(null)
-    const result = await onCreateFilter({
-      name,
-      accountId: filterAccountId === "all" ? null : filterAccountId,
-      from: filterFrom.trim(),
-      subject: filterSubject.trim(),
-      isUnread: filterReadState === "all" ? null : filterReadState === "unread",
-      isStarred: filterStarredOnly ? true : null,
-      hasAttachment: filterHasAttachment ? true : null,
-      folderId: filterFolderId === "all" ? null : filterFolderId,
-    })
-    setIsCreatingFilter(false)
-    if (!result.ok) {
-      setCreateFilterError(result.error ?? "필터 저장에 실패했습니다.")
-      return
-    }
-    setIsCreateFilterOpen(false)
-    resetFilterForm()
   }
 
   const handleRenameFolder = async (e: React.FormEvent) => {
@@ -298,7 +242,11 @@ export function AccountSidebar({
       </SidebarHeader>
       <SidebarContent className="px-2 py-2">
         <SidebarGroup>
-          <SidebarGroupContent>
+          <button type="button" onClick={() => setMailMenuOpen((open) => !open)} className="text-muted-foreground hover:text-foreground flex w-full items-center justify-between px-2 py-1 text-xs font-medium">
+            <span>메일</span>
+            <ChevronDown className={cn("size-3.5 transition-transform", !mailMenuOpen && "-rotate-90")} />
+          </button>
+          {mailMenuOpen && <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -317,15 +265,16 @@ export function AccountSidebar({
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={isCleanupView}
+                  isActive={isSnoozeView}
                   onClick={() => {
-                    onGoCleanup()
+                    onGoSnooze()
                     closeOnMobile()
                   }}
                 >
-                  <Sparkles />
-                  <span>정리하기</span>
+                  <AlarmClock />
+                  <span>스누즈</span>
                 </SidebarMenuButton>
+                {snoozeCount > 0 && <SidebarMenuBadge>{snoozeCount}</SidebarMenuBadge>}
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -337,30 +286,6 @@ export function AccountSidebar({
                 >
                   <Archive />
                   <span>보관함</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={isTrashView}
-                  onClick={() => {
-                    onGoTrash()
-                    closeOnMobile()
-                  }}
-                >
-                  <Trash2 />
-                  <span>휴지통</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={isMemoView}
-                  onClick={() => {
-                    onGoMemo()
-                    closeOnMobile()
-                  }}
-                >
-                  <StickyNote />
-                  <span>메모</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
@@ -378,19 +303,6 @@ export function AccountSidebar({
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={isSnoozeView}
-                  onClick={() => {
-                    onGoSnooze()
-                    closeOnMobile()
-                  }}
-                >
-                  <AlarmClock />
-                  <span>스누즈</span>
-                </SidebarMenuButton>
-                {snoozeCount > 0 && <SidebarMenuBadge>{snoozeCount}</SidebarMenuBadge>}
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
                   isActive={isMutedView}
                   onClick={() => {
                     onGoMuted()
@@ -401,12 +313,54 @@ export function AccountSidebar({
                   <span>뮤트</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem className="mt-2 border-t pt-2">
+                <SidebarMenuButton
+                  isActive={isCleanupView}
+                  onClick={() => {
+                    onGoCleanup()
+                    closeOnMobile()
+                  }}
+                >
+                  <Sparkles />
+                  <span>정리하기</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isMemoView}
+                  onClick={() => {
+                    onGoMemo()
+                    closeOnMobile()
+                  }}
+                >
+                  <StickyNote />
+                  <span>메모</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isTrashView}
+                  onClick={() => {
+                    onGoTrash()
+                    closeOnMobile()
+                  }}
+                >
+                  <Trash2 />
+                  <span>휴지통</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
-          </SidebarGroupContent>
+          </SidebarGroupContent>}
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel>계정</SidebarGroupLabel>
-          <SidebarGroupContent>
+          <button type="button" onClick={() => setAccountsOpen((open) => !open)} className="text-muted-foreground hover:text-foreground flex w-full items-center justify-between px-2 py-1 text-xs font-medium">
+            <span>계정</span>
+            <span className="flex items-center gap-2">
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">{accounts.length}</span>
+              <ChevronDown className={cn("size-3.5 transition-transform", !accountsOpen && "-rotate-90")} />
+            </span>
+          </button>
+          {accountsOpen && <SidebarGroupContent>
             <SidebarMenu>
               {accounts.map((account) => {
                 const unread = unreadCountByAccount[account.id] ?? 0
@@ -444,11 +398,17 @@ export function AccountSidebar({
                 )
               })}
             </SidebarMenu>
-          </SidebarGroupContent>
+          </SidebarGroupContent>}
         </SidebarGroup>
         <SidebarGroup>
           <div className="flex items-center justify-between px-2">
-            <SidebarGroupLabel className="px-0">분류 메일함</SidebarGroupLabel>
+            <button type="button" onClick={() => setFoldersOpen((open) => !open)} className="text-muted-foreground hover:text-foreground flex min-w-0 flex-1 items-center justify-between py-1 pr-1 text-xs font-medium">
+              <span>분류 메일함</span>
+              <span className="flex items-center gap-2">
+                {folders.length > 0 && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">{folders.length}</span>}
+                <ChevronDown className={cn("size-3.5 transition-transform", !foldersOpen && "-rotate-90")} />
+              </span>
+            </button>
             <button
               type="button"
               aria-label="새 분류 메일함"
@@ -462,7 +422,7 @@ export function AccountSidebar({
               <FolderPlus className="size-3.5" />
             </button>
           </div>
-          <SidebarGroupContent>
+          {foldersOpen && <SidebarGroupContent>
             <SidebarMenu>
               {folders.map((folder) => {
                 const unread = unreadCountByFolder[folder.id] ?? 0
@@ -527,53 +487,7 @@ export function AccountSidebar({
                 <p className="text-muted-foreground px-2 py-1 text-xs">분류 메일함이 없습니다.</p>
               )}
             </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <div className="flex items-center justify-between px-2">
-            <SidebarGroupLabel className="px-0">저장된 필터</SidebarGroupLabel>
-            <button
-              type="button"
-              aria-label="새 필터 저장"
-              onClick={() => {
-                resetFilterForm()
-                setIsCreateFilterOpen(true)
-              }}
-              className="text-muted-foreground hover:text-foreground rounded p-1"
-            >
-              <ListFilter className="size-3.5" />
-            </button>
-          </div>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {savedFilters.map((filter) => (
-                <SidebarMenuItem key={filter.id} className="group/item">
-                  <SidebarMenuButton
-                    isActive={activeFilterId === filter.id}
-                    onClick={() => {
-                      onApplyFilter(filter)
-                      closeOnMobile()
-                    }}
-                    title={filter.name}
-                  >
-                    <Filter className="size-4 shrink-0" />
-                    <span className="truncate">{filter.name}</span>
-                  </SidebarMenuButton>
-                  <button
-                    type="button"
-                    aria-label="필터 삭제"
-                    onClick={() => onDeleteFilter(filter.id)}
-                    className="text-muted-foreground hover:text-destructive absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-0 transition-opacity group-hover/item:opacity-100 focus-visible:opacity-100"
-                  >
-                    <Trash2 className="size-3.5" />
-                  </button>
-                </SidebarMenuItem>
-              ))}
-              {savedFilters.length === 0 && (
-                <p className="text-muted-foreground px-2 py-1 text-xs">저장된 필터가 없습니다.</p>
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
+          </SidebarGroupContent>}
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="flex-col gap-2 p-3">
@@ -716,6 +630,7 @@ export function AccountSidebar({
         </DialogContent>
       </Dialog>
 
+      {/* 필터 UI는 메일 검색창 옆 MailFilterMenu로 이동했다.
       <Dialog
         open={isCreateFilterOpen}
         onOpenChange={(open) => {
@@ -840,6 +755,7 @@ export function AccountSidebar({
           </form>
         </DialogContent>
       </Dialog>
+      */}
     </Sidebar>
   )
 }
