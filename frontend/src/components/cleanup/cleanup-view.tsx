@@ -32,7 +32,7 @@ interface CleanupViewProps {
     targetFolderId: string | null,
     category: MailCategory | null,
     applyToExisting?: boolean,
-  ) => Promise<{ ok: boolean; error?: string }>
+  ) => Promise<{ ok: boolean; error?: string; count?: number }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
   onDeleteRule: (ruleId: string) => void
   onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number }>
@@ -442,7 +442,7 @@ function AutoClassifyTab({
     targetFolderId: string | null,
     category: MailCategory | null,
     applyToExisting?: boolean,
-  ) => Promise<{ ok: boolean; error?: string }>
+  ) => Promise<{ ok: boolean; error?: string; count?: number }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
   onDeleteRule: (ruleId: string) => void
   onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number }>
@@ -487,8 +487,9 @@ function AutoClassifyTab({
 
   // "folder:<id>" 또는 "category:<name>" 형태로 인코딩해 하나의 select로 둘 다 고른다.
   const [destination, setDestination] = useState(`folder:${folderOptions[0].id}`)
-  const [applyToExisting, setApplyToExisting] = useState(false)
+  const [applyToExisting, setApplyToExisting] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [createSuccessMsg, setCreateSuccessMsg] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [applyingRuleId, setApplyingRuleId] = useState<string | null>(null)
   const [applyResult, setApplyResult] = useState<{ ruleId: string; message: string } | null>(null)
@@ -502,6 +503,7 @@ function AutoClassifyTab({
     if (!trimmed) return
     setIsCreating(true)
     setError(null)
+    setCreateSuccessMsg(null)
     const [kind, value] = destination.split(":") as ["folder" | "category", string]
     const result = await onCreateRule(
       field,
@@ -516,7 +518,14 @@ function AutoClassifyTab({
       return
     }
     setKeyword("")
-    setApplyToExisting(false)
+    setApplyToExisting(true)
+    if (kind === "folder" && applyToExisting) {
+      setCreateSuccessMsg(
+        result.count != null && result.count > 0
+          ? `규칙을 추가하고 기존 메일 ${result.count}개를 분류 메일함으로 옮겼어요.`
+          : "규칙을 추가했어요. 기존 메일 중 조건에 맞는 것은 없었습니다.",
+      )
+    }
   }
 
   const handleApplyToExisting = async (ruleId: string) => {
@@ -527,7 +536,9 @@ function AutoClassifyTab({
     setApplyResult({
       ruleId,
       message: result.ok
-        ? `지금 불러온 메일 중 ${result.count ?? 0}개를 옮겼어요.`
+        ? result.count != null && result.count > 0
+          ? `기존 메일 ${result.count}개를 분류 메일함으로 옮겼어요.`
+          : "조건에 맞는 기존 메일이 없어요."
         : (result.error ?? "적용에 실패했습니다."),
     })
   }
@@ -613,7 +624,7 @@ function AutoClassifyTab({
               onChange={(e) => setApplyToExisting(e.target.checked)}
               className="size-3.5"
             />
-            지금 불러온 메일 중에도 조건에 맞는 게 있으면 바로 이동
+            이미 받은 메일에도 바로 적용 (서버에서 최대 200개 검색)
           </label>
         )}
         {folders.length === 0 && (
@@ -623,6 +634,7 @@ function AutoClassifyTab({
           </p>
         )}
         {error && <p className="text-destructive mt-2 text-sm">{error}</p>}
+        {createSuccessMsg && <p className="text-green-600 dark:text-green-400 mt-2 text-sm">{createSuccessMsg}</p>}
       </div>
 
       <div className="overflow-hidden rounded-lg border">
@@ -673,7 +685,7 @@ function AutoClassifyTab({
                         className="h-7 text-xs"
                         disabled={applyingRuleId === rule.id}
                         onClick={() => handleApplyToExisting(rule.id)}
-                        title="지금 불러온 메일 중 조건에 맞는 것을 이 분류 메일함으로 옮깁니다"
+                        title="서버에서 기존 메일을 검색해 이 분류 메일함으로 옮깁니다 (최대 200개)"
                       >
                         {applyingRuleId === rule.id ? (
                           <Loader2 className="size-3.5 animate-spin" />

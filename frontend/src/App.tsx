@@ -951,11 +951,14 @@ function App() {
     targetFolderId: string | null,
     category: MailCategory | null,
     applyToExisting?: boolean,
-  ): Promise<{ ok: boolean; error?: string }> => {
+  ): Promise<{ ok: boolean; error?: string; count?: number }> => {
     const result = await apiCreateRule(field, keyword, targetFolderId, category)
     if (!result.ok) return { ok: false, error: result.error }
     setRules((prev) => [...prev, result.rule])
-    if (applyToExisting && targetFolderId) await applyRuleToExistingAndRefresh(result.rule.id, targetFolderId)
+    if (applyToExisting && targetFolderId) {
+      const applyResult = await applyRuleToExistingAndRefresh(result.rule.id, targetFolderId)
+      return { ok: true, count: applyResult.count }
+    }
     return { ok: true }
   }
 
