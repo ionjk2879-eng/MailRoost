@@ -41,10 +41,6 @@ const THEME_OPTIONS: { value: Theme; label: string; icon: React.ReactNode }[] = 
   { value: "system", label: "시스템", icon: <SunMoon className="size-3.5" /> },
 ]
 
-function ProviderMark({ label, tone }: { label: string; tone: string }) {
-  return <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white ${tone}`}>{label}</span>
-}
-
 export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onAccountDeleted }: SettingsSheetProps) {
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushLoading, setPushLoading] = useState(false)
@@ -152,13 +148,13 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
               <p className="mb-2 text-sm font-medium">새 계정 연결</p>
               <div className="grid grid-cols-2 gap-2">
                 <Button render={<a href={gmailLoginUrl} />} variant="outline" className="h-14 justify-start gap-3 px-3" nativeButton={false}>
-                  <ProviderMark label="G" tone="bg-red-500" />
+                  <ProviderIcon provider="gmail" className="size-9" />
                   <span className="text-left text-sm">Gmail</span>
                   <Plus className="text-muted-foreground ml-auto size-4" />
                 </Button>
-                <ConnectNaverDialog label="네이버 메일" onConnected={onAccountConnected} buttonClassName="h-14 w-full justify-start gap-3 px-3" icon={<ProviderMark label="N" tone="bg-green-500" />} />
-                <ConnectDaumDialog label="다음 메일" onConnected={onAccountConnected} buttonClassName="h-14 w-full justify-start gap-3 px-3" icon={<ProviderMark label="D" tone="bg-blue-500" />} />
-                <ConnectImapDialog label="기타 IMAP" onConnected={onAccountConnected} buttonClassName="h-14 w-full justify-start gap-3 px-3" icon={<ProviderMark label="IM" tone="bg-slate-600" />} />
+                <ConnectNaverDialog label="네이버 메일" onConnected={onAccountConnected} buttonClassName="h-14 w-full justify-start gap-3 px-3" icon={<ProviderIcon provider="naver" className="size-9" />} />
+                <ConnectDaumDialog label="다음 메일" onConnected={onAccountConnected} buttonClassName="h-14 w-full justify-start gap-3 px-3" icon={<ProviderIcon provider="daum" className="size-9" />} />
+                <ConnectImapDialog label="기타 IMAP" onConnected={onAccountConnected} buttonClassName="h-14 w-full justify-start gap-3 px-3" icon={<ProviderIcon provider="imap" className="size-9" />} />
               </div>
             </div>
             <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
