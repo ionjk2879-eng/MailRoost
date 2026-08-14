@@ -1,9 +1,9 @@
 import { Archive, Check, ChevronLeft, Clock, Download, Eye, Folder, FolderInput, Forward, Inbox, MailOpen, Paperclip, Reply, ReplyAll, Star, Trash2, VolumeX } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ProviderIcon } from "@/components/mail/provider-icon"
+import { SenderIcon } from "@/components/mail/sender-icon"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AttachmentPreview, isPreviewableAttachment } from "@/components/mail/attachment-preview"
@@ -334,9 +334,7 @@ export function MailDetail({
           </div>
         </div>
         <div className="flex min-w-0 items-center gap-3 border-t pt-4">
-          <Avatar className="size-9 shrink-0">
-            <AvatarFallback>{mail.fromName.slice(0, 1)}</AvatarFallback>
-          </Avatar>
+          <SenderIcon email={mail.fromEmail} senderName={mail.fromName} fallbackProvider={account?.provider} className="size-9" />
           <div className="flex min-w-0 flex-1 flex-col text-sm">
             <span className="truncate">
               <span className="font-medium">{mail.fromName}</span>{" "}
