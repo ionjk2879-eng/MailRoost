@@ -258,9 +258,10 @@ async function searchImapMails(
   record: DaumAccountRecord | ImapAccountRecord,
   query: string,
   maxResults: number,
+  field?: "from" | "subject",
 ): Promise<Mail[]> {
-  if (isDaum(record)) return daumSearchInbox(record.email, record.password, accountId, query, maxResults)
-  return imapSearchInbox({ host: record.host, port: record.port, email: record.email, password: record.password }, accountId, query, maxResults)
+  if (isDaum(record)) return daumSearchInbox(record.email, record.password, accountId, query, maxResults, field)
+  return imapSearchInbox({ host: record.host, port: record.port, email: record.email, password: record.password }, accountId, query, maxResults, field)
 }
 
 async function fetchImapTrash(
@@ -858,12 +859,13 @@ api.post("/rules/:id/apply", async (c) => {
           const mails = await gmailSearchMails(fresh.accessToken, accountId, `${op}:"${rule.keyword}"`, RULE_APPLY_SEARCH_LIMIT)
           return mails.filter(matchesRule)
         }
-        // IMAP 계열 검색은 보낸사람/제목/본문을 한꺼번에 OR로 찾으므로, 결과를 규칙 조건으로 다시 거른다.
+        // 규칙의 field(from/subject)를 넘겨 단일 기준 IMAP SEARCH를 쓴다.
+        // 삼중 OR+TEXT 구조는 네이버 등 일부 서버에서 결과가 비어있는 문제가 있다.
         if (record.provider === "naver") {
-          const mails = await naverSearchInbox(record.email, record.appPassword, accountId, rule.keyword, RULE_APPLY_SEARCH_LIMIT)
+          const mails = await naverSearchInbox(record.email, record.appPassword, accountId, rule.keyword, RULE_APPLY_SEARCH_LIMIT, rule.field)
           return mails.filter(matchesRule)
         }
-        const mails = await searchImapMails(accountId, record, rule.keyword, RULE_APPLY_SEARCH_LIMIT)
+        const mails = await searchImapMails(accountId, record, rule.keyword, RULE_APPLY_SEARCH_LIMIT, rule.field)
         return mails.filter(matchesRule)
       } catch (err) {
         console.error(`[rules-apply] account ${accountId} failed, skipping:`, err)

@@ -396,20 +396,25 @@ export async function imapSearchInbox(
   accountId: string,
   query: string,
   maxResults = 30,
+  field?: "from" | "subject",
 ): Promise<Mail[]> {
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
 
     const quoted = quoteImap(query)
+    // 규칙 적용처럼 검색 필드가 정해진 경우엔 단일 기준(FROM/SUBJECT)으로 검색한다.
+    // 삼중 OR+TEXT 구조는 일부 서버(특히 네이버)에서 BAD 응답을 유발하거나 결과가 비어있다.
+    // 범용 검색(field 미지정)은 기존대로 넓은 OR 검색을 쓴다.
+    const criterion =
+      field === "from" ? `FROM ${quoted}` :
+      field === "subject" ? `SUBJECT ${quoted}` :
+      `OR FROM ${quoted} OR SUBJECT ${quoted} TEXT ${quoted}`
+
     // CHARSET UTF-8을 지원하지 않는 서버는 BAD 응답을 돌려준다 — 그 경우 CHARSET 없이 재시도한다.
-    let searchResult = await client.command(
-      `UID SEARCH CHARSET UTF-8 OR FROM ${quoted} OR SUBJECT ${quoted} TEXT ${quoted}`,
-    )
+    let searchResult = await client.command(`UID SEARCH CHARSET UTF-8 ${criterion}`)
     if (!searchResult.ok) {
-      searchResult = await client.command(
-        `UID SEARCH OR FROM ${quoted} OR SUBJECT ${quoted} TEXT ${quoted}`,
-      )
+      searchResult = await client.command(`UID SEARCH ${criterion}`)
     }
     if (!searchResult.ok) return []
     const line = searchResult.lines.find((l) => /^\*\s+SEARCH/i.test(l))
@@ -715,8 +720,9 @@ export async function naverSearchInbox(
   accountId: string,
   query: string,
   maxResults = 30,
+  field?: "from" | "subject",
 ): Promise<Mail[]> {
-  return imapSearchInbox(naverConfig(email, appPassword), accountId, query, maxResults)
+  return imapSearchInbox(naverConfig(email, appPassword), accountId, query, maxResults, field)
 }
 
 export async function naverMarkAsRead(email: string, appPassword: string, uid: string): Promise<void> {
@@ -825,8 +831,9 @@ export async function daumSearchInbox(
   accountId: string,
   query: string,
   maxResults = 30,
+  field?: "from" | "subject",
 ): Promise<Mail[]> {
-  return imapSearchInbox(daumConfig(email, password), accountId, query, maxResults)
+  return imapSearchInbox(daumConfig(email, password), accountId, query, maxResults, field)
 }
 
 export async function daumMarkAsRead(email: string, password: string, uid: string): Promise<void> {
