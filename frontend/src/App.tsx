@@ -146,6 +146,7 @@ function App() {
   const [view, setView] = useState<AppView>("home")
   const historyInitializedRef = useRef(false)
   const restoringHistoryRef = useRef(false)
+  const historyWrittenSynchronouslyRef = useRef(false)
   const [trashMails, setTrashMails] = useState<Mail[]>([])
   const [trashCursor, setTrashCursor] = useState<string | null>(null)
   const [isTrashLoading, setIsTrashLoading] = useState(false)
@@ -445,6 +446,26 @@ function App() {
     : null
 
   const handleSelectMail = (mailId: string | null) => {
+    if (currentUser && mailId && mailId !== selectedMailId) {
+      const listState: MailRoostHistoryState = {
+        mailRoost: true,
+        view,
+        accountId: selectedAccountId,
+        folderId: selectedFolderId,
+        mailId: selectedMailId,
+      }
+      const detailState: MailRoostHistoryState = { ...listState, mailId }
+
+      if (!historyInitializedRef.current) {
+        window.history.replaceState(listState, "")
+        historyInitializedRef.current = true
+      }
+      // 목록에서 상세를 처음 열 때만 새 기록을 만든다. 상세가 열린 채 다른
+      // 메일을 고르면 현재 상세 기록만 교체해 첫 뒤로가기가 항상 목록으로 간다.
+      if (selectedMailId === null) window.history.pushState(detailState, "")
+      else window.history.replaceState(detailState, "")
+      historyWrittenSynchronouslyRef.current = true
+    }
     setComposeState(null)
     setSelectedMailId(mailId)
     if (!mailId) return
@@ -922,6 +943,10 @@ function App() {
     }
     if (restoringHistoryRef.current) {
       restoringHistoryRef.current = false
+      return
+    }
+    if (historyWrittenSynchronouslyRef.current) {
+      historyWrittenSynchronouslyRef.current = false
       return
     }
     window.history.pushState(state, "")
