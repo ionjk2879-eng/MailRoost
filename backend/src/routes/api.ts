@@ -1917,16 +1917,25 @@ api.get("/snooze", async (c) => {
   const session = await readSession(c.env, sessionId)
   const accountMap = await resolveAccounts(c.env, session)
 
-  // 만료된 항목 정리 후 반환
-  const active = await mutateMailOrg(c.env, sessionId, session, (org) => {
-    const now = Date.now()
-    const next: Record<string, number> = {}
-    for (const [k, until] of Object.entries(org.snoozed ?? {})) {
-      if (until > now) next[k] = until
-    }
-    org.snoozed = next
-    return next
-  })
+  // 만료된 항목이 있을 때만 KV에 write한다
+  const now = Date.now()
+  const org = await resolveMailOrg(c.env, session)
+  const snoozed = org.snoozed ?? {}
+  const hasExpired = Object.values(snoozed).some((until) => until <= now)
+
+  let active: Record<string, number>
+  if (hasExpired) {
+    active = await mutateMailOrg(c.env, sessionId, session, (o) => {
+      const next: Record<string, number> = {}
+      for (const [k, until] of Object.entries(o.snoozed ?? {})) {
+        if (until > now) next[k] = until
+      }
+      o.snoozed = next
+      return next
+    })
+  } else {
+    active = snoozed
+  }
 
   // 내부 키 → API 키 변환
   const result: Record<string, number> = {}
