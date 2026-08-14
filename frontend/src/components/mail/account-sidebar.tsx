@@ -2,6 +2,7 @@ import { AlarmClock, Archive, FileEdit, Filter, Folder, FolderPlus, Inbox, ListF
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
+import { ProviderIcon } from "@/components/mail/provider-icon"
 import {
   Dialog,
   DialogClose,
@@ -435,9 +436,7 @@ export function AccountSidebar({
                       }}
                       title={account.email}
                     >
-                      <span
-                        className={`size-2 shrink-0 rounded-full ${account.color}`}
-                      />
+                      <ProviderIcon provider={account.provider} className="size-6 rounded-md" label={account.email} />
                       <span className="truncate">{displayText}</span>
                     </SidebarMenuButton>
                     {unread > 0 && <SidebarMenuBadge>{unread}</SidebarMenuBadge>}

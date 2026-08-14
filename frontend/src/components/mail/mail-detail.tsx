@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ProviderIcon } from "@/components/mail/provider-icon"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AttachmentPreview, isPreviewableAttachment } from "@/components/mail/attachment-preview"
@@ -346,8 +347,8 @@ export function MailDetail({
             </span>
           </div>
           {account && (
-            <Badge variant="secondary" className="max-w-[45%] shrink-0 gap-1.5">
-              <span className={`size-2 shrink-0 rounded-full ${account.color}`} />
+            <Badge variant="secondary" className="max-w-[45%] shrink-0 gap-1.5 py-1 pr-2 pl-1">
+              <ProviderIcon provider={account.provider} className="size-5 rounded" label={account.email} />
               <span className="truncate">
                 {account.provider === "gmail" || account.provider === "naver" || account.provider === "daum"
                   ? account.email

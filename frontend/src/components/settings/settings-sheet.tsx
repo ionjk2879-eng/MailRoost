@@ -5,6 +5,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { ConnectDaumDialog } from "@/components/mail/connect-daum-dialog"
 import { ConnectImapDialog } from "@/components/mail/connect-imap-dialog"
 import { ConnectNaverDialog } from "@/components/mail/connect-naver-dialog"
+import { ProviderIcon } from "@/components/mail/provider-icon"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { deleteAccount, gmailLoginUrl } from "@/lib/api"
 import type { Account } from "@/types/mail"
@@ -132,7 +133,7 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
                 </div>
               ) : connectedAccounts.map((account) => (
                 <div key={account.id} className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0">
-                  <span className={`size-2.5 shrink-0 rounded-full ${account.color}`} />
+                  <ProviderIcon provider={account.provider} className="size-9" label={account.email} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{account.label}</p>
                     <p className="text-muted-foreground truncate text-xs">{account.email}</p>

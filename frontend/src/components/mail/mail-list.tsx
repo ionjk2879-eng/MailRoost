@@ -1,6 +1,7 @@
 import { Archive, Check, ChevronDown, Folder, FolderInput, Inbox, Loader2, MailOpen, Minus, Star, Trash2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { ProviderIcon } from "@/components/mail/provider-icon"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Account, Mail, MailFolder } from "@/types/mail"
 import { cn } from "@/lib/utils"
@@ -356,16 +357,7 @@ export function MailList({
                     </button>
                   </div>
 
-                  {account && (
-                    <span
-                      className={cn("size-2 shrink-0 rounded-full", account.color)}
-                      title={
-                        account.provider === "gmail" || account.provider === "naver" || account.provider === "daum"
-                          ? account.email
-                          : account.label
-                      }
-                    />
-                  )}
+                  {account && <ProviderIcon provider={account.provider} className="size-6 rounded-md" label={account.email} />}
                   <span className={cn("min-w-0 flex-1 truncate text-[13px]", !mail.isRead && "font-semibold text-foreground")}>
                     {mail.fromName}
                   </span>
