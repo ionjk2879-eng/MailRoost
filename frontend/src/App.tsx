@@ -85,6 +85,16 @@ import { fetchSnoozed, snoozeKey, snoozeMail, unsnoozeMail, fetchMuted, markAllM
 const SNAP_SIZE = 45
 const SNAP_ZONE = 3
 
+type AppView = "home" | "inbox" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts" | "snoozed" | "muted"
+
+interface MailRoostHistoryState {
+  mailRoost: true
+  view: AppView
+  accountId: string | null
+  folderId: string | null
+  mailId: string | null
+}
+
 function useSnapPanel() {
   const groupRef = useRef<GroupImperativeHandle | null>(null)
   const onLayoutChange = useCallback((layout: Layout) => {
@@ -133,7 +143,9 @@ function App() {
   const folderSnap = useSnapPanel()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [view, setView] = useState<"home" | "inbox" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts" | "snoozed" | "muted">("home")
+  const [view, setView] = useState<AppView>("home")
+  const historyInitializedRef = useRef(false)
+  const restoringHistoryRef = useRef(false)
   const [trashMails, setTrashMails] = useState<Mail[]>([])
   const [trashCursor, setTrashCursor] = useState<string | null>(null)
   const [isTrashLoading, setIsTrashLoading] = useState(false)
@@ -886,6 +898,56 @@ function App() {
     setComposeState(null)
     loadFolderMails(ARCHIVE_FOLDER_ID)
   }
+
+  // 앱 내부 화면 전환을 브라우저 히스토리와 동기화한다. 데스크톱 PWA에서도
+  // 마우스 사이드 버튼과 Alt+Left/Alt+Right가 일반 웹페이지처럼 동작한다.
+  useEffect(() => {
+    if (!currentUser) {
+      historyInitializedRef.current = false
+      return
+    }
+
+    const state: MailRoostHistoryState = {
+      mailRoost: true,
+      view,
+      accountId: selectedAccountId,
+      folderId: selectedFolderId,
+      mailId: selectedMailId,
+    }
+
+    if (!historyInitializedRef.current) {
+      window.history.replaceState(state, "")
+      historyInitializedRef.current = true
+      return
+    }
+    if (restoringHistoryRef.current) {
+      restoringHistoryRef.current = false
+      return
+    }
+    window.history.pushState(state, "")
+  }, [currentUser, view, selectedAccountId, selectedFolderId, selectedMailId])
+
+  useEffect(() => {
+    if (!currentUser) return
+    const restore = (event: PopStateEvent) => {
+      const state = event.state as MailRoostHistoryState | null
+      if (!state?.mailRoost) return
+      restoringHistoryRef.current = true
+      setView(state.view)
+      setSelectedAccountId(state.accountId)
+      setSelectedFolderId(state.folderId)
+      setSelectedMailId(state.mailId)
+      setFocusedMailId(null)
+      setCheckedMailIds(new Set())
+      setComposeState(null)
+      setSearchQuery("")
+      setActiveFilter(null)
+      if ((state.view === "folder" || state.view === "archive") && state.folderId) loadFolderMails(state.folderId)
+      if (state.view === "trash") loadTrash()
+    }
+    window.addEventListener("popstate", restore)
+    return () => window.removeEventListener("popstate", restore)
+  }, [currentUser])
 
   const handleCreateFolder = async (name: string): Promise<{ ok: boolean; error?: string }> => {
     const result = await apiCreateFolder(name)
