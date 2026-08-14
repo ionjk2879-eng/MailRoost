@@ -11,8 +11,7 @@ import { CleanupView, SHORTCUTS } from "@/components/cleanup/cleanup-view"
 import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
 import { DraftsView } from "@/components/drafts/drafts-view"
-import { SnoozedView } from "@/components/snoozed/snoozed-view"
-import { MutedView } from "@/components/muted/muted-view"
+import { SnoozeMuteView } from "@/components/snoozed/snooze-mute-view"
 import { NotificationBell } from "@/components/notifications/notification-bell"
 import { SettingsSheet } from "@/components/settings/settings-sheet"
 import { Button } from "@/components/ui/button"
@@ -1813,19 +1812,15 @@ function App() {
               onDeleteDraft={handleDeleteDraft}
             />
           )
-        ) : view === "snoozed" ? (
-          <SnoozedView
+        ) : view === "snoozed" || view === "muted" ? (
+          <SnoozeMuteView
+            activeTab={view}
             mails={allMails}
             accounts={accounts}
             snoozed={snoozed}
-            onUnsnooze={handleUnsnooze}
-            onSelectMail={handleSnoozedMailSelect}
-          />
-        ) : view === "muted" ? (
-          <MutedView
-            mails={allMails}
-            accounts={accounts}
             muted={muted}
+            onTabChange={(tab) => tab === "snoozed" ? goToSnooze() : goToMuted()}
+            onUnsnooze={handleUnsnooze}
             onUnmute={(email) => handleMuteSender(email)}
             onSelectMail={handleSnoozedMailSelect}
           />
