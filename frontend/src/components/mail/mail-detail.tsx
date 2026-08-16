@@ -98,12 +98,18 @@ function buildIframeDoc(mail: Mail): string {
       const url = inlineImages.get(contentId)
       return url ? `${attribute}=${quote}${url}${quote}` : match
     },
-  ).replace(/<img\b(?![^>]*\breferrerpolicy=)/gi, '<img referrerpolicy="no-referrer" loading="lazy"')
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light"><style>
+  )
+    .replace(/<img\b(?![^>]*\breferrerpolicy=)/gi, '<img referrerpolicy="no-referrer" loading="lazy"')
+    .replace(/<a\b([^>]*)>/gi, (_match, attributes: string) => {
+      const withoutTarget = attributes.replace(/\s+target\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+      const withoutRel = withoutTarget.replace(/\s+rel\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+      return `<a${withoutRel} target="_blank" rel="noopener noreferrer">`
+    })
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light"><base target="_blank"><style>
 body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;word-wrap:break-word;overflow-wrap:break-word;margin:0;padding:16px;color:#1a1a1a;background:#fff}
 img{max-width:100%;height:auto}
 table{max-width:100%;border-collapse:collapse}
-a{color:#2563eb}
+a{color:#2563eb;text-decoration:underline;cursor:pointer}
 </style></head><body>${bodyHtml}</body></html>`
 }
 
