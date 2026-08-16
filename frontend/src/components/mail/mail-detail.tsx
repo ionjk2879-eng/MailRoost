@@ -113,6 +113,19 @@ a{color:#2563eb;text-decoration:underline;cursor:pointer}
 </style></head><body>${bodyHtml}</body></html>`
 }
 
+function LinkifiedText({ text }: { text: string }) {
+  const urlPattern = /(https?:\/\/[^\s]+|mailto:[^\s]+|www\.[^\s]+)/gi
+  return <p className="max-w-3xl text-[15px] leading-7 whitespace-pre-wrap">
+    {text.split(urlPattern).map((part, index) => {
+      if (!/^(https?:\/\/|mailto:|www\.)/i.test(part)) return part
+      const trailing = part.match(/[),.!?;:]+$/)?.[0] ?? ""
+      const rawUrl = trailing ? part.slice(0, -trailing.length) : part
+      const href = rawUrl.startsWith("www.") ? `https://${rawUrl}` : rawUrl
+      return <span key={`${part}-${index}`}><a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">{rawUrl}</a>{trailing}</span>
+    })}
+  </p>
+}
+
 export function MailDetail({
   mail,
   accounts,
@@ -425,12 +438,12 @@ export function MailDetail({
             key={mail.id}
             title={mail.subject}
             srcDoc={buildIframeDoc(mail)}
-            sandbox="allow-popups allow-popups-to-escape-sandbox"
+            sandbox="allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
             className="h-full w-full border-0"
           />
         ) : (
           <div className="h-full overflow-auto px-8 py-7">
-            <p className="max-w-3xl text-[15px] leading-7 whitespace-pre-wrap">{mail.body}</p>
+            <LinkifiedText text={mail.body} />
           </div>
         )}
       </div>
