@@ -44,6 +44,12 @@ interface MailRoostHistoryState {
   mailId: string | null
 }
 
+function readInitialHistoryState(): MailRoostHistoryState | null {
+  const state = window.history.state as Partial<MailRoostHistoryState> | null
+  if (!state?.mailRoost || typeof state.view !== "string") return null
+  return state as MailRoostHistoryState
+}
+
 function useSnapPanel() {
   const groupRef = useRef<GroupImperativeHandle | null>(null)
   const onLayoutChange = useCallback((layout: Layout) => {
@@ -73,16 +79,17 @@ function matchesSavedFilter(mail: Mail, filter: SavedFilter): boolean {
 }
 
 function App() {
+  const initialHistoryStateRef = useRef<MailRoostHistoryState | null>(readInitialHistoryState())
   const isMobile = useIsMobile()
   const mailSnap = useSnapPanel()
   const folderSnap = useSnapPanel()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [view, setView] = useState<AppView>("home")
+  const [view, setView] = useState<AppView>(() => initialHistoryStateRef.current?.view ?? "home")
   const historyInitializedRef = useRef(false)
   const restoringHistoryRef = useRef(false)
   const historyWrittenSynchronouslyRef = useRef(false)
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null)
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(() => initialHistoryStateRef.current?.folderId ?? null)
   const pendingSendTimers = useRef<Record<string, number>>({})
   const [composeState, setComposeState] = useState<{
     accountId?: string
@@ -95,7 +102,7 @@ function App() {
     forwardedAttachments?: ForwardedAttachmentRef[]
     draftId?: string
   } | null>(null)
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(() => initialHistoryStateRef.current?.accountId ?? null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -155,7 +162,15 @@ function App() {
       .then((user) => {
         setCurrentUser(user)
         if (user) {
-          return Promise.all([workspace.loadAccountsAndMails(), mailOrg.loadInitialData()])
+          const saved = initialHistoryStateRef.current
+          if (saved?.mailId) workspace.setSelectedMailId(saved.mailId)
+          const loads: Promise<unknown>[] = [workspace.loadAccountsAndMails(), mailOrg.loadInitialData()]
+          if ((saved?.view === "folder" || saved?.view === "archive") && saved.folderId) {
+            loads.push(workspace.loadFolderMails(saved.folderId))
+          } else if (saved?.view === "trash") {
+            loads.push(workspace.loadTrash())
+          }
+          return Promise.all(loads)
         }
       })
       .finally(() => setIsBootstrapping(false))
@@ -742,7 +757,6 @@ function App() {
       <div className="min-h-0 flex-1">
         <MailList
           mails={visibleMails}
-          accounts={accounts}
           selectedMailId={workspace.selectedMailId}
           focusedMailId={workspace.focusedMailId}
           onSelectMail={handleSelectMail}
@@ -812,7 +826,6 @@ function App() {
   const folderListPane = (
     <MailList
       mails={workspace.folderMails}
-      accounts={accounts}
       selectedMailId={workspace.selectedMailId}
       focusedMailId={workspace.focusedMailId}
       onSelectMail={handleSelectMail}

@@ -349,7 +349,7 @@ export function MailDetail({
           </div>
         </div>
         <div className="flex min-w-0 items-center gap-3 border-t pt-4">
-          <SenderIcon email={mail.fromEmail} senderName={mail.fromName} fallbackProvider={account?.provider} className="size-9" />
+          <SenderIcon email={mail.fromEmail} senderName={mail.fromName} className="size-9" />
           <div className="flex min-w-0 flex-1 flex-col text-sm">
             <span className="truncate">
               <span className="font-medium">{mail.fromName}</span>{" "}

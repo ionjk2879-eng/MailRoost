@@ -3,14 +3,13 @@ import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { SenderIcon } from "@/components/mail/sender-icon"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { Account, Mail, MailFolder } from "@/types/mail"
+import type { Mail, MailFolder } from "@/types/mail"
 import { cn } from "@/lib/utils"
 
 type SelectFilter = "all" | "none" | "read" | "unread" | "starred" | "unstarred"
 
 interface MailListProps {
   mails: Mail[]
-  accounts: Account[]
   selectedMailId: string | null
   onSelectMail: (mailId: string) => void
   // J/K 키보드 탐색 포커스 (열려있는 메일과는 별개)
@@ -60,7 +59,6 @@ const FILTER_OPTIONS: { value: SelectFilter; label: string }[] = [
 
 export function MailList({
   mails,
-  accounts,
   selectedMailId,
   onSelectMail,
   focusedMailId,
@@ -278,7 +276,6 @@ export function MailList({
             <p className="text-muted-foreground p-6 text-sm">메일이 없습니다.</p>
           )}
           {mails.map((mail, index) => {
-            const account = accounts.find((a) => a.id === mail.accountId)
             const isChecked = checkedIds.has(mail.id)
 
             // shift 범위선택이면 true를 반환해 호출부가 별도 처리를 건너뛰게 한다.
@@ -351,7 +348,7 @@ export function MailList({
                     </button>
                   </div>
 
-                  <SenderIcon email={mail.fromEmail} senderName={mail.fromName} fallbackProvider={account?.provider} className="size-6 rounded-md" />
+                  <SenderIcon email={mail.fromEmail} senderName={mail.fromName} className="size-6 rounded-md" />
                   <span className={cn("min-w-0 flex-1 truncate text-[13px]", !mail.isRead && "font-semibold text-foreground")}>
                     {mail.fromName}
                   </span>

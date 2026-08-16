@@ -1,12 +1,9 @@
-import { useState } from "react"
-import { ProviderIcon } from "@/components/mail/provider-icon"
+import { useEffect, useState } from "react"
 import { cn } from "@/lib/utils"
-import type { Provider } from "@/types/mail"
 
 interface SenderIconProps {
   email: string
   senderName: string
-  fallbackProvider?: Provider
   className?: string
 }
 
@@ -15,9 +12,13 @@ function domainFromEmail(email: string): string | null {
   return domain && domain.includes(".") ? domain : null
 }
 
-export function SenderIcon({ email, senderName, fallbackProvider, className }: SenderIconProps) {
+export function SenderIcon({ email, senderName, className }: SenderIconProps) {
   const [failed, setFailed] = useState(false)
   const domain = domainFromEmail(email)
+
+  useEffect(() => {
+    setFailed(false)
+  }, [domain])
 
   if (domain && !failed) {
     const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`
@@ -27,8 +28,6 @@ export function SenderIcon({ email, senderName, fallbackProvider, className }: S
       </span>
     )
   }
-
-  if (fallbackProvider) return <ProviderIcon provider={fallbackProvider} className={className} label={email} />
 
   return (
     <span className={cn("bg-muted text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-lg text-xs font-semibold", className)}>
