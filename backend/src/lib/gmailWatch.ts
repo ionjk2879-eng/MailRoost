@@ -37,7 +37,21 @@ export async function registerOrRenewWatch(env: Env, userId: string, accountId: 
 const RENEW_THRESHOLD_MS = 24 * 60 * 60 * 1000 // 만료 24시간 이내면 갱신
 const ACCOUNTS_PREFIX = "user:accounts:"
 
-// 전체 Gmail 계정을 순회하며 만료 임박한 것만 갱신한다 (scheduled 크론에서 호출).
+function isExpiringSoon(record: GmailAccountRecord): boolean {
+  return (record.watchExpiration ?? 0) - Date.now() < RENEW_THRESHOLD_MS
+}
+
+// Cloudflare 무료 플랜은 계정 전체에서 크론 트리거를 5개까지만 허용하는데, 이 계정은 이미 다른
+// 프로젝트들의 크론으로 한도가 차 있어 전용 크론을 못 걸었다(2026-08-16 배포 실패 참고). 그래서
+// 대신 이미 20초마다 자연스럽게 오는 GET /api/mail 폴링 요청에 편승해서 만료 임박한 계정만
+// 갱신한다 — 별도 크론 없이 완전히 무료로 해결된다. 응답을 늦추지 않도록 호출부에서
+// executionCtx.waitUntil로 감싸서 fire-and-forget으로 부를 것.
+export async function renewIfExpiringSoon(env: Env, userId: string, accountId: string, record: GmailAccountRecord): Promise<void> {
+  if (isExpiringSoon(record)) await registerOrRenewWatch(env, userId, accountId, record)
+}
+
+// 전체 Gmail 계정을 순회하며 만료 임박한 것만 갱신한다. 크론 트리거 없이도 안전망으로 남겨둔다 —
+// 필요해지면(예: 크론 슬롯이 다시 확보되면) 다시 스케줄링해서 쓸 수 있다.
 export async function renewExpiringWatches(env: Env): Promise<void> {
   if (!env.GMAIL_PUBSUB_TOPIC) return
   let cursor: string | undefined
@@ -49,10 +63,7 @@ export async function renewExpiringWatches(env: Env): Promise<void> {
         const accounts = await getUserAccounts(env, userId)
         for (const [accountId, record] of Object.entries(accounts)) {
           if (record.provider !== "gmail") continue
-          const expiresAt = record.watchExpiration ?? 0
-          if (expiresAt - Date.now() < RENEW_THRESHOLD_MS) {
-            await registerOrRenewWatch(env, userId, accountId, record)
-          }
+          await renewIfExpiringSoon(env, userId, accountId, record)
         }
       } catch (err) {
         console.error(`[gmail-watch] failed to process accounts for user ${userId}:`, err)

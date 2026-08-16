@@ -7,7 +7,6 @@ import daum from "./routes/daum"
 import imapGeneric from "./routes/imap-generic"
 import api from "./routes/api"
 import webhooks from "./routes/webhooks"
-import { renewExpiringWatches } from "./lib/gmailWatch"
 
 // Workers는 Durable Object 클래스를 wrangler.jsonc의 main이 가리키는 엔트리 모듈에서
 // export해야 한다 (바인딩만으로는 부족함).
@@ -64,11 +63,9 @@ app.onError((err, c) => {
   return c.json({ error: message }, 500)
 })
 
-export default {
-  fetch: app.fetch,
-  // 매일 새벽 3시(UTC) 실행. Gmail watch는 최대 7일까지만 유효하므로 만료 임박한 것들을 갱신한다
-  // (lib/gmailWatch.ts의 renewExpiringWatches, wrangler.jsonc의 triggers.crons 참고).
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(renewExpiringWatches(env))
-  },
-} satisfies ExportedHandler<Env>
+// 전용 크론 트리거(하루 1번 실행)를 쓰려 했으나, 이 Cloudflare 계정은 무료 플랜 크론 5개 한도를
+// 다른 프로젝트들로 이미 다 써서 배포가 실패했다(2026-08-16). 대신 routes/mail.ts의 GET /mail이
+// 이미 20초 폴링으로 자주 호출되는 걸 이용해, 그 요청 안에서 만료 임박한 계정만 갱신한다
+// (lib/gmailWatch.ts의 renewIfExpiringSoon). renewExpiringWatches(전체 순회 버전)는 나중에
+// 크론 슬롯을 다시 확보하면 그대로 재사용할 수 있게 gmailWatch.ts에 남겨뒀다.
+export default { fetch: app.fetch } satisfies ExportedHandler<Env>

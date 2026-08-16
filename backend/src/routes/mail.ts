@@ -13,6 +13,7 @@ import {
   trashMail as gmailTrash,
   trashMailBulk as gmailTrashBulk,
 } from "../lib/gmail"
+import { renewIfExpiringSoon } from "../lib/gmailWatch"
 import {
   daumDeleteMail,
   daumDeleteMailBulk,
@@ -157,6 +158,9 @@ mail.get("/mail", async (c) => {
 
         const fresh = await ensureFreshToken(c.env, record)
         const updatedRecord = fresh.accessToken !== record.accessToken ? fresh : undefined
+        // 전용 크론 없이, 이미 도는 폴링 요청에 편승해 만료 임박한 watch만 갱신한다
+        // (lib/gmailWatch.ts의 renewIfExpiringSoon 주석 참고). 응답을 늦추지 않도록 fire-and-forget.
+        if (session.userId) c.executionCtx.waitUntil(renewIfExpiringSoon(c.env, session.userId, accountId, fresh))
         const pageToken = cursorState.pageToken
         const { mails, nextPageToken } = await listInboxMails(fresh.accessToken, accountId, GMAIL_PAGE, pageToken)
         return { accountId, mails, cursor: nextPageToken ? { pageToken: nextPageToken } : undefined, updatedRecord, failed: false as const }
