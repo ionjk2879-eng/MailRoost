@@ -230,6 +230,7 @@ export interface Draft {
 
 export interface StoredSession {
   userId?: string
+  loginEmail?: string
   accounts: Record<string, ConnectedAccountRecord>
   mailOrg?: MailOrgState
   memos?: MemoItem[]

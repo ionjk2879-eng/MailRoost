@@ -12,23 +12,31 @@ function domainFromEmail(email: string): string | null {
   return domain && domain.includes(".") ? domain : null
 }
 
+function brandDomainFromSender(domain: string | null): string | null {
+  if (!domain) return null
+  if (domain === "patreon.com" || domain.endsWith(".patreon.com")) return "patreon.com"
+  return domain
+}
+
 export function SenderIcon({ email, senderName, className }: SenderIconProps) {
   const [sourceIndex, setSourceIndex] = useState(0)
   const domain = domainFromEmail(email)
+  const brandDomain = brandDomainFromSender(domain)
 
   useEffect(() => {
     setSourceIndex(0)
-  }, [domain])
+  }, [brandDomain])
 
-  const sources = domain ? [
-    `https://www.google.com/s2/favicons?domain_url=${encodeURIComponent(`https://${domain}`)}&sz=128`,
-    `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`,
-    `https://${domain}/favicon.ico`,
+  const sources = brandDomain ? [
+    ...(brandDomain === "patreon.com" ? ["https://www.patreon.com/favicon.ico"] : []),
+    `https://www.google.com/s2/favicons?domain_url=${encodeURIComponent(`https://${brandDomain}`)}&sz=128`,
+    `https://icons.duckduckgo.com/ip3/${encodeURIComponent(brandDomain)}.ico`,
+    `https://${brandDomain}/favicon.ico`,
   ] : []
 
-  if (domain && sourceIndex < sources.length) {
+  if (brandDomain && sourceIndex < sources.length) {
     return (
-      <span title={domain} className={cn("flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-white", className)}>
+      <span title={brandDomain} className={cn("flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-white", className)}>
         <img src={sources[sourceIndex]} alt="" className="size-[72%] object-contain" loading="lazy" referrerPolicy="no-referrer" onError={() => setSourceIndex((index) => index + 1)} />
       </span>
     )

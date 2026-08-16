@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import type { Account, Env } from "../types"
-import { getUserById, persistAccounts, resolveAccounts } from "../lib/auth"
+import { getUserAccounts, getUserById, linkUserEmail, persistAccounts, resolveAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import { applyOrder, mutateMailOrg, resolveMailOrg } from "../lib/mailOrg"
 import { readSession, SESSION_COOKIE } from "../lib/session"
@@ -21,7 +21,13 @@ accounts.get("/me", async (c) => {
   if (!session.userId) return c.json(null)
   const user = await getUserById(c.env, session.userId)
   if (!user) return c.json(null)
-  return c.json({ id: user.id, email: user.email })
+  const accountMap = await getUserAccounts(c.env, user.id)
+  await Promise.all(
+    Object.values(accountMap)
+      .filter((account) => account.provider === "gmail")
+      .map((account) => linkUserEmail(c.env, user.id, account.email)),
+  )
+  return c.json({ id: user.id, email: session.loginEmail ?? user.email })
 })
 
 accounts.get("/accounts", async (c) => {

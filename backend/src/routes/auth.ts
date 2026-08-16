@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { deleteCookie, setCookie } from "hono/cookie"
 import type { Env } from "../types"
 import { isHttps, readRawCookie } from "../lib/cookies"
-import { getUserAccounts, getUserByEmail, saveUser, saveUserAccounts } from "../lib/auth"
+import { getUserAccounts, getUserByEmail, linkUserEmail, saveUser, saveUserAccounts } from "../lib/auth"
 import { buildAuthUrl, exchangeCodeForTokens, fetchProfile } from "../lib/gmail"
 import { registerOrRenewWatch } from "../lib/gmailWatch"
 import { createSessionId, deleteSession, readSession, SESSION_COOKIE, writeSession } from "../lib/session"
@@ -93,13 +93,14 @@ auth.get("/gmail/callback", async (c) => {
     // 세션"으로 승격하지 않고 새 sessionId를 발급해 로그인 상태를 그쪽에 쓴다. 로그인 전
     // sessionId를 제3자가 미리 심어뒀더라도(쿠키 주입 등) 로그인 후에는 무효가 된다.
     sessionId = createSessionId()
-    await writeSession(c.env, sessionId, { userId, accounts: {} })
+    await writeSession(c.env, sessionId, { userId, loginEmail: profile.emailAddress, accounts: {} })
     if (preLoginSessionId) await deleteSession(c.env, preLoginSessionId)
   }
 
   const accounts = await getUserAccounts(c.env, userId)
   accounts[accountId] = gmailRecord
   await saveUserAccounts(c.env, userId, accounts)
+  await linkUserEmail(c.env, userId, profile.emailAddress)
 
   // Gmail push notification 구독 등록. GMAIL_PUBSUB_TOPIC이 아직 설정 안 됐거나 Google 쪽
   // 설정이 안 끝났으면 내부에서 조용히 로그만 남기고 넘어간다 — 로그인 흐름을 절대 깨지 않는다.

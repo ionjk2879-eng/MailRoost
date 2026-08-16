@@ -3,7 +3,7 @@ import { decryptAccountsMap, encryptAccountsMap } from "./crypto"
 import { writeSession } from "./session"
 
 export async function getUserByEmail(env: Env, email: string): Promise<UserRecord | null> {
-  const ref = await env.TOKENS.get(`user:email:${email}`)
+  const ref = await env.TOKENS.get(`user:email:${email.trim().toLowerCase()}`)
   if (!ref) return null
   const { userId } = JSON.parse(ref) as { userId: string }
   return getUserById(env, userId)
@@ -18,8 +18,13 @@ export async function getUserById(env: Env, userId: string): Promise<UserRecord 
 export async function saveUser(env: Env, user: UserRecord): Promise<void> {
   await Promise.all([
     env.TOKENS.put(`user:id:${user.id}`, JSON.stringify(user)),
-    env.TOKENS.put(`user:email:${user.email}`, JSON.stringify({ userId: user.id })),
+    env.TOKENS.put(`user:email:${user.email.trim().toLowerCase()}`, JSON.stringify({ userId: user.id })),
   ])
+}
+
+// OAuth로 소유권을 확인한 연결 Gmail 주소를 같은 MailRoost 사용자에 로그인 별칭으로 묶는다.
+export async function linkUserEmail(env: Env, userId: string, email: string): Promise<void> {
+  await env.TOKENS.put(`user:email:${email.trim().toLowerCase()}`, JSON.stringify({ userId }))
 }
 
 export async function getUserAccounts(env: Env, userId: string): Promise<Record<string, ConnectedAccountRecord>> {

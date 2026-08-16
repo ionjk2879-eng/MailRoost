@@ -13,6 +13,7 @@ import { MemoView } from "@/components/memo/memo-view"
 import { DraftsView } from "@/components/drafts/drafts-view"
 import { SnoozeMuteView } from "@/components/snoozed/snooze-mute-view"
 import { NotificationBell } from "@/components/notifications/notification-bell"
+import { ProviderIcon } from "@/components/mail/provider-icon"
 import { SettingsSheet } from "@/components/settings/settings-sheet"
 import { Button } from "@/components/ui/button"
 import {
@@ -934,7 +935,7 @@ function App() {
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-3 border-b bg-background px-5">
           <SidebarTrigger />
-          <span className="min-w-0 flex-1 truncate text-base font-semibold tracking-tight">
+          <span className="min-w-0 truncate text-base font-semibold tracking-tight">
             {view === "home"
               ? "홈"
               : view === "cleanup"
@@ -982,12 +983,25 @@ function App() {
             onMarkAllRead={mailOrg.handleMarkAllNotificationsRead}
             onDismiss={mailOrg.handleDismissNotification}
           />
+          <div className="flex-1" />
           {(view === "inbox" || view === "starred") && sendableAccounts.length > 0 && isMobile && (
             <Button size="sm" className="gap-2" onClick={handleOpenCompose}>
               <Pencil className="size-4" />
               메일 쓰기
             </Button>
           )}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="flex min-w-0 items-center gap-2 rounded-full border bg-background py-1.5 pr-3 pl-1.5 text-left shadow-sm transition hover:bg-accent"
+            title={`현재 로그인: ${currentUser.email}`}
+          >
+            <ProviderIcon provider="gmail" label={currentUser.email} className="size-7 rounded-full" />
+            <span className="hidden min-w-0 sm:block">
+              <span className="block max-w-48 truncate text-xs font-semibold">{currentUser.email.split("@")[0]}</span>
+              <span className="block max-w-48 truncate text-[10px] text-muted-foreground">{currentUser.email}</span>
+            </span>
+          </button>
         </header>
         {view === "home" ? (
           <HomeView
