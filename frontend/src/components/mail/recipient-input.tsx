@@ -1,5 +1,5 @@
+import { Pencil, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Input } from "@/components/ui/input"
 
 export interface RecipientOption {
   email: string
@@ -16,77 +16,135 @@ interface RecipientInputProps {
   required?: boolean
 }
 
-// 콤마로 구분된 여러 수신자 중 지금 커서가 있는(마지막) 토큰만 자동완성 대상으로 삼는다.
-function currentToken(value: string): string {
-  const idx = value.lastIndexOf(",")
-  return (idx === -1 ? value : value.slice(idx + 1)).trim()
+function parseValue(value: string): { recipients: string[]; draft: string } {
+  const parts = value.split(",").map((part) => part.trim()).filter(Boolean)
+  if (!parts.length) return { recipients: [], draft: "" }
+  const trailingSeparator = /,\s*$/.test(value)
+  if (trailingSeparator) return { recipients: parts, draft: "" }
+  const last = parts.at(-1) ?? ""
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(last)
+    ? { recipients: parts, draft: "" }
+    : { recipients: parts.slice(0, -1), draft: last }
 }
 
-function replaceLastToken(value: string, email: string): string {
-  const idx = value.lastIndexOf(",")
-  const prefix = idx === -1 ? "" : `${value.slice(0, idx + 1)} `
-  return `${prefix}${email}, `
+function labelFor(email: string, options: RecipientOption[]): string {
+  return options.find((option) => option.email.toLowerCase() === email.toLowerCase())?.name || email
 }
 
 export function RecipientInput({ id, value, onChange, options, placeholder, required }: RecipientInputProps) {
+  const initial = parseValue(value)
+  const [recipients, setRecipients] = useState(initial.recipients)
+  const [draft, setDraft] = useState(initial.draft)
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const lastEmittedRef = useRef(value)
+
+  const emit = (nextRecipients: string[], nextDraft: string) => {
+    const serialized = [...nextRecipients, nextDraft.trim()].filter(Boolean).join(", ")
+    lastEmittedRef.current = serialized
+    onChange(serialized)
+  }
+
+  useEffect(() => {
+    if (value === lastEmittedRef.current) return
+    const parsed = parseValue(value)
+    setRecipients(parsed.recipients)
+    setDraft(parsed.draft)
+    lastEmittedRef.current = value
+  }, [value])
 
   useEffect(() => {
     if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    const handler = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false)
     }
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
   }, [open])
 
-  const token = currentToken(value)
   const filtered = useMemo(() => {
-    const q = token.toLowerCase()
-    const already = new Set(value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean))
+    const query = draft.trim().toLowerCase()
+    const selected = new Set(recipients.map((email) => email.toLowerCase()))
     return options
-      .filter(
-        (o) =>
-          !already.has(o.email.toLowerCase()) &&
-          (!q || o.email.toLowerCase().includes(q) || (o.name && o.name.toLowerCase().includes(q))),
-      )
+      .filter((option) => !selected.has(option.email.toLowerCase()) && (!query || option.email.toLowerCase().includes(query) || option.name?.toLowerCase().includes(query)))
       .slice(0, 12)
-  }, [options, token, value])
+  }, [draft, options, recipients])
+
+  const addRecipient = (email: string) => {
+    const normalized = email.trim().replace(/^<|>$/g, "")
+    if (!normalized || recipients.some((item) => item.toLowerCase() === normalized.toLowerCase())) {
+      setDraft("")
+      emit(recipients, "")
+      return
+    }
+    const next = [...recipients, normalized]
+    setRecipients(next)
+    setDraft("")
+    emit(next, "")
+    setOpen(false)
+    inputRef.current?.focus()
+  }
+
+  const removeRecipient = (index: number) => {
+    const next = recipients.filter((_, itemIndex) => itemIndex !== index)
+    setRecipients(next)
+    emit(next, draft)
+  }
+
+  const editRecipient = (index: number) => {
+    const email = recipients[index]
+    const next = recipients.filter((_, itemIndex) => itemIndex !== index)
+    setRecipients(next)
+    setDraft(email)
+    emit(next, email)
+    window.setTimeout(() => inputRef.current?.focus())
+  }
 
   return (
-    <div ref={ref} className="relative">
-      <Input
-        id={id}
-        type="text"
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value)
-          setOpen(true)
-        }}
-        onFocus={() => setOpen(true)}
-        required={required}
-        autoComplete="off"
-      />
+    <div ref={rootRef} className="relative">
+      <div className="border-input bg-background focus-within:border-orange-300 focus-within:ring-orange-100 flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-md border px-2 py-1.5 text-sm transition focus-within:ring-2">
+        {recipients.map((email, index) => (
+          <span key={`${email}-${index}`} className="flex max-w-full items-center gap-1 rounded-full bg-blue-50 py-1 pr-1 pl-2.5 text-xs text-blue-900 dark:bg-blue-500/15 dark:text-blue-200">
+            <span className="max-w-56 truncate">{labelFor(email, options)}{labelFor(email, options) !== email && ` <${email}>`}</span>
+            <button type="button" onClick={() => editRecipient(index)} className="flex size-5 items-center justify-center rounded-full text-blue-500 hover:bg-blue-100" aria-label={`${email} 수정`}><Pencil className="size-3" /></button>
+            <button type="button" onClick={() => removeRecipient(index)} className="flex size-5 items-center justify-center rounded-full text-blue-400 hover:bg-blue-100 hover:text-blue-700" aria-label={`${email} 삭제`}><X className="size-3" /></button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          id={id}
+          type="text"
+          value={draft}
+          placeholder={recipients.length ? "주소 추가" : placeholder}
+          required={required && recipients.length === 0}
+          autoComplete="off"
+          className="placeholder:text-muted-foreground min-w-36 flex-1 bg-transparent py-0.5 outline-none"
+          onFocus={() => setOpen(true)}
+          onChange={(event) => {
+            const nextDraft = event.target.value
+            if (nextDraft.includes(",")) addRecipient(nextDraft.split(",")[0])
+            else { setDraft(nextDraft); emit(recipients, nextDraft); setOpen(true) }
+          }}
+          onKeyDown={(event) => {
+            if ((event.key === "Enter" || event.key === "Tab") && draft.trim()) {
+              event.preventDefault()
+              addRecipient(draft)
+            } else if (event.key === "Backspace" && !draft && recipients.length) {
+              editRecipient(recipients.length - 1)
+            }
+          }}
+        />
+      </div>
       {open && filtered.length > 0 && (
-        <div className="bg-background absolute top-full left-0 z-20 mt-1 max-h-56 w-full min-w-[240px] overflow-y-auto rounded-md border shadow-md">
-          {filtered.map((o, index) => (
-            <div key={o.email}>
-            {(index === 0 || filtered[index - 1]?.source !== o.source) && <p className="bg-muted/50 px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">{o.source === "contact" ? "주소록" : "최근 받은 주소"}</p>}
-            <button
-              type="button"
-              onClick={() => {
-                onChange(replaceLastToken(value, o.email))
-                setOpen(false)
-              }}
-              className="hover:bg-accent flex w-full flex-col items-start px-3 py-1.5 text-left"
-            >
-              <span className="truncate text-sm">{o.name || o.email}</span>
-              {o.name && o.name !== o.email && (
-                <span className="text-muted-foreground w-full truncate text-xs">{o.email}</span>
-              )}
-            </button>
+        <div className="bg-background absolute top-full left-0 z-30 mt-1 max-h-64 w-full min-w-[260px] overflow-y-auto rounded-xl border p-1 shadow-xl">
+          {filtered.map((option, index) => (
+            <div key={option.email}>
+              {(index === 0 || filtered[index - 1]?.source !== option.source) && <p className="bg-muted/50 rounded-md px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">{option.source === "contact" ? "주소록" : "최근 받은 주소"}</p>}
+              <button type="button" onClick={() => addRecipient(option.email)} className="hover:bg-accent flex w-full flex-col items-start rounded-lg px-3 py-2 text-left">
+                <span className="w-full truncate text-sm">{option.name || option.email}</span>
+                {option.name && option.name !== option.email && <span className="text-muted-foreground w-full truncate text-xs">{option.email}</span>}
+              </button>
             </div>
           ))}
         </div>

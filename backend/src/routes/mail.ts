@@ -52,7 +52,7 @@ import { fetchImapMails, searchImapMails } from "../lib/mailFetch"
 import { fetchAttachmentForAccount, resolveForwardedAttachments, sendViaRecord } from "../lib/mailSend"
 import { folderIdsOf, isArchived, mutateMailOrg, resolveMailOrg } from "../lib/mailOrg"
 import type { ClassifyMailsResult, MoveMailResult, ToggleMailFolderResult } from "../lib/mailOrgOps"
-import type { OutgoingAttachment } from "../lib/mime"
+import { sanitizeHtml, type OutgoingAttachment } from "../lib/mime"
 import { readSession, SESSION_COOKIE } from "../lib/session"
 
 const mail = new Hono<{ Bindings: Env }>()
@@ -634,9 +634,11 @@ mail.post("/mail/send", async (c) => {
       subject?: string
       body?: string
       forwardedAttachments?: ForwardedAttachmentRef[]
+      htmlBody?: string
+      attachments?: Array<{ filename: string; mimeType: string; size: number; dataBase64: string }>
     }>()
     .catch(() => null)
-  const { accountId, to, cc, bcc, subject, body: mailBody, forwardedAttachments } = body ?? {}
+  const { accountId, to, cc, bcc, subject, body: mailBody, htmlBody, forwardedAttachments, attachments: uploadedAttachments } = body ?? {}
   if (!accountId || !to || !subject || !mailBody) return c.json({ error: "필수 항목이 누락되었습니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
@@ -651,7 +653,15 @@ mail.post("/mail/send", async (c) => {
     if (resolved.accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
   }
 
-  const { updatedRecord } = await sendViaRecord(c.env, record, to, subject, mailBody, cc, bcc, attachments)
+  const totalUploadSize = (uploadedAttachments ?? []).reduce((sum, item) => sum + (item.size || 0), 0)
+  if (totalUploadSize > 25 * 1024 * 1024) return c.json({ error: "첨부파일은 총 25MB까지 추가할 수 있습니다." }, 413)
+  for (const item of uploadedAttachments ?? []) {
+    if (!item.filename || !item.dataBase64) continue
+    const binary = atob(item.dataBase64)
+    attachments.push({ filename: item.filename, mimeType: item.mimeType || "application/octet-stream", bytes: Uint8Array.from(binary, (char) => char.charCodeAt(0)) })
+  }
+
+  const { updatedRecord } = await sendViaRecord(c.env, record, to, subject, mailBody, cc, bcc, attachments, htmlBody ? sanitizeHtml(htmlBody) : undefined)
   if (updatedRecord) {
     accountMap[accountId] = updatedRecord
     await persistAccounts(c.env, sessionId, session, accountMap)

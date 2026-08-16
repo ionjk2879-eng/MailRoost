@@ -343,9 +343,10 @@ export function buildMimeMessage(params: {
   bcc?: string
   subject: string
   textBody: string
+  htmlBody?: string
   attachments?: OutgoingAttachment[]
 }): string {
-  const { from, to, cc, bcc, subject, attachments } = params
+  const { from, to, cc, bcc, subject, attachments, htmlBody } = params
   // 본문은 보통 textarea에서 온 LF(\n) 줄바꿈이라 SMTP 전송 규격(CRLF)에 맞게 통일한다.
   const textBody = params.textBody.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n")
   const headers = [
@@ -357,17 +358,27 @@ export function buildMimeMessage(params: {
     `MIME-Version: 1.0`,
   ]
 
-  if (!attachments || attachments.length === 0) {
+  if (!htmlBody && (!attachments || attachments.length === 0)) {
     return [...headers, `Content-Type: text/plain; charset=utf-8`, `Content-Transfer-Encoding: 8bit`, ``, textBody].join(
       "\r\n",
     )
   }
 
+  const alternativeBoundary = `MailRoost_alt_${crypto.randomUUID().replace(/-/g, "")}`
+  const contentPart = htmlBody
+    ? [
+        `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`, ``,
+        `--${alternativeBoundary}`, `Content-Type: text/plain; charset=utf-8`, `Content-Transfer-Encoding: 8bit`, ``, textBody,
+        `--${alternativeBoundary}`, `Content-Type: text/html; charset=utf-8`, `Content-Transfer-Encoding: 8bit`, ``, htmlBody.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n"),
+        `--${alternativeBoundary}--`,
+      ].join("\r\n")
+    : [`Content-Type: text/plain; charset=utf-8`, `Content-Transfer-Encoding: 8bit`, ``, textBody].join("\r\n")
+
+  if (!attachments || attachments.length === 0) return [...headers, contentPart].join("\r\n")
+
   const boundary = `MailRoost_${crypto.randomUUID().replace(/-/g, "")}`
   const bodyParts = [
-    [`--${boundary}`, `Content-Type: text/plain; charset=utf-8`, `Content-Transfer-Encoding: 8bit`, ``, textBody].join(
-      "\r\n",
-    ),
+    [`--${boundary}`, contentPart].join("\r\n"),
     ...attachments.map((att) => {
       const safeName = att.filename.replace(/"/g, "")
       return [

@@ -513,8 +513,9 @@ export async function sendGmailMessage(
   cc?: string,
   bcc?: string,
   attachments?: OutgoingAttachment[],
+  htmlBody?: string,
 ): Promise<void> {
-  const raw = buildMimeMessage({ from, to, cc, bcc, subject, textBody: body, attachments })
+  const raw = buildMimeMessage({ from, to, cc, bcc, subject, textBody: body, htmlBody, attachments })
   const encoded = bytesToBase64Url(new TextEncoder().encode(raw))
 
   const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages/send`, {

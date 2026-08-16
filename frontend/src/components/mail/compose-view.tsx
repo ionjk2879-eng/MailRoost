@@ -1,16 +1,17 @@
-import { BookUser, ChevronLeft, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, Plus, Save, Send, Trash2, UserRound, X } from "lucide-react"
+import { BookUser, ChevronLeft, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, Plus, Save, Send, Trash2, UploadCloud, UserRound, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RecipientInput, type RecipientOption } from "@/components/mail/recipient-input"
 import { ProviderIcon } from "@/components/mail/provider-icon"
+import { RichTextEditor } from "@/components/mail/rich-text-editor"
 import { createContact, createDraft, deleteContact, deleteDraft, fetchContacts, sendMail, updateDraft } from "@/lib/api"
 import type { Account, Contact, Draft, ForwardedAttachmentRef, Mail, QuickReply } from "@/types/mail"
 
 export const COMPOSE_SUPPORTED: Array<Account["provider"]> = ["gmail", "naver", "daum", "imap"]
 
-const SIGNATURE_MARKER = "\n\n-- \n"
+const SIGNATURE_MARKER = "<!--mailroost-signature-->"
 const DRAFT_SAVE_DEBOUNCE_MS = 1500
 
 function formatFileSize(bytes: number): string {
@@ -18,6 +19,11 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
+
+function escapeHtml(value: string): string { return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;") }
+function toEditorHtml(value: string): string { return /<\/?[a-z][\s\S]*>/i.test(value) ? value : escapeHtml(value).replace(/\n/g, "<br>") }
+function htmlToText(value: string): string { return value.replace(/<br\s*\/?\s*>/gi, "\n").replace(/<\/p>|<\/div>|<\/li>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim() }
+interface LocalAttachment { id: string; filename: string; mimeType: string; size: number; dataBase64: string }
 
 interface ComposeViewProps {
   accounts: Account[]
@@ -70,8 +76,9 @@ export function ComposeView({
   const [showCc, setShowCc] = useState(defaultCc.trim().length > 0)
   const [showBcc, setShowBcc] = useState(defaultBcc.trim().length > 0)
   const [subject, setSubject] = useState(defaultSubject)
-  const [body, setBody] = useState(defaultBody)
+  const [body, setBody] = useState(() => toEditorHtml(defaultBody))
   const [forwardedAttachments, setForwardedAttachments] = useState(defaultForwardedAttachments)
+  const [localAttachments, setLocalAttachments] = useState<LocalAttachment[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [quickReplyOpen, setQuickReplyOpen] = useState(false)
@@ -81,6 +88,7 @@ export function ComposeView({
   const [contactEmail, setContactEmail] = useState("")
   const [contactError, setContactError] = useState<string | null>(null)
   const quickReplyRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const selectedAccount = sendableAccounts.find((account) => account.id === accountId)
 
   const recipientOptions = useMemo<RecipientOption[]>(() => {
@@ -167,13 +175,14 @@ export function ComposeView({
     setBody((prev) => {
       const markerIndex = prev.indexOf(SIGNATURE_MARKER)
       const withoutSignature = markerIndex === -1 ? prev : prev.slice(0, markerIndex)
-      return signature ? `${withoutSignature}${SIGNATURE_MARKER}${signature}` : withoutSignature
+      return signature ? `${withoutSignature}${SIGNATURE_MARKER}<br><br>--<br>${escapeHtml(signature).replace(/\n/g, "<br>")}` : withoutSignature
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId])
 
   const insertQuickReply = (qr: QuickReply) => {
-    setBody((prev) => (prev.trim() ? `${prev}\n\n${qr.body}` : qr.body))
+    const replyHtml = toEditorHtml(qr.body)
+    setBody((prev) => (prev.trim() ? `${prev}<br><br>${replyHtml}` : replyHtml))
     setQuickReplyOpen(false)
   }
 
@@ -202,10 +211,12 @@ export function ComposeView({
       accountId,
       to.trim(),
       subject.trim(),
-      body,
+      htmlToText(body),
       cc.trim() || undefined,
       bcc.trim() || undefined,
       forwardedAttachments.length > 0 ? forwardedAttachments : undefined,
+      body,
+      localAttachments.length > 0 ? localAttachments.map(({ filename, mimeType, size, dataBase64 }) => ({ filename, mimeType, size, dataBase64 })) : undefined,
     )
     setIsSending(false)
     if (!result.ok) {
@@ -214,6 +225,19 @@ export function ComposeView({
     }
     discardDraftAfterSend()
     onSent()
+  }
+
+  const addFiles = async (files: FileList | File[]) => {
+    const picked = Array.from(files)
+    const total = localAttachments.reduce((sum, item) => sum + item.size, 0) + picked.reduce((sum, file) => sum + file.size, 0)
+    if (total > 25 * 1024 * 1024) { setError("첨부파일은 총 25MB까지 추가할 수 있습니다."); return }
+    const encoded = await Promise.all(picked.map((file) => new Promise<LocalAttachment>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve({ id: crypto.randomUUID(), filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size, dataBase64: String(reader.result).split(",")[1] ?? "" })
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    })))
+    setLocalAttachments((items) => [...items, ...encoded]); setError(null)
   }
 
   return (
@@ -382,6 +406,8 @@ export function ComposeView({
           <section className="flex min-h-[300px] flex-1 flex-col overflow-visible rounded-2xl border bg-background shadow-sm">
             <div className="flex items-center justify-between">
               <Label htmlFor="compose-body" className="px-5 py-3 text-xs font-semibold text-muted-foreground">메일 내용</Label>
+              <div className="flex items-center gap-1">
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="mr-1 flex items-center gap-1.5 rounded-lg border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm hover:bg-muted xl:hidden"><Paperclip className="size-3.5" /> 파일 첨부</button>
               {quickReplies.length > 0 && (
                 <div ref={quickReplyRef} className="relative">
                   <button
@@ -409,15 +435,9 @@ export function ComposeView({
                   )}
                 </div>
               )}
+              </div>
             </div>
-            <textarea
-              id="compose-body"
-              placeholder="내용을 입력하세요"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              required
-              className="placeholder:text-muted-foreground min-h-[240px] w-full flex-1 resize-none border-0 border-t bg-transparent px-5 py-4 text-[15px] leading-7 outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-50"
-            />
+            <RichTextEditor value={body} onChange={setBody} />
           </section>
           {error && <p className="text-destructive rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm">{error}</p>}
           </div>
@@ -433,6 +453,16 @@ export function ComposeView({
                   </div>
                 </div>
               )}
+            </section>
+            <section>
+              <div className="flex items-center justify-between"><h3 className="text-sm font-bold">파일 첨부</h3><Paperclip className="size-4 text-orange-500" /></div>
+              <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.target.value = "" }} />
+              <button type="button" onClick={() => fileInputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addFiles(event.dataTransfer.files) }} className="mt-3 flex w-full flex-col items-center rounded-xl border border-dashed p-4 text-center transition hover:border-orange-300 hover:bg-orange-50/50">
+                <UploadCloud className="size-5 text-orange-500" /><span className="mt-1 text-xs font-semibold">파일 선택 또는 드롭</span><span className="mt-0.5 text-[10px] text-muted-foreground">총 25MB까지</span>
+              </button>
+              <div className="mt-2 space-y-1">
+                {localAttachments.map((file) => <div key={file.id} className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5"><Paperclip className="size-3.5" /><span className="min-w-0 flex-1 truncate text-[11px]">{file.filename}</span><span className="text-[9px] text-muted-foreground">{formatFileSize(file.size)}</span><button type="button" onClick={() => setLocalAttachments((items) => items.filter((item) => item.id !== file.id))} aria-label={`${file.filename} 삭제`}><X className="size-3.5" /></button></div>)}
+              </div>
             </section>
             <section>
               <div className="flex items-center justify-between"><h3 className="text-sm font-bold">빠른 답장</h3><MessageSquarePlus className="size-4 text-orange-500" /></div>

@@ -76,24 +76,25 @@ export async function sendViaRecord(
   cc?: string,
   bcc?: string,
   attachments?: OutgoingAttachment[],
+  htmlBody?: string,
 ): Promise<{ updatedRecord?: ConnectedAccountRecord }> {
   if (record.provider === "naver") {
-    await naverSendMail(record.email, record.appPassword, to, subject, body, cc, bcc, attachments)
+    await naverSendMail(record.email, record.appPassword, to, subject, body, cc, bcc, attachments, htmlBody)
     return {}
   }
   if (record.provider === "daum") {
-    await daumSendMail(record.email, record.password, to, subject, body, cc, bcc, attachments)
+    await daumSendMail(record.email, record.password, to, subject, body, cc, bcc, attachments, htmlBody)
     return {}
   }
   if (record.provider === "imap") {
     // 예전에 연결한 계정에는 smtpHost/smtpPort가 없을 수 있어 IMAP 호스트에서 다시 추측한다.
     const smtpHost = record.smtpHost || (record.host.startsWith("imap.") ? record.host.replace(/^imap\./, "smtp.") : `smtp.${record.host}`)
     const smtpPort = record.smtpPort || 465
-    await sendSmtp(smtpHost, smtpPort, record.email, record.password, to, subject, body, cc, bcc, attachments)
+    await sendSmtp(smtpHost, smtpPort, record.email, record.password, to, subject, body, cc, bcc, attachments, htmlBody)
     return {}
   }
 
   const fresh = await ensureFreshToken(env, record)
-  await sendGmailMessage(fresh.accessToken, record.email, to, subject, body, cc, bcc, attachments)
+  await sendGmailMessage(fresh.accessToken, record.email, to, subject, body, cc, bcc, attachments, htmlBody)
   return fresh.accessToken !== record.accessToken ? { updatedRecord: fresh } : {}
 }
