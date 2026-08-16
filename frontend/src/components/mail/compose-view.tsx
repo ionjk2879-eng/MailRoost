@@ -273,8 +273,18 @@ export function ComposeView({
           <div className="grid gap-2 border-b px-4 py-3 sm:grid-cols-[100px_1fr] sm:px-5">
             <Label htmlFor="compose-to" className="flex items-center gap-2 pt-3 text-xs font-semibold text-muted-foreground"><Send className="size-3.5" /> 받는 사람</Label>
             <div>
-            <div className="mb-1.5 flex justify-end">
-              <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="min-w-[220px] flex-1">
+                <RecipientInput
+                  id="compose-to"
+                  placeholder="이메일 주소 입력 또는 연락처 선택"
+                  value={to}
+                  onChange={setTo}
+                  options={recipientOptions}
+                  required
+                />
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
                 <button type="button" onClick={() => setAddressBookOpen((open) => !open)} className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-orange-600 hover:bg-orange-50"><BookUser className="size-3" /> 주소록</button>
                 {!showCc && (
                   <button type="button" onClick={() => setShowCc(true)} className="rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
@@ -288,14 +298,6 @@ export function ComposeView({
                 )}
               </div>
             </div>
-            <RecipientInput
-              id="compose-to"
-              placeholder="recipient@example.com (여러 명은 콤마로 구분)"
-              value={to}
-              onChange={setTo}
-              options={recipientOptions}
-              required
-            />
             {addressBookOpen && (
               <div className="mt-2 overflow-hidden rounded-xl border bg-background shadow-lg">
                 <div className="grid gap-2 border-b bg-muted/30 p-3 sm:grid-cols-[1fr_1.4fr_auto]">
