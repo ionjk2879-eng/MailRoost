@@ -1073,14 +1073,14 @@ function App() {
         if (!hasImapOrNaver) return null
         const names = failedAccounts.map((a) => a.email ?? a.label).join(", ")
         return (
-          <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 max-w-sm w-full mx-4 rounded-md bg-amber-500 px-4 py-2.5 text-sm text-white shadow-lg">
+          <div className="fixed top-4 left-1/2 z-50 -translate-x-1/2 max-w-sm w-full mx-4 rounded-md bg-amber-500 px-4 py-2.5 text-sm text-white shadow-lg">
             <p className="font-medium">{names} — 일시적 연결 오류</p>
             <p className="mt-0.5 text-amber-100">사이트 문제가 아니라 메일 서버가 잠시 응답하지 않는 것으로, 시간이 지나면 자동으로 복구됩니다.</p>
           </div>
         )
       })()}
       {errorMessage && (
-        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md bg-destructive px-4 py-2 text-sm text-destructive-foreground shadow-lg">
+        <div className="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-md bg-destructive px-4 py-2 text-sm text-white shadow-lg">
           {errorMessage}
         </div>
       )}
