@@ -1,3 +1,5 @@
+import type { MailOrgStore } from "./durable/MailOrgStore"
+
 export interface Env {
   TOKENS: KVNamespace
   ASSETS: Fetcher
@@ -8,6 +10,9 @@ export interface Env {
   VAPID_SUBJECT: string
   // 저장된 계정 자격증명(비밀번호/토큰) 암호화용 AES-GCM 키 (32바이트, base64). lib/crypto.ts 참고.
   ACCOUNT_ENCRYPTION_KEY: string
+  // 로그인한 사용자당 하나씩 뜨는 MailOrgState 저장용 Durable Object. lib/mailOrgStore.ts,
+  // durable/MailOrgStore.ts, lib/mailOrg.ts의 resolveMailOrg/mutateMailOrg 참고.
+  MAIL_ORG: DurableObjectNamespace<MailOrgStore>
 }
 
 export interface StoredPushSubscription {

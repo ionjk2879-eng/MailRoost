@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import type { Env } from "../types"
 import { resolveAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
-import { assignmentKey, mutateMailOrg, parseAssignmentKey, resolveMailOrg } from "../lib/mailOrg"
+import { mutateMailOrg, parseAssignmentKey, resolveMailOrg } from "../lib/mailOrg"
 import { readSession, SESSION_COOKIE } from "../lib/session"
 
 const snooze = new Hono<{ Bindings: Env }>()
@@ -29,14 +29,7 @@ snooze.get("/snooze", async (c) => {
 
   let active: Record<string, number>
   if (hasExpired) {
-    active = await mutateMailOrg(c.env, sessionId, session, (o) => {
-      const next: Record<string, number> = {}
-      for (const [k, until] of Object.entries(o.snoozed ?? {})) {
-        if (until > now) next[k] = until
-      }
-      o.snoozed = next
-      return next
-    })
+    active = await mutateMailOrg<Record<string, number>>(c.env, sessionId, session, { type: "pruneExpiredSnoozes", now })
   } else {
     active = snoozed
   }
@@ -57,10 +50,7 @@ snooze.post("/snooze", async (c) => {
   const body = await c.req.json<{ accountId: string; mailId: string; until: number }>()
   if (!body.accountId || !body.mailId || !body.until) return c.json({ error: "invalid" }, 400)
 
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    org.snoozed = org.snoozed ?? {}
-    org.snoozed[assignmentKey(body.accountId, body.mailId)] = body.until
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "snoozeMail", accountId: body.accountId, mailId: body.mailId, until: body.until })
   return c.json({ ok: true })
 })
 
@@ -71,10 +61,7 @@ snooze.delete("/snooze", async (c) => {
   const body = await c.req.json<{ accountId: string; mailId: string }>()
   if (!body.accountId || !body.mailId) return c.json({ error: "invalid" }, 400)
 
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    org.snoozed = org.snoozed ?? {}
-    delete org.snoozed[assignmentKey(body.accountId, body.mailId)]
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "unsnooze", accountId: body.accountId, mailId: body.mailId })
   return c.json({ ok: true })
 })
 
@@ -95,9 +82,7 @@ snooze.post("/muted", async (c) => {
   const body = await c.req.json<{ email: string }>().catch(() => null)
   if (!body?.email) return c.json({ error: "invalid" }, 400)
 
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    if (!(org.muted ?? []).includes(body.email)) org.muted = [...(org.muted ?? []), body.email]
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "muteSender", email: body.email })
   return c.json({ ok: true })
 })
 
@@ -108,9 +93,7 @@ snooze.delete("/muted", async (c) => {
   const body = await c.req.json<{ email: string }>().catch(() => null)
   if (!body?.email) return c.json({ error: "invalid" }, 400)
 
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    org.muted = (org.muted ?? []).filter((e) => e !== body.email)
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "unmuteSender", email: body.email })
   return c.json({ ok: true })
 })
 

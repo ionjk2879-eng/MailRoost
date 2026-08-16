@@ -1,7 +1,8 @@
 import { Hono } from "hono"
-import type { Env, SavedFilter } from "../types"
+import type { Env } from "../types"
 import { readRawCookie } from "../lib/cookies"
 import { mutateMailOrg, resolveMailOrg } from "../lib/mailOrg"
+import type { CreateSavedFilterResult } from "../lib/mailOrgOps"
 import { readSession, SESSION_COOKIE } from "../lib/session"
 
 const savedFilters = new Hono<{ Bindings: Env }>()
@@ -36,24 +37,18 @@ savedFilters.post("/saved-filters", async (c) => {
   if (!name) return c.json({ error: "이름을 입력해주세요." }, 400)
 
   const session = await readSession(c.env, sessionId)
-  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
-    if (body?.folderId && !org.folders.some((f) => f.id === body.folderId)) {
-      return { ok: false as const, error: "분류 메일함을 찾을 수 없습니다." }
-    }
-    const filter: SavedFilter = {
-      id: crypto.randomUUID(),
-      name,
-      accountId: body?.accountId ?? null,
-      from: body?.from?.trim() ?? "",
-      subject: body?.subject?.trim() ?? "",
-      isUnread: body?.isUnread ?? null,
-      isStarred: body?.isStarred ?? null,
-      hasAttachment: body?.hasAttachment ?? null,
-      folderId: body?.folderId ?? null,
-      createdAt: Date.now(),
-    }
-    org.savedFilters.push(filter)
-    return { ok: true as const, filter }
+  const result = await mutateMailOrg<CreateSavedFilterResult>(c.env, sessionId, session, {
+    type: "createSavedFilter",
+    id: crypto.randomUUID(),
+    name,
+    accountId: body?.accountId ?? null,
+    from: body?.from?.trim() ?? "",
+    subject: body?.subject?.trim() ?? "",
+    isUnread: body?.isUnread ?? null,
+    isStarred: body?.isStarred ?? null,
+    hasAttachment: body?.hasAttachment ?? null,
+    folderId: body?.folderId ?? null,
+    createdAt: Date.now(),
   })
   if (!result.ok) return c.json({ error: result.error }, 404)
   return c.json({ filter: result.filter })
@@ -65,9 +60,7 @@ savedFilters.delete("/saved-filters/:id", async (c) => {
 
   const filterId = c.req.param("id")
   const session = await readSession(c.env, sessionId)
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    org.savedFilters = org.savedFilters.filter((f) => f.id !== filterId)
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "deleteSavedFilter", filterId })
   return c.json({ ok: true })
 })
 

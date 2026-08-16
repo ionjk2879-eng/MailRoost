@@ -4,7 +4,8 @@ import { ensureFreshToken, fetchMailsByIds as gmailFetchByIds } from "../lib/gma
 import { daumFetchByUids, imapFetchByUids, naverFetchByUids } from "../lib/imap"
 import { persistAccounts, resolveAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
-import { ARCHIVE_FOLDER_ID, applyOrder, folderIdsOf, mutateMailOrg, parseAssignmentKey, resolveMailOrg } from "../lib/mailOrg"
+import { ARCHIVE_FOLDER_ID, folderIdsOf, mutateMailOrg, parseAssignmentKey, resolveMailOrg } from "../lib/mailOrg"
+import type { CreateFolderResult, RenameFolderResult } from "../lib/mailOrgOps"
 import { readSession, SESSION_COOKIE } from "../lib/session"
 
 const folders = new Hono<{ Bindings: Env }>()
@@ -49,11 +50,12 @@ folders.post("/folders", async (c) => {
   if (name.length > 40) return c.json({ error: "분류 메일함 이름이 너무 깁니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
-  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
-    if (org.folders.some((f) => f.name === name)) return { ok: false as const, error: "이미 같은 이름의 분류 메일함이 있습니다." }
-    const folder: MailFolder = { id: crypto.randomUUID(), name, color: randomFolderColor(), createdAt: Date.now() }
-    org.folders.push(folder)
-    return { ok: true as const, folder }
+  const result = await mutateMailOrg<CreateFolderResult>(c.env, sessionId, session, {
+    type: "createFolder",
+    id: crypto.randomUUID(),
+    name,
+    color: randomFolderColor(),
+    createdAt: Date.now(),
   })
   if (!result.ok) return c.json({ error: result.error }, 400)
   return c.json({ folder: result.folder })
@@ -65,14 +67,7 @@ folders.delete("/folders/:id", async (c) => {
 
   const folderId = c.req.param("id")
   const session = await readSession(c.env, sessionId)
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    org.folders = org.folders.filter((f) => f.id !== folderId)
-    for (const key of Object.keys(org.assignments)) {
-      const next = org.assignments[key].filter((id) => id !== folderId)
-      if (next.length > 0) org.assignments[key] = next
-      else delete org.assignments[key]
-    }
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "deleteFolder", folderId })
   return c.json({ ok: true })
 })
 
@@ -90,15 +85,11 @@ folders.patch("/folders/:id", async (c) => {
   }
 
   const session = await readSession(c.env, sessionId)
-  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
-    const folder = org.folders.find((f) => f.id === folderId)
-    if (!folder) return { ok: false as const, status: 404 as const, error: "분류 메일함을 찾을 수 없습니다." }
-    if (org.folders.some((f) => f.id !== folderId && f.name === name)) {
-      return { ok: false as const, status: 400 as const, error: "이미 같은 이름의 분류 메일함이 있습니다." }
-    }
-    folder.name = name
-    if (body?.color !== undefined) folder.color = body.color
-    return { ok: true as const, folder }
+  const result = await mutateMailOrg<RenameFolderResult>(c.env, sessionId, session, {
+    type: "renameFolder",
+    folderId,
+    name,
+    color: body?.color,
   })
   if (!result.ok) return c.json({ error: result.error }, result.status)
   return c.json({ folder: result.folder })
@@ -113,10 +104,7 @@ folders.post("/folders/reorder", async (c) => {
   if (!Array.isArray(order)) return c.json({ error: "bad request" }, 400)
 
   const session = await readSession(c.env, sessionId)
-  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
-    org.folders = applyOrder(org.folders, order, (f) => f.id)
-    return org.folders
-  })
+  const result = await mutateMailOrg<MailFolder[]>(c.env, sessionId, session, { type: "reorderFolders", order })
   return c.json({ folders: result })
 })
 

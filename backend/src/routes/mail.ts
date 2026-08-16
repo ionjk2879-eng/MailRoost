@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { Env, ForwardedAttachmentRef, Mail } from "../types"
+import type { Env, ForwardedAttachmentRef, Mail, MailCategory } from "../types"
 import {
   batchModifyMessages as gmailBatchModify,
   ensureFreshToken,
@@ -49,9 +49,9 @@ import { readRawCookie } from "../lib/cookies"
 import { type CursorMap, decodeCursor, encodeCursor } from "../lib/cursor"
 import { fetchImapMails, searchImapMails } from "../lib/mailFetch"
 import { fetchAttachmentForAccount, resolveForwardedAttachments, sendViaRecord } from "../lib/mailSend"
-import { ARCHIVE_FOLDER_ID, assignmentKey, folderIdsOf, isArchived, mutateMailOrg, persistMailOrg, resolveMailOrg, toggleFolderAssignment } from "../lib/mailOrg"
+import { folderIdsOf, isArchived, mutateMailOrg, resolveMailOrg } from "../lib/mailOrg"
+import type { ClassifyMailsResult, MoveMailResult, ToggleMailFolderResult } from "../lib/mailOrgOps"
 import type { OutgoingAttachment } from "../lib/mime"
-import { applyCategoryRules, matchRule } from "../lib/rules"
 import { readSession, SESSION_COOKIE } from "../lib/session"
 
 const mail = new Hono<{ Bindings: Env }>()
@@ -75,29 +75,11 @@ mail.post("/mail/move", async (c) => {
   const fromFolderId = body?.fromFolderId ?? null
 
   const session = await readSession(c.env, sessionId)
-  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
-    if (folderId !== null && folderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === folderId)) {
-      return { ok: false as const, error: "분류 메일함을 찾을 수 없습니다." }
-    }
-
-    // 보관은 분류 메일함 배정과 독립적이라 라벨을 그대로 둔 채 보관 여부만 바꾼다.
-    // 분류 메일함으로 이동은 기존 배정을 지우지 않고 그 분류 메일함만 추가한다(여러 개에 동시에 속할 수 있음).
-    for (const { accountId, mailId } of items) {
-      const key = assignmentKey(accountId, mailId)
-      if (folderId === ARCHIVE_FOLDER_ID) {
-        org.archived[key] = true
-      } else if (folderId !== null) {
-        toggleFolderAssignment(org, accountId, mailId, folderId, true)
-      } else if (fromFolderId === ARCHIVE_FOLDER_ID) {
-        delete org.archived[key]
-      } else if (fromFolderId) {
-        toggleFolderAssignment(org, accountId, mailId, fromFolderId, false)
-      } else {
-        delete org.archived[key]
-        delete org.assignments[key]
-      }
-    }
-    return { ok: true as const }
+  const result = await mutateMailOrg<MoveMailResult>(c.env, sessionId, session, {
+    type: "moveMail",
+    items,
+    folderId,
+    fromFolderId,
   })
   if (!result.ok) return c.json({ error: result.error }, 404)
   return c.json({ ok: true })
@@ -118,10 +100,12 @@ mail.post("/mail/folders/toggle", async (c) => {
   }
 
   const session = await readSession(c.env, sessionId)
-  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
-    if (!org.folders.some((f) => f.id === folderId)) return { ok: false as const, error: "분류 메일함을 찾을 수 없습니다." }
-    toggleFolderAssignment(org, accountId, mailId, folderId, assign)
-    return { ok: true as const }
+  const result = await mutateMailOrg<ToggleMailFolderResult>(c.env, sessionId, session, {
+    type: "toggleMailFolder",
+    accountId,
+    mailId,
+    folderId,
+    assign,
   })
   if (!result.ok) return c.json({ error: result.error }, 404)
   return c.json({ ok: true })
@@ -144,40 +128,9 @@ mail.get("/mail", async (c) => {
   const results: Mail[] = []
   const failedAccountIds: string[] = []
   let accountsChanged = false
-  let orgChanged = false
 
   const IMAP_PAGE = 50
   const GMAIL_PAGE = 50
-
-  // 이번 요청에서 새로 확정된 분류 결과 (저장 직전에 최신 상태 위에 다시 얹기 위해 델타로 기록해둔다 —
-  // 20초 자동 폴링이나 여러 탭이 겹쳐 동시에 /api/mail을 호출하면, 서로 다른 요청이 각자 읽은 오래된
-  // 스냅샷을 통째로 덮어쓰면서 상대방이 방금 쓴 변경(다른 메일의 분류 배정 등)을 날려버릴 수 있다.)
-  const newlyClassifiedKeys = new Set<string>()
-  const newlyArchivedKeys = new Set<string>()
-  const newlyAssignedFolder = new Map<string, string>()
-
-  // 새로 도착한(한 번도 평가한 적 없는) 메일만 규칙과 대조한다 — 사용자가 수동으로 받은편지함으로
-  // 되돌린 메일이 새로고침할 때마다 다시 자동분류되는 것을 막기 위함.
-  function classifyIfNew(accountId: string, item: Mail): void {
-    const key = assignmentKey(accountId, item.id)
-    if (Object.prototype.hasOwnProperty.call(org.classified, key)) return
-    for (const rule of org.rules) {
-      if (!rule.enabled || !rule.targetFolderId) continue
-      if (matchRule(rule, item)) {
-        if (rule.targetFolderId === ARCHIVE_FOLDER_ID) {
-          org.archived[key] = true
-          newlyArchivedKeys.add(key)
-        } else {
-          toggleFolderAssignment(org, accountId, item.id, rule.targetFolderId, true)
-          newlyAssignedFolder.set(key, rule.targetFolderId)
-        }
-        break
-      }
-    }
-    org.classified[key] = true
-    newlyClassifiedKeys.add(key)
-    orgChanged = true
-  }
 
   // 계정별로 병렬 조회 (직렬로 하면 계정 수만큼 지연이 누적됨).
   // 계정 하나가 실패해도(네트워크 문제 등) 나머지 계정 결과까지 통째로 날아가면 안 되므로
@@ -214,21 +167,53 @@ mail.get("/mail", async (c) => {
     }),
   )
 
+  // 새로 도착한(한 번도 평가한 적 없는) 메일만 규칙과 대조해야 하므로, 판정 대상 후보를 전부 모아
+  // mutateMailOrg 호출 하나(로그인 사용자는 DO의 applyOp RPC 호출 하나)로 넘긴다. "이미 평가했는지"
+  // 판단과 배정/보관/classified 표시 반영이 전부 그 호출 안에서, 그 시점의 현재 상태를 기준으로
+  // 일어나므로 예전처럼 "저장 직전에 최신 상태를 다시 읽어와 델타만 얹는" 단계가 필요 없다.
+  const classifyItems: { accountId: string; mailId: string; fromName: string; fromEmail: string; subject: string; category: MailCategory }[] = []
+  if (org.rules.length > 0) {
+    for (const result of perAccountResults) {
+      if (!result || result.failed) continue
+      for (const item of result.mails) {
+        classifyItems.push({
+          accountId: result.accountId,
+          mailId: item.id,
+          fromName: item.fromName,
+          fromEmail: item.fromEmail,
+          subject: item.subject,
+          category: item.category,
+        })
+      }
+    }
+  }
+
+  const classifyResults =
+    classifyItems.length > 0
+      ? await mutateMailOrg<ClassifyMailsResult>(c.env, sessionId, session, { type: "classifyMails", items: classifyItems })
+      : null
+
+  let classifyIdx = 0
   for (const result of perAccountResults) {
     if (!result) continue
     if (result.failed) {
       failedAccountIds.push(result.accountId)
       continue
     }
-    if (org.rules.length > 0) {
-      for (const item of result.mails) {
-        classifyIfNew(result.accountId, item)
-        item.category = applyCategoryRules(org.rules, item)
-      }
-    }
     for (const item of result.mails) {
-      if (isArchived(org, result.accountId, item.id)) continue
-      item.folderIds = folderIdsOf(org, result.accountId, item.id)
+      let archived: boolean
+      let folderIds: string[]
+      if (classifyResults) {
+        const classified = classifyResults[classifyIdx++]
+        archived = classified.archived
+        folderIds = classified.folderIds
+        item.category = classified.category
+      } else {
+        archived = isArchived(org, result.accountId, item.id)
+        folderIds = folderIdsOf(org, result.accountId, item.id)
+      }
+      if (archived) continue
+      item.folderIds = folderIds
       results.push(item)
     }
     if (result.cursor) nextCursorMap[result.accountId] = result.cursor
@@ -239,18 +224,6 @@ mail.get("/mail", async (c) => {
   }
 
   if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
-  if (orgChanged) {
-    // 저장 직전에 최신 상태를 다시 읽어와 이번 요청에서 새로 확정된 분류 결과만 얹는다 —
-    // 그 사이 다른 요청(겹친 폴링 등)이 쓴 변경을 통째로 덮어쓰지 않도록.
-    const latestOrg = await resolveMailOrg(c.env, session)
-    for (const key of newlyClassifiedKeys) latestOrg.classified[key] = true
-    for (const key of newlyArchivedKeys) latestOrg.archived[key] = true
-    for (const [key, folderId] of newlyAssignedFolder) {
-      const current = latestOrg.assignments[key] ?? []
-      if (!current.includes(folderId)) latestOrg.assignments[key] = [...current, folderId]
-    }
-    await persistMailOrg(c.env, sessionId, session, latestOrg)
-  }
 
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   const nextCursor = Object.keys(nextCursorMap).length > 0 ? encodeCursor(nextCursorMap) : null
@@ -540,15 +513,7 @@ mail.post("/mail/bulk-delete", async (c) => {
     await gmailTrashBulk(fresh.accessToken, mailIds)
   }
 
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    for (const mailId of mailIds) {
-      const key = assignmentKey(accountId, mailId)
-      delete org.assignments[key]
-      delete org.archived[key]
-      delete org.snoozed[key]
-      delete org.classified[key]
-    }
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "clearMailKeys", accountId, mailIds })
   return c.json({ ok: true })
 })
 
@@ -646,13 +611,7 @@ mail.delete("/mail/:id", async (c) => {
     await gmailTrash(fresh.accessToken, mailId)
   }
 
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    const key = assignmentKey(accountId, mailId)
-    delete org.assignments[key]
-    delete org.archived[key]
-    delete org.snoozed[key]
-    delete org.classified[key]
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "clearMailKeys", accountId, mailIds: [mailId] })
   return c.json({ ok: true })
 })
 

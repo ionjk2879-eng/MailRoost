@@ -23,7 +23,7 @@ import { persistAccounts, resolveAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import { type CursorMap, decodeCursor, encodeCursor } from "../lib/cursor"
 import { fetchImapTrash } from "../lib/mailFetch"
-import { assignmentKey, mutateMailOrg } from "../lib/mailOrg"
+import { mutateMailOrg } from "../lib/mailOrg"
 import { readSession, SESSION_COOKIE } from "../lib/session"
 
 const trash = new Hono<{ Bindings: Env }>()
@@ -129,15 +129,7 @@ trash.post("/trash/bulk-delete", async (c) => {
     await gmailBatchDelete(fresh.accessToken, mailIds)
   }
 
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    for (const mailId of mailIds) {
-      const key = assignmentKey(accountId, mailId)
-      delete org.assignments[key]
-      delete org.archived[key]
-      delete org.snoozed[key]
-      delete org.classified[key]
-    }
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "clearMailKeys", accountId, mailIds })
   return c.json({ ok: true })
 })
 
@@ -172,15 +164,7 @@ trash.post("/trash/restore", async (c) => {
 
   // 복구된 메일에 남아있는 모든 org 상태를 정리한다 — 받은편지함으로 돌아온 것이므로
   // classified도 함께 지워서 현재 규칙으로 재분류될 수 있게 한다.
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    for (const mailId of mailIds) {
-      const key = assignmentKey(accountId, mailId)
-      delete org.assignments[key]
-      delete org.archived[key]
-      delete org.snoozed[key]
-      delete org.classified[key]
-    }
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "clearMailKeys", accountId, mailIds })
 
   return c.json({ ok: true })
 })

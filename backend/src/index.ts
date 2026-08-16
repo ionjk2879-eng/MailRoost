@@ -5,6 +5,11 @@ import naver from "./routes/naver"
 import daum from "./routes/daum"
 import imapGeneric from "./routes/imap-generic"
 import api from "./routes/api"
+
+// Workers는 Durable Object 클래스를 wrangler.jsonc의 main이 가리키는 엔트리 모듈에서
+// export해야 한다 (바인딩만으로는 부족함).
+export { MailOrgStore } from "./durable/MailOrgStore"
+
 const app = new Hono<{ Bindings: Env }>()
 
 app.route("/auth", auth)

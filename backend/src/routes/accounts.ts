@@ -62,10 +62,7 @@ accounts.patch("/accounts/:id/signature", async (c) => {
   const accountMap = await resolveAccounts(c.env, session)
   if (!accountMap[accountId]) return c.json({ error: "계정을 찾을 수 없습니다." }, 404)
 
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    if (signature.trim()) org.signatures[accountId] = signature
-    else delete org.signatures[accountId]
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "updateSignature", accountId, signature })
   return c.json({ ok: true, signature: signature.trim() ? signature : undefined })
 })
 
@@ -81,9 +78,7 @@ accounts.post("/accounts/reorder", async (c) => {
   const accountMap = await resolveAccounts(c.env, session)
   const validOrder = order.filter((id) => id in accountMap)
 
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    org.accountOrder = validOrder
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "reorderAccounts", order: validOrder })
   return c.json({ ok: true })
 })
 

@@ -1,4 +1,6 @@
 import type { Env, MailOrgState, StoredSession } from "../types"
+import { applyMailOrgOp, type MailOrgOp } from "./mailOrgOps"
+import { getMailOrgStub } from "./mailOrgStore"
 import { writeSession } from "./session"
 
 // 보관함은 사용자 정의 분류와 동일한 배정 메커니즘을 쓰는 예약된 가상 폴더 ID.
@@ -118,47 +120,57 @@ export function toggleFolderAssignment(
   }
 }
 
+// 레거시 KV blob(user:mailorg:<userId>) 읽기 전용 — MailOrgStore DO의 지연 마이그레이션이
+// storage에 아직 아무것도 없을 때 이걸로 한 번 읽어온다. 로그인 사용자의 상태를 KV에 다시 쓰는
+// saveUserMailOrg 짝은 일부러 없앴다 — 남겨두면 누군가 다시 불러서 "읽기 → 수정 → 통째로 쓰기"
+// 레이스를 되살릴 수 있다 (durable/MailOrgStore.ts, backend/CLAUDE.md 참고).
 export async function getUserMailOrg(env: Env, userId: string): Promise<MailOrgState> {
   const raw = await env.TOKENS.get(`user:mailorg:${userId}`)
   if (!raw) return emptyMailOrgState()
   return normalizeMailOrgState(JSON.parse(raw) as Partial<MailOrgState>)
 }
 
-export async function saveUserMailOrg(env: Env, userId: string, state: MailOrgState): Promise<void> {
-  await env.TOKENS.put(`user:mailorg:${userId}`, JSON.stringify(state))
-}
-
+// 로그인한 사용자는 MailOrgStore Durable Object(계정당 인스턴스 하나)가 상태를 직접 들고 있고,
+// 게스트(userId 없음)는 지금까지처럼 세션 blob(session.mailOrg)에 들어있다. DO 쪽은 getState 호출
+// 시점에 아직 DO storage에 아무것도 없으면 레거시 KV blob(user:mailorg:<userId>)을 한 번 읽어와
+// 그대로 DO storage에 옮겨 담는 지연 마이그레이션을 한다 (durable/MailOrgStore.ts 참고).
 export async function resolveMailOrg(env: Env, session: StoredSession): Promise<MailOrgState> {
-  if (session.userId) return getUserMailOrg(env, session.userId)
+  if (session.userId) return getMailOrgStub(env, session.userId).getState(session.userId)
   return session.mailOrg ? normalizeMailOrgState(session.mailOrg) : emptyMailOrgState()
 }
 
+// 게스트 세션 전용 — 로그인한 사용자는 DO가 자기 storage에 직접 쓰므로 이 함수를 거치지 않는다
+// (mutateMailOrg의 로그인 경로는 DO의 applyOp 호출 하나로 끝난다). 로그인 사용자의 상태를
+// 여기서 다시 통째로 KV에 쓰는 경로를 남겨두면, 이 마이그레이션이 없애려던 바로 그 레이스
+// 패턴("읽기 → 메모리에서 수정 → 통째로 쓰기")을 다시 열어주는 셈이라 일부러 없앴다.
 export async function persistMailOrg(
   env: Env,
   sessionId: string,
   session: StoredSession,
   state: MailOrgState,
 ): Promise<void> {
-  if (session.userId) {
-    await saveUserMailOrg(env, session.userId, state)
-  } else {
-    session.mailOrg = state
-    await writeSession(env, sessionId, session)
-  }
+  session.mailOrg = state
+  await writeSession(env, sessionId, session)
 }
 
-// org를 최신 상태로 읽어와 mutator를 적용하고 곧바로 저장한다. 읽기와 쓰기 사이에 await가 없어서
-// (mutator는 동기 함수) 그 사이 다른 요청이 쓴 변경을 이 요청이 덮어쓸 여지가 사실상 없다 — 20초
-// 자동 폴링이나 여러 탭에서 온 요청이 겹쳐도 안전하다. mutator 안에서 org 내용(폴더/규칙 존재
-// 여부 등)을 검증하면, 항상 이 시점의 최신 상태를 기준으로 검증하는 셈이라 오히려 더 정확하다.
-export async function mutateMailOrg<T>(
+// org에 op 하나를 적용하고 곧바로 저장한다.
+// - 게스트 경로: 지금까지와 동일하게 이 함수 안에서 읽기 → applyMailOrgOp로 수정 → 쓰기를 한 번에
+//   한다 (읽기와 쓰기 사이에 await가 없어 그 사이 다른 요청이 끼어들 여지가 없다).
+// - 로그인 경로: MailOrgStore DO의 applyOp RPC 호출 하나로 위임한다. 읽기+수정+쓰기 전체가 그
+//   DO 메서드 호출 "안에서" 일어나므로(Cloudflare가 같은 DO 인스턴스에 대한 동시 호출을 직렬화),
+//   Worker가 두 번의 왕복(읽기 RPC, 쓰기 RPC)으로 나눠 부르는 게 아니어서 두 요청이 겹쳐도
+//   레이스가 생기지 않는다 — 이게 바로 이 마이그레이션의 핵심이다.
+export async function mutateMailOrg<T = unknown>(
   env: Env,
   sessionId: string,
   session: StoredSession,
-  mutator: (org: MailOrgState) => T,
+  op: MailOrgOp,
 ): Promise<T> {
+  if (session.userId) {
+    return getMailOrgStub(env, session.userId).applyOp(session.userId, op) as Promise<T>
+  }
   const org = await resolveMailOrg(env, session)
-  const result = mutator(org)
+  const result = applyMailOrgOp(org, op)
   await persistMailOrg(env, sessionId, session, org)
-  return result
+  return result as T
 }

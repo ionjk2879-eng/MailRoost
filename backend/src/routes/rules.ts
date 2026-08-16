@@ -1,11 +1,12 @@
 import { Hono } from "hono"
-import type { AutoClassifyRule, Env, Mail, MailCategory } from "../types"
+import type { Env, Mail, MailCategory } from "../types"
 import { ensureFreshToken, searchMails as gmailSearchMails } from "../lib/gmail"
 import { naverSearchInbox } from "../lib/imap"
 import { persistAccounts, resolveAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import { searchImapMails } from "../lib/mailFetch"
-import { ARCHIVE_FOLDER_ID, assignmentKey, isArchived, mutateMailOrg, resolveMailOrg, persistMailOrg } from "../lib/mailOrg"
+import { mutateMailOrg, resolveMailOrg } from "../lib/mailOrg"
+import { type ApplyRuleMatchesResult, type CreateRuleResult, type UpdateRuleResult, VALID_CATEGORIES } from "../lib/mailOrgOps"
 import { matchRule } from "../lib/rules"
 import { readSession, SESSION_COOKIE } from "../lib/session"
 
@@ -20,8 +21,6 @@ rules.get("/rules", async (c) => {
   const org = await resolveMailOrg(c.env, session)
   return c.json({ rules: org.rules })
 })
-
-const VALID_CATEGORIES: MailCategory[] = ["primary", "social", "promotions", "updates", "forums"]
 
 rules.post("/rules", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
@@ -40,22 +39,15 @@ rules.post("/rules", async (c) => {
   if (category && !VALID_CATEGORIES.includes(category)) return c.json({ error: "잘못된 카테고리입니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
-  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
-    if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
-      return { ok: false as const, error: "분류 메일함을 찾을 수 없습니다." }
-    }
-    const rule: AutoClassifyRule = {
-      id: crypto.randomUUID(),
-      name: body?.name?.trim() || `${field === "from" ? "발신자" : "제목"} · ${keyword}`,
-      field,
-      keyword,
-      targetFolderId,
-      category,
-      enabled: true,
-      createdAt: Date.now(),
-    }
-    org.rules.push(rule)
-    return { ok: true as const, rule }
+  const result = await mutateMailOrg<CreateRuleResult>(c.env, sessionId, session, {
+    type: "createRule",
+    id: crypto.randomUUID(),
+    name: body?.name?.trim() || `${field === "from" ? "발신자" : "제목"} · ${keyword}`,
+    field,
+    keyword,
+    targetFolderId,
+    category,
+    createdAt: Date.now(),
   })
   if (!result.ok) return c.json({ error: result.error }, 404)
   return c.json({ rule: result.rule })
@@ -78,46 +70,15 @@ rules.patch("/rules/:id", async (c) => {
     .catch(() => null)
 
   const session = await readSession(c.env, sessionId)
-  const result = await mutateMailOrg(c.env, sessionId, session, (org) => {
-    const rule = org.rules.find((r) => r.id === ruleId)
-    if (!rule) return { ok: false as const, status: 404 as const, error: "규칙을 찾을 수 없습니다." }
-
-    if (body?.name !== undefined) {
-      const name = body.name.trim()
-      if (!name) return { ok: false as const, status: 400 as const, error: "규칙 이름을 입력해주세요." }
-      rule.name = name
-    }
-
-    if (body?.field !== undefined) {
-      if (body.field !== "from" && body.field !== "subject") {
-        return { ok: false as const, status: 400 as const, error: "잘못된 조건입니다." }
-      }
-      rule.field = body.field
-    }
-    if (body?.keyword !== undefined) {
-      const keyword = body.keyword.trim()
-      if (!keyword) return { ok: false as const, status: 400 as const, error: "키워드를 입력해주세요." }
-      rule.keyword = keyword
-    }
-    if (body?.targetFolderId !== undefined) {
-      const targetFolderId = body.targetFolderId
-      if (targetFolderId && targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === targetFolderId)) {
-        return { ok: false as const, status: 404 as const, error: "분류 메일함을 찾을 수 없습니다." }
-      }
-      rule.targetFolderId = targetFolderId
-    }
-    if (body?.category !== undefined) {
-      const category = body.category as MailCategory | null
-      if (category && !VALID_CATEGORIES.includes(category)) {
-        return { ok: false as const, status: 400 as const, error: "잘못된 카테고리입니다." }
-      }
-      rule.category = category
-    }
-    if (!rule.targetFolderId && !rule.category) {
-      return { ok: false as const, status: 400 as const, error: "이동할 분류 메일함이나 카테고리를 선택해주세요." }
-    }
-    if (body?.enabled !== undefined) rule.enabled = body.enabled
-    return { ok: true as const, rule }
+  const result = await mutateMailOrg<UpdateRuleResult>(c.env, sessionId, session, {
+    type: "updateRule",
+    ruleId,
+    name: body?.name,
+    field: body?.field,
+    keyword: body?.keyword,
+    targetFolderId: body?.targetFolderId,
+    category: body?.category,
+    enabled: body?.enabled,
   })
   if (!result.ok) return c.json({ error: result.error }, result.status)
   return c.json({ rule: result.rule })
@@ -129,9 +90,7 @@ rules.delete("/rules/:id", async (c) => {
 
   const ruleId = c.req.param("id")
   const session = await readSession(c.env, sessionId)
-  await mutateMailOrg(c.env, sessionId, session, (org) => {
-    org.rules = org.rules.filter((r) => r.id !== ruleId)
-  })
+  await mutateMailOrg(c.env, sessionId, session, { type: "deleteRule", ruleId })
   return c.json({ ok: true })
 })
 
@@ -187,24 +146,18 @@ rules.post("/rules/:id/apply", async (c) => {
 
   if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
 
-  // 저장 직전에 최신 상태를 다시 읽어와 이번에 새로 찾은 배정만 얹는다 (겹친 요청이 서로 덮어쓰지 않도록).
-  const latestOrg = await resolveMailOrg(c.env, session)
-  let count = 0
-  let alreadyClassified = 0
-  accountIds.forEach((accountId, i) => {
-    for (const mail of perAccountMatches[i]) {
-      if (isArchived(latestOrg, accountId, mail.id)) continue
-      const key = assignmentKey(accountId, mail.id)
-      const current = latestOrg.assignments[key] ?? []
-      if (current.includes(targetFolderId)) { alreadyClassified++; continue }
-      latestOrg.assignments[key] = [...current, targetFolderId]
-      latestOrg.classified[key] = true
-      count++
-    }
+  // 매치된 메일 목록을 op에 실어보내고, 최종 반영(이미 배정된 것 스킵 / archived 스킵 / 배정+classified
+  // 표시)은 mutateMailOrg 호출 하나(로그인 사용자는 DO의 applyOp RPC 호출 하나) 안에서 현재 상태를
+  // 기준으로 한다 — 그래서 예전처럼 "저장 직전에 최신 상태를 다시 읽어와 델타만 얹는" 별도 단계가
+  // 필요 없다.
+  const matches = accountIds.flatMap((accountId, i) => perAccountMatches[i].map((mail) => ({ accountId, mailId: mail.id })))
+  const result = await mutateMailOrg<ApplyRuleMatchesResult>(c.env, sessionId, session, {
+    type: "applyRuleMatches",
+    targetFolderId,
+    matches,
   })
-  await persistMailOrg(c.env, sessionId, session, latestOrg)
 
-  return c.json({ ok: true, count, alreadyClassified })
+  return c.json({ ok: true, count: result.count, alreadyClassified: result.alreadyClassified })
 })
 
 export default rules
