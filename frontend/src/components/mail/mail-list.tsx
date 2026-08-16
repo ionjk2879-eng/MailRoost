@@ -329,14 +329,8 @@ export function MailList({
                 )}
               >
                 <div className="flex w-full min-w-0 items-center gap-2.5">
-                  {/* 체크박스 (평소엔 현재 보고 있는 메일 표시, 호버/선택 시 체크박스로 전환) */}
+                  {/* 체크박스 (호버/선택 시 체크박스로 전환 — 현재 보고 있는 메일 표시는 그 아래 줄에 따로 있음) */}
                   <div className="relative flex size-4 shrink-0 items-center justify-center">
-                    {selectedMailId === mail.id && !isChecked && (
-                      <span
-                        className="bg-primary absolute size-2 rounded-full transition-opacity group-hover:opacity-0"
-                        aria-hidden="true"
-                      />
-                    )}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -366,7 +360,12 @@ export function MailList({
                   </span>
                 </div>
 
-                <div className="flex w-full min-w-0 items-center gap-2 pl-6">
+                <div className="flex w-full min-w-0 items-center gap-2">
+                  <span className="flex size-4 shrink-0 items-center justify-center">
+                    {selectedMailId === mail.id && !isChecked && (
+                      <span className="bg-primary size-2 rounded-full" aria-hidden="true" />
+                    )}
+                  </span>
                   <span className={cn("min-w-0 flex-1 truncate text-[13px]", !mail.isRead && "font-semibold")}>
                     {mail.subject}
                   </span>
