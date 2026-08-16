@@ -1,6 +1,7 @@
 import type { Env, GmailAccountRecord, Mail, MailAttachment, MailCategory } from "../types"
 import { buildMimeMessage, decodeRfc2047, parseAddressList, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
 import type { OutgoingAttachment } from "./mime"
+import { fetchWithRetry } from "./httpRetry"
 
 // gmail.modify로는 라벨 변경/휴지통 이동까지만 되고 영구 삭제(batchDelete)는 403이 난다.
 // 휴지통 비우기/선택 영구삭제를 지원하려면 전체 계정 접근 스코프가 필요하다.
@@ -33,7 +34,7 @@ export async function exchangeCodeForTokens(
   clientSecret: string,
   redirectUri: string,
 ): Promise<TokenResponse> {
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const res = await fetchWithRetry("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -55,7 +56,7 @@ async function refreshAccessToken(
   clientId: string,
   clientSecret: string,
 ): Promise<{ access_token: string; expires_in: number }> {
-  const res = await fetch("https://oauth2.googleapis.com/token", {
+  const res = await fetchWithRetry("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -82,7 +83,7 @@ export async function ensureFreshToken(env: Env, record: GmailAccountRecord): Pr
 }
 
 export async function fetchProfile(accessToken: string): Promise<{ emailAddress: string }> {
-  const res = await fetch(`${GMAIL_API_BASE}/profile`, {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/profile`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!res.ok) throw new Error(`Gmail profile fetch failed: ${res.status} ${await res.text()}`)
@@ -171,7 +172,7 @@ async function batchGetMessages(accessToken: string, ids: string[]): Promise<Gma
       })
       .join("") + `--${boundary}--`
 
-  const res = await fetch("https://gmail.googleapis.com/batch/gmail/v1", {
+  const res = await fetchWithRetry("https://gmail.googleapis.com/batch/gmail/v1", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -210,7 +211,7 @@ async function listMailsByLabel(
   const params = new URLSearchParams({ maxResults: String(maxResults), labelIds: labelId })
   if (pageToken) params.set("pageToken", pageToken)
 
-  const listRes = await fetch(`${GMAIL_API_BASE}/messages?${params}`, {
+  const listRes = await fetchWithRetry(`${GMAIL_API_BASE}/messages?${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!listRes.ok) throw new Error(`Gmail list failed: ${listRes.status}`)
@@ -239,7 +240,7 @@ export async function searchMails(
   maxResults = 30,
 ): Promise<Mail[]> {
   const params = new URLSearchParams({ maxResults: String(maxResults), q: `in:inbox ${query}` })
-  const listRes = await fetch(`${GMAIL_API_BASE}/messages?${params}`, {
+  const listRes = await fetchWithRetry(`${GMAIL_API_BASE}/messages?${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!listRes.ok) throw new Error(`Gmail 검색 실패: ${listRes.status}`)
@@ -267,7 +268,7 @@ export async function listTrashMails(
 
 export async function toggleStar(accessToken: string, messageId: string, starred: boolean): Promise<void> {
   const body = starred ? { addLabelIds: ["STARRED"] } : { removeLabelIds: ["STARRED"] }
-  const res = await fetch(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/modify`, {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/modify`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -325,7 +326,7 @@ function extractBody(payload: GmailMessagePart | undefined): { text?: string; ht
 }
 
 async function modifyLabels(accessToken: string, messageId: string, body: object): Promise<void> {
-  const res = await fetch(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/modify`, {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/modify`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -342,7 +343,7 @@ export async function markAsUnread(accessToken: string, messageId: string): Prom
 }
 
 export async function trashMail(accessToken: string, messageId: string): Promise<void> {
-  const res = await fetch(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/trash`, {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/trash`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
   })
@@ -355,7 +356,7 @@ export async function batchModifyMessages(
   body: { addLabelIds?: string[]; removeLabelIds?: string[] },
 ): Promise<void> {
   if (ids.length === 0) return
-  const res = await fetch(`${GMAIL_API_BASE}/messages/batchModify`, {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages/batchModify`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({ ids, ...body }),
@@ -370,7 +371,7 @@ export async function trashMailBulk(accessToken: string, ids: string[]): Promise
 // 휴지통(TRASH 라벨)에서 완전히 삭제
 export async function batchDeleteMessages(accessToken: string, ids: string[]): Promise<void> {
   if (ids.length === 0) return
-  const res = await fetch(`${GMAIL_API_BASE}/messages/batchDelete`, {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages/batchDelete`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({ ids }),
@@ -389,7 +390,7 @@ export async function markAllInboxUnreadAsRead(accessToken: string): Promise<voi
   do {
     const params = new URLSearchParams({ maxResults: "500", q: "is:unread in:inbox" })
     if (pageToken) params.set("pageToken", pageToken)
-    const res = await fetch(`${GMAIL_API_BASE}/messages?${params}`, {
+    const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages?${params}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
     if (!res.ok) break
@@ -409,7 +410,7 @@ export async function emptyTrash(accessToken: string): Promise<void> {
   do {
     const params = new URLSearchParams({ maxResults: "500", labelIds: "TRASH" })
     if (pageToken) params.set("pageToken", pageToken)
-    const res = await fetch(`${GMAIL_API_BASE}/messages?${params}`, {
+    const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages?${params}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
     if (!res.ok) throw new Error(`Gmail 휴지통 조회 실패: ${res.status}`)
@@ -442,7 +443,7 @@ export async function sendGmailMessage(
   const raw = buildMimeMessage({ from, to, cc, bcc, subject, textBody: body, attachments })
   const encoded = bytesToBase64Url(new TextEncoder().encode(raw))
 
-  const res = await fetch(`${GMAIL_API_BASE}/messages/send`, {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages/send`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({ raw: encoded }),
@@ -454,7 +455,7 @@ export async function sendGmailMessage(
 }
 
 export async function getMailDetail(accessToken: string, accountId: string, messageId: string): Promise<Mail> {
-  const res = await fetch(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}?format=full`, {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}?format=full`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!res.ok) throw new Error(`Gmail message fetch failed: ${res.status}`)
@@ -478,7 +479,7 @@ export async function getAttachment(
   messageId: string,
   attachmentId: string,
 ): Promise<{ bytes: Uint8Array } | null> {
-  const res = await fetch(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`, {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (res.status === 404) return null

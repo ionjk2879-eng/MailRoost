@@ -1,6 +1,7 @@
 import { connect } from "cloudflare:sockets"
 import type { Mail } from "../types"
 import { decodeRfc2047, extractMimeAttachment, listMimeAttachments, parseAddressList, parseFromHeader, parseHeaderBlock, parseMimeMessage, sanitizeHtml, stripHtml } from "./mime"
+import { retryAsync } from "./retry"
 
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
   const out = new Uint8Array(a.length + b.length)
@@ -150,7 +151,11 @@ export interface ImapConfig {
   loginErrorMsg?: string
 }
 
-async function withImap<T>(config: ImapConfig, fn: (client: ImapClient) => Promise<T>): Promise<T> {
+// 아이디/비밀번호가 틀려서 로그인 자체가 거부된 경우 — 서버에 연결은 됐고 명확한 답을 받은
+// 것이므로 재시도해도 결과가 같다. 연결 실패/끊김 등 그 외 오류와 구분해 재시도 대상에서 뺀다.
+class ImapAuthError extends Error {}
+
+async function withImapOnce<T>(config: ImapConfig, fn: (client: ImapClient) => Promise<T>): Promise<T> {
   const socket = connect(
     { hostname: config.host, port: config.port },
     { secureTransport: "on", allowHalfOpen: false },
@@ -161,12 +166,24 @@ async function withImap<T>(config: ImapConfig, fn: (client: ImapClient) => Promi
     await client.readGreeting()
     const loginResult = await client.command(`LOGIN ${quoteImap(config.email)} ${quoteImap(config.password)}`)
     if (!loginResult.ok) {
-      throw new Error(config.loginErrorMsg ?? "IMAP 로그인에 실패했습니다. 이메일 또는 비밀번호를 확인해주세요.")
+      throw new ImapAuthError(config.loginErrorMsg ?? "IMAP 로그인에 실패했습니다. 이메일 또는 비밀번호를 확인해주세요.")
     }
     return await fn(client)
   } finally {
     await client.close()
   }
+}
+
+// 네이버/다음 등 IMAP 서버가 동시 연결 수를 제한해두는 경우가 있어, 계정 수가 늘면 연결 거부/
+// 순간적인 끊김을 겪기 쉽다. 로그인 실패(비번 오류 등 명확한 거부)는 재시도해도 소용없으므로
+// 제외하고, 그 외 연결/통신 오류만 지수 백오프로 재시도한다.
+async function withImap<T>(config: ImapConfig, fn: (client: ImapClient) => Promise<T>): Promise<T> {
+  return retryAsync(() => withImapOnce(config, fn), {
+    maxAttempts: 3,
+    baseDelayMs: 400,
+    maxDelayMs: 4000,
+    shouldRetryError: (err) => !(err instanceof ImapAuthError),
+  })
 }
 
 // ── Provider configs ─────────────────────────────────────────────────────────
