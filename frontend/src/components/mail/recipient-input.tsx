@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input"
 export interface RecipientOption {
   email: string
   name?: string
+  source?: "contact" | "recent"
 }
 
 interface RecipientInputProps {
@@ -42,16 +43,15 @@ export function RecipientInput({ id, value, onChange, options, placeholder, requ
 
   const token = currentToken(value)
   const filtered = useMemo(() => {
-    if (!token) return []
     const q = token.toLowerCase()
     const already = new Set(value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean))
     return options
       .filter(
         (o) =>
           !already.has(o.email.toLowerCase()) &&
-          (o.email.toLowerCase().includes(q) || (o.name && o.name.toLowerCase().includes(q))),
+          (!q || o.email.toLowerCase().includes(q) || (o.name && o.name.toLowerCase().includes(q))),
       )
-      .slice(0, 8)
+      .slice(0, 12)
   }, [options, token, value])
 
   return (
@@ -71,9 +71,10 @@ export function RecipientInput({ id, value, onChange, options, placeholder, requ
       />
       {open && filtered.length > 0 && (
         <div className="bg-background absolute top-full left-0 z-20 mt-1 max-h-56 w-full min-w-[240px] overflow-y-auto rounded-md border shadow-md">
-          {filtered.map((o) => (
+          {filtered.map((o, index) => (
+            <div key={o.email}>
+            {(index === 0 || filtered[index - 1]?.source !== o.source) && <p className="bg-muted/50 px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">{o.source === "contact" ? "주소록" : "최근 받은 주소"}</p>}
             <button
-              key={o.email}
               type="button"
               onClick={() => {
                 onChange(replaceLastToken(value, o.email))
@@ -86,6 +87,7 @@ export function RecipientInput({ id, value, onChange, options, placeholder, requ
                 <span className="text-muted-foreground w-full truncate text-xs">{o.email}</span>
               )}
             </button>
+            </div>
           ))}
         </div>
       )}

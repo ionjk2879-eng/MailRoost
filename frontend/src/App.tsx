@@ -983,12 +983,6 @@ function App() {
               <RefreshCw className={cn("size-4", workspace.isRefreshing && "animate-spin")} />
             </Button>
           )}
-          <NotificationBell
-            notifications={mailOrg.notifications}
-            onMarkRead={mailOrg.handleMarkNotificationRead}
-            onMarkAllRead={mailOrg.handleMarkAllNotificationsRead}
-            onDismiss={mailOrg.handleDismissNotification}
-          />
           <div className="flex-1" />
           {(view === "inbox" || view === "starred") && sendableAccounts.length > 0 && isMobile && (
             <Button size="sm" className="gap-2" onClick={handleOpenCompose}>
@@ -996,6 +990,12 @@ function App() {
               메일 쓰기
             </Button>
           )}
+          <NotificationBell
+            notifications={mailOrg.notifications}
+            onMarkRead={mailOrg.handleMarkNotificationRead}
+            onMarkAllRead={mailOrg.handleMarkAllNotificationsRead}
+            onDismiss={mailOrg.handleDismissNotification}
+          />
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}

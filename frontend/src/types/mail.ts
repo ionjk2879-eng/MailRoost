@@ -121,3 +121,10 @@ export interface Draft {
   createdAt: number
   updatedAt: number
 }
+
+export interface Contact {
+  id: string
+  name: string
+  email: string
+  createdAt: number
+}

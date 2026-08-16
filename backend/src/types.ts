@@ -228,6 +228,13 @@ export interface Draft {
   updatedAt: number
 }
 
+export interface Contact {
+  id: string
+  name: string
+  email: string
+  createdAt: number
+}
+
 export interface StoredSession {
   userId?: string
   loginEmail?: string
@@ -236,4 +243,5 @@ export interface StoredSession {
   memos?: MemoItem[]
   quickReplies?: QuickReply[]
   drafts?: Draft[]
+  contacts?: Contact[]
 }

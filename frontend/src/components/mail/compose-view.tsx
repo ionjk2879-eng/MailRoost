@@ -1,12 +1,12 @@
-import { ChevronLeft, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, Save, Send, ShieldCheck, UserRound, X } from "lucide-react"
+import { BookUser, ChevronLeft, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, Plus, Save, Send, Trash2, UserRound, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RecipientInput, type RecipientOption } from "@/components/mail/recipient-input"
 import { ProviderIcon } from "@/components/mail/provider-icon"
-import { createDraft, deleteDraft, sendMail, updateDraft } from "@/lib/api"
-import type { Account, Draft, ForwardedAttachmentRef, Mail, QuickReply } from "@/types/mail"
+import { createContact, createDraft, deleteContact, deleteDraft, fetchContacts, sendMail, updateDraft } from "@/lib/api"
+import type { Account, Contact, Draft, ForwardedAttachmentRef, Mail, QuickReply } from "@/types/mail"
 
 export const COMPOSE_SUPPORTED: Array<Account["provider"]> = ["gmail", "naver", "daum", "imap"]
 
@@ -75,17 +75,36 @@ export function ComposeView({
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [quickReplyOpen, setQuickReplyOpen] = useState(false)
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [addressBookOpen, setAddressBookOpen] = useState(false)
+  const [contactName, setContactName] = useState("")
+  const [contactEmail, setContactEmail] = useState("")
+  const [contactError, setContactError] = useState<string | null>(null)
   const quickReplyRef = useRef<HTMLDivElement>(null)
   const selectedAccount = sendableAccounts.find((account) => account.id === accountId)
 
   const recipientOptions = useMemo<RecipientOption[]>(() => {
     const seen = new Map<string, RecipientOption>()
+    for (const contact of contacts) seen.set(contact.email.toLowerCase(), { email: contact.email, name: contact.name, source: "contact" })
     for (const m of mails) {
       if (!m.fromEmail || seen.has(m.fromEmail.toLowerCase())) continue
-      seen.set(m.fromEmail.toLowerCase(), { email: m.fromEmail, name: m.fromName })
+      seen.set(m.fromEmail.toLowerCase(), { email: m.fromEmail, name: m.fromName, source: "recent" })
     }
     return [...seen.values()]
-  }, [mails])
+  }, [contacts, mails])
+
+  useEffect(() => { fetchContacts().then(setContacts) }, [])
+
+  const handleCreateContact = async () => {
+    const result = await createContact(contactName, contactEmail)
+    if (!result.ok) { setContactError(result.error); return }
+    setContacts((items) => [result.contact, ...items])
+    setContactName(""); setContactEmail(""); setContactError(null)
+  }
+
+  const handleDeleteContact = async (id: string) => {
+    if (await deleteContact(id)) setContacts((items) => items.filter((item) => item.id !== id))
+  }
 
   const draftIdRef = useRef<string | null>(defaultDraftId ?? null)
   const sentRef = useRef(false)
@@ -211,14 +230,24 @@ export function ComposeView({
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-500">Compose</p>
             <h2 className="mt-0.5 text-xl font-bold tracking-tight">{title}</h2>
           </div>
-          <button
-            type="button"
-            onClick={onCancel}
-            aria-label="작성 취소"
-            className="text-muted-foreground hover:text-foreground hover:bg-accent flex size-9 shrink-0 items-center justify-center rounded-full border bg-background/80 shadow-sm transition-colors"
-          >
-            <X className="size-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {sendableAccounts.length > 0 && (
+              <>
+                <Button type="button" variant="outline" className="hidden gap-2 rounded-xl sm:flex" disabled={isSending} onClick={() => saveDraft()}><Save className="size-4" /> 임시보관</Button>
+                <Button type="submit" className="hidden min-w-28 gap-2 rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20 hover:bg-orange-600 sm:flex" disabled={isSending}>
+                  {isSending ? <><Loader2 className="size-4 animate-spin" /> 전송 중...</> : <><Send className="size-4" /> 보내기</>}
+                </Button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={onCancel}
+              aria-label="작성 취소"
+              className="text-muted-foreground hover:text-foreground hover:bg-accent flex size-9 shrink-0 items-center justify-center rounded-full border bg-background/80 shadow-sm transition-colors"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
         </div>
       </div>
       {sendableAccounts.length === 0 ? (
@@ -248,6 +277,7 @@ export function ComposeView({
             <div>
             <div className="mb-1.5 flex justify-end">
               <div className="flex gap-2">
+                <button type="button" onClick={() => setAddressBookOpen((open) => !open)} className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-orange-600 hover:bg-orange-50"><BookUser className="size-3" /> 주소록</button>
                 {!showCc && (
                   <button type="button" onClick={() => setShowCc(true)} className="rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
                     참조
@@ -268,6 +298,26 @@ export function ComposeView({
               options={recipientOptions}
               required
             />
+            {addressBookOpen && (
+              <div className="mt-2 overflow-hidden rounded-xl border bg-background shadow-lg">
+                <div className="grid gap-2 border-b bg-muted/30 p-3 sm:grid-cols-[1fr_1.4fr_auto]">
+                  <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder="이름" className="h-9" />
+                  <Input value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="email@example.com" type="email" required className="h-9" />
+                  <Button type="button" onClick={handleCreateContact} size="sm" className="h-9 gap-1"><Plus className="size-3.5" /> 저장</Button>
+                  {contactError && <p className="text-destructive text-xs sm:col-span-3">{contactError}</p>}
+                </div>
+                <div className="max-h-48 overflow-y-auto p-1">
+                  {contacts.length === 0 ? <p className="p-3 text-center text-xs text-muted-foreground">저장된 주소가 없습니다.</p> : contacts.map((contact) => (
+                    <div key={contact.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted">
+                      <button type="button" onClick={() => { setTo((value) => `${value}${value.trim() ? ", " : ""}${contact.email}, `); setAddressBookOpen(false) }} className="min-w-0 flex-1 text-left">
+                        <span className="block truncate text-xs font-semibold">{contact.name}</span><span className="block truncate text-[10px] text-muted-foreground">{contact.email}</span>
+                      </button>
+                      <button type="button" onClick={() => handleDeleteContact(contact.id)} className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={`${contact.name} 삭제`}><Trash2 className="size-3.5" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             </div>
           </div>
           {showCc && (
@@ -403,13 +453,12 @@ export function ComposeView({
         </div>
       )}
       {sendableAccounts.length > 0 && (
-        <div className="flex shrink-0 items-center gap-3 border-t bg-background/95 px-4 py-3 shadow-[0_-8px_24px_-20px_rgba(0,0,0,.35)] backdrop-blur sm:px-7">
+        <div className="flex shrink-0 items-center gap-3 border-t bg-background/95 px-4 py-3 shadow-[0_-8px_24px_-20px_rgba(0,0,0,.35)] backdrop-blur sm:hidden">
           <Button type="submit" className="min-w-28 gap-2 rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20 hover:bg-orange-600" disabled={isSending}>
             {isSending ? <><Loader2 className="size-4 animate-spin" /> 전송 중...</> : <><Send className="size-4" /> 보내기</>}
           </Button>
           <Button type="button" variant="outline" className="gap-2 rounded-xl" disabled={isSending} onClick={() => saveDraft()}><Save className="size-4" /> 임시보관</Button>
           <div className="flex-1" />
-          <span className="hidden items-center gap-1.5 text-[11px] text-muted-foreground sm:flex"><ShieldCheck className="size-3.5 text-emerald-500" /> 자동 임시저장</span>
           <Button type="button" variant="ghost" className="rounded-xl" disabled={isSending} onClick={onCancel}>취소</Button>
         </div>
       )}

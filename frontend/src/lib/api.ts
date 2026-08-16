@@ -1,8 +1,24 @@
-import type { Account, AppNotification, AutoClassifyRule, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"
+import type { Account, AppNotification, AutoClassifyRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
 export const gmailLoginUrl = `${AUTH_BASE}/auth/gmail/login`
+
+export async function fetchContacts(): Promise<Contact[]> {
+  const res = await fetch("/api/contacts")
+  if (!res.ok) return []
+  return ((await res.json()) as { contacts: Contact[] }).contacts
+}
+
+export async function createContact(name: string, email: string): Promise<{ ok: true; contact: Contact } | { ok: false; error: string }> {
+  const res = await fetch("/api/contacts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, email }) })
+  const data = (await res.json().catch(() => ({}))) as { contact?: Contact; error?: string }
+  return res.ok && data.contact ? { ok: true, contact: data.contact } : { ok: false, error: data.error ?? "주소 저장에 실패했습니다." }
+}
+
+export async function deleteContact(id: string): Promise<boolean> {
+  return (await fetch(`/api/contacts/${encodeURIComponent(id)}`, { method: "DELETE" })).ok
+}
 
 export async function fetchAccounts(): Promise<Account[]> {
   const res = await fetch("/api/accounts")

@@ -12,6 +12,7 @@ import trash from "./trash"
 import notifications from "./notifications"
 import snooze from "./snooze"
 import push from "./push"
+import contacts from "./contacts"
 
 const api = new Hono<{ Bindings: Env }>()
 
@@ -27,5 +28,6 @@ api.route("/", trash)
 api.route("/", notifications)
 api.route("/", snooze)
 api.route("/", push)
+api.route("/", contacts)
 
 export default api
