@@ -386,6 +386,19 @@ function extractBody(payload: GmailMessagePart | undefined): { text?: string; ht
   return {}
 }
 
+function embedInlineBodyImages(html: string, part: GmailMessagePart | undefined): string {
+  if (!part) return html
+  let result = html
+  const contentId = getHeader(part.headers, "Content-ID").replace(/^<|>$/g, "")
+  if (contentId && part.mimeType?.startsWith("image/") && part.body?.data) {
+    const base64 = part.body.data.replace(/-/g, "+").replace(/_/g, "/")
+    const escapedId = contentId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    result = result.replace(new RegExp(`cid:(?:%3C|<)?${escapedId}(?:%3E|>)?`, "gi"), `data:${part.mimeType};base64,${base64}`)
+  }
+  for (const child of part.parts ?? []) result = embedInlineBodyImages(result, child)
+  return result
+}
+
 async function modifyLabels(accessToken: string, messageId: string, body: object): Promise<void> {
   const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}/modify`, {
     method: "POST",
@@ -523,7 +536,7 @@ export async function getMailDetail(accessToken: string, accountId: string, mess
   const msg = (await res.json()) as GmailMessage
   const mail = mapMessageToMail(msg, accountId)
   const { text, html } = extractBody(msg.payload)
-  mail.bodyHtml = html ? sanitizeHtml(html) : undefined
+  mail.bodyHtml = html ? sanitizeHtml(embedInlineBodyImages(html, msg.payload)) : undefined
   mail.body = text || (html ? stripHtml(html) : "") || mail.snippet
   const attachments: MailAttachment[] = []
   collectAttachments(msg.payload, attachments)

@@ -16,8 +16,8 @@ const app = new Hono<{ Bindings: Env }>()
 
 // 클릭재킹/MIME 스니핑/리퍼러 유출 등을 막는 기본 보안 헤더 + CSP. script-src에 'unsafe-inline'을
 // 넣지 않으므로 인라인 <script>는 전부 막힌다(테마 깜빡임 방지 스크립트를 public/theme-init.js로
-// 뺀 이유). 발신자 아이콘이 구글 파비콘 서비스에서 이미지를 가져오므로 img-src에만 그 호스트를
-// 허용한다.
+// 뺀 이유). 메일 본문은 발신자가 호스팅한 이미지를 포함하고 발신자 아이콘 서비스는 다른 HTTPS
+// 호스트로 리다이렉트될 수 있으므로 img-src에 HTTPS 이미지만 허용한다.
 app.use(
   secureHeaders({
     referrerPolicy: "strict-origin-when-cross-origin",
@@ -25,7 +25,7 @@ app.use(
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "https://www.google.com"],
+      imgSrc: ["'self'", "data:", "https:"],
       fontSrc: ["'self'", "data:"],
       connectSrc: ["'self'"],
       workerSrc: ["'self'"],

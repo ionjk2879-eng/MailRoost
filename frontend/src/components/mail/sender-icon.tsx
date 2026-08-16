@@ -13,18 +13,23 @@ function domainFromEmail(email: string): string | null {
 }
 
 export function SenderIcon({ email, senderName, className }: SenderIconProps) {
-  const [failed, setFailed] = useState(false)
+  const [sourceIndex, setSourceIndex] = useState(0)
   const domain = domainFromEmail(email)
 
   useEffect(() => {
-    setFailed(false)
+    setSourceIndex(0)
   }, [domain])
 
-  if (domain && !failed) {
-    const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`
+  const sources = domain ? [
+    `https://www.google.com/s2/favicons?domain_url=${encodeURIComponent(`https://${domain}`)}&sz=128`,
+    `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`,
+    `https://${domain}/favicon.ico`,
+  ] : []
+
+  if (domain && sourceIndex < sources.length) {
     return (
       <span title={domain} className={cn("flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-white", className)}>
-        <img src={faviconUrl} alt="" className="size-[72%] object-contain" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+        <img src={sources[sourceIndex]} alt="" className="size-[72%] object-contain" loading="lazy" referrerPolicy="no-referrer" onError={() => setSourceIndex((index) => index + 1)} />
       </span>
     )
   }
