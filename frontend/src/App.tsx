@@ -505,6 +505,12 @@ function App() {
   }, [currentUser])
 
   const handleOpenCompose = () => {
+    setView("inbox")
+    setSelectedCategory(null)
+    workspace.setFocusedMailId(null)
+    workspace.setCheckedMailIds(new Set())
+    workspace.setSearchQuery("")
+    mailOrg.setActiveFilter(null)
     setComposeState({})
     workspace.setSelectedMailId(null)
   }
