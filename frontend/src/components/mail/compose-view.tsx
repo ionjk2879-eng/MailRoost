@@ -1,4 +1,4 @@
-import { BookUser, ChevronLeft, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, Plus, Save, Send, Trash2, UploadCloud, UserRound, X } from "lucide-react"
+import { BookUser, ChevronLeft, Download, Eye, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, Plus, Save, Send, Trash2, UploadCloud, UserRound, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -79,6 +79,7 @@ export function ComposeView({
   const [body, setBody] = useState(() => toEditorHtml(defaultBody))
   const [forwardedAttachments, setForwardedAttachments] = useState(defaultForwardedAttachments)
   const [localAttachments, setLocalAttachments] = useState<LocalAttachment[]>([])
+  const [previewAttachment, setPreviewAttachment] = useState<LocalAttachment | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [quickReplyOpen, setQuickReplyOpen] = useState(false)
@@ -239,6 +240,8 @@ export function ComposeView({
     })))
     setLocalAttachments((items) => [...items, ...encoded]); setError(null)
   }
+
+  const attachmentDataUrl = (file: LocalAttachment) => `data:${file.mimeType};base64,${file.dataBase64}`
 
   return (
     <form onSubmit={handleSubmit} className="flex h-full min-h-0 flex-col bg-[#fffdfb] dark:bg-background">
@@ -460,8 +463,17 @@ export function ComposeView({
               <button type="button" onClick={() => fileInputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addFiles(event.dataTransfer.files) }} className="mt-3 flex w-full flex-col items-center rounded-xl border border-dashed p-4 text-center transition hover:border-orange-300 hover:bg-orange-50/50">
                 <UploadCloud className="size-5 text-orange-500" /><span className="mt-1 text-xs font-semibold">파일 선택 또는 드롭</span><span className="mt-0.5 text-[10px] text-muted-foreground">총 25MB까지</span>
               </button>
-              <div className="mt-2 space-y-1">
-                {localAttachments.map((file) => <div key={file.id} className="flex items-center gap-2 rounded-lg bg-muted/50 px-2 py-1.5"><Paperclip className="size-3.5" /><span className="min-w-0 flex-1 truncate text-[11px]">{file.filename}</span><span className="text-[9px] text-muted-foreground">{formatFileSize(file.size)}</span><button type="button" onClick={() => setLocalAttachments((items) => items.filter((item) => item.id !== file.id))} aria-label={`${file.filename} 삭제`}><X className="size-3.5" /></button></div>)}
+              <div className="mt-2 space-y-1.5">
+                {localAttachments.map((file) => <div key={file.id} className="group flex items-center gap-2 rounded-lg border bg-muted/30 p-1.5">
+                  <button type="button" onClick={() => setPreviewAttachment(file)} className="flex min-w-0 flex-1 items-center gap-2 text-left" title="미리보기">
+                    <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-background">
+                      {file.mimeType.startsWith("image/") ? <img src={attachmentDataUrl(file)} alt="" className="size-full object-cover" /> : <FileText className="size-4 text-orange-500" />}
+                    </span>
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-medium">{file.filename}</span><span className="block text-[9px] text-muted-foreground">{formatFileSize(file.size)}</span></span>
+                    <Eye className="size-3.5 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
+                  </button>
+                  <button type="button" onClick={() => setLocalAttachments((items) => items.filter((item) => item.id !== file.id))} className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={`${file.filename} 삭제`}><X className="size-3.5" /></button>
+                </div>)}
               </div>
             </section>
             <section>
@@ -490,6 +502,24 @@ export function ComposeView({
           <Button type="button" variant="outline" className="gap-2 rounded-xl" disabled={isSending} onClick={() => saveDraft()}><Save className="size-4" /> 임시보관</Button>
           <div className="flex-1" />
           <Button type="button" variant="ghost" className="rounded-xl" disabled={isSending} onClick={onCancel}>취소</Button>
+        </div>
+      )}
+      {previewAttachment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setPreviewAttachment(null)}>
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center gap-3 border-b px-4 py-3">
+              <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{previewAttachment.filename}</p><p className="text-xs text-muted-foreground">{previewAttachment.mimeType} · {formatFileSize(previewAttachment.size)}</p></div>
+              <a href={attachmentDataUrl(previewAttachment)} download={previewAttachment.filename} className="flex size-9 items-center justify-center rounded-lg border hover:bg-muted" title="다운로드"><Download className="size-4" /></a>
+              <button type="button" onClick={() => setPreviewAttachment(null)} className="flex size-9 items-center justify-center rounded-lg hover:bg-muted" aria-label="미리보기 닫기"><X className="size-4" /></button>
+            </div>
+            <div className="flex min-h-[320px] flex-1 items-center justify-center overflow-auto bg-muted/20 p-4">
+              {previewAttachment.mimeType.startsWith("image/") ? <img src={attachmentDataUrl(previewAttachment)} alt={previewAttachment.filename} className="max-h-[75vh] max-w-full object-contain" />
+                : previewAttachment.mimeType === "application/pdf" || previewAttachment.mimeType.startsWith("text/") ? <iframe src={attachmentDataUrl(previewAttachment)} title={previewAttachment.filename} className="h-[70vh] w-full rounded-lg border bg-white" />
+                : previewAttachment.mimeType.startsWith("audio/") ? <audio src={attachmentDataUrl(previewAttachment)} controls className="w-full max-w-xl" />
+                : previewAttachment.mimeType.startsWith("video/") ? <video src={attachmentDataUrl(previewAttachment)} controls className="max-h-[70vh] max-w-full rounded-lg" />
+                : <div className="text-center"><FileText className="mx-auto size-12 text-muted-foreground" /><p className="mt-3 text-sm font-medium">이 파일 형식은 화면에서 미리 볼 수 없습니다.</p><p className="mt-1 text-xs text-muted-foreground">다운로드하여 내용을 확인할 수 있습니다.</p></div>}
+            </div>
+          </div>
         </div>
       )}
     </form>
