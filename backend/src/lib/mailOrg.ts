@@ -1,4 +1,5 @@
-import type { Env, MailOrgState } from "../types"
+import type { Env, MailOrgState, StoredSession } from "../types"
+import { writeSession } from "./session"
 
 // 보관함은 사용자 정의 분류와 동일한 배정 메커니즘을 쓰는 예약된 가상 폴더 ID.
 // org.folders 목록에는 들어가지 않으므로 이름변경/삭제 대상이 되지 않는다.
@@ -125,4 +126,39 @@ export async function getUserMailOrg(env: Env, userId: string): Promise<MailOrgS
 
 export async function saveUserMailOrg(env: Env, userId: string, state: MailOrgState): Promise<void> {
   await env.TOKENS.put(`user:mailorg:${userId}`, JSON.stringify(state))
+}
+
+export async function resolveMailOrg(env: Env, session: StoredSession): Promise<MailOrgState> {
+  if (session.userId) return getUserMailOrg(env, session.userId)
+  return session.mailOrg ? normalizeMailOrgState(session.mailOrg) : emptyMailOrgState()
+}
+
+export async function persistMailOrg(
+  env: Env,
+  sessionId: string,
+  session: StoredSession,
+  state: MailOrgState,
+): Promise<void> {
+  if (session.userId) {
+    await saveUserMailOrg(env, session.userId, state)
+  } else {
+    session.mailOrg = state
+    await writeSession(env, sessionId, session)
+  }
+}
+
+// org를 최신 상태로 읽어와 mutator를 적용하고 곧바로 저장한다. 읽기와 쓰기 사이에 await가 없어서
+// (mutator는 동기 함수) 그 사이 다른 요청이 쓴 변경을 이 요청이 덮어쓸 여지가 사실상 없다 — 20초
+// 자동 폴링이나 여러 탭에서 온 요청이 겹쳐도 안전하다. mutator 안에서 org 내용(폴더/규칙 존재
+// 여부 등)을 검증하면, 항상 이 시점의 최신 상태를 기준으로 검증하는 셈이라 오히려 더 정확하다.
+export async function mutateMailOrg<T>(
+  env: Env,
+  sessionId: string,
+  session: StoredSession,
+  mutator: (org: MailOrgState) => T,
+): Promise<T> {
+  const org = await resolveMailOrg(env, session)
+  const result = mutator(org)
+  await persistMailOrg(env, sessionId, session, org)
+  return result
 }

@@ -1,5 +1,6 @@
-import type { ConnectedAccountRecord, Env, UserRecord } from "../types"
+import type { ConnectedAccountRecord, Env, StoredSession, UserRecord } from "../types"
 import { decryptAccountsMap, encryptAccountsMap } from "./crypto"
+import { writeSession } from "./session"
 
 export async function getUserByEmail(env: Env, email: string): Promise<UserRecord | null> {
   const ref = await env.TOKENS.get(`user:email:${email}`)
@@ -35,4 +36,26 @@ export async function saveUserAccounts(
 ): Promise<void> {
   const encrypted = await encryptAccountsMap(env, accounts)
   await env.TOKENS.put(`user:accounts:${userId}`, JSON.stringify({ accounts: encrypted }))
+}
+
+export async function resolveAccounts(
+  env: Env,
+  session: StoredSession,
+): Promise<Record<string, ConnectedAccountRecord>> {
+  if (session.userId) return getUserAccounts(env, session.userId)
+  return session.accounts
+}
+
+export async function persistAccounts(
+  env: Env,
+  sessionId: string,
+  session: StoredSession,
+  accounts: Record<string, ConnectedAccountRecord>,
+): Promise<void> {
+  if (session.userId) {
+    await saveUserAccounts(env, session.userId, accounts)
+  } else {
+    session.accounts = accounts
+    await writeSession(env, sessionId, session)
+  }
 }
