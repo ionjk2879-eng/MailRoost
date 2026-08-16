@@ -584,8 +584,10 @@ function App() {
   }
 
   const handleBulkDelete = async () => {
-    const targets = visibleMails.filter((m) => checkedMailIds.has(m.id))
-    if (targets.length === 0) return
+    const checked = visibleMails.filter((m) => checkedMailIds.has(m.id))
+    const targets = checked.filter((m) => !m.isStarred)
+    if (checked.length > targets.length) showError("별표 표시된 메일은 삭제되지 않았습니다.")
+    if (targets.length === 0) { setCheckedMailIds(new Set()); return }
     setCheckedMailIds(new Set())
     setIsBulkLoading(true)
     await deleteMailsWithRevert(targets)
@@ -593,8 +595,10 @@ function App() {
   }
 
   const handleBulkDeleteInFolder = async () => {
-    const targets = folderMails.filter((m) => checkedMailIds.has(m.id))
-    if (targets.length === 0) return
+    const checked = folderMails.filter((m) => checkedMailIds.has(m.id))
+    const targets = checked.filter((m) => !m.isStarred)
+    if (checked.length > targets.length) showError("별표 표시된 메일은 삭제되지 않았습니다.")
+    if (targets.length === 0) { setCheckedMailIds(new Set()); return }
     setCheckedMailIds(new Set())
     setIsBulkLoading(true)
     await deleteMailsWithRevert(targets, "folder")
