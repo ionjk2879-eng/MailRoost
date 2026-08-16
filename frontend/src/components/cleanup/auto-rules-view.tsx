@@ -1,9 +1,9 @@
 import { Check, Folder, GripVertical, Loader2, MoreVertical, Pencil, Plus, Trash2, X } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { AutoClassifyRule, MailCategory, MailFolder } from "@/types/mail"
+import type { AutoClassifyRule, Mail, MailCategory, MailFolder } from "@/types/mail"
 import { cn } from "@/lib/utils"
 
 const CATEGORY_LABELS: Record<MailCategory, string> = {
@@ -13,6 +13,7 @@ const CATEGORY_LABELS: Record<MailCategory, string> = {
 type RulePatch = Partial<Pick<AutoClassifyRule, "name" | "field" | "keyword" | "targetFolderId" | "category" | "enabled">>
 
 interface AutoRulesViewProps {
+  mails: Mail[]
   folders: MailFolder[]
   rules: AutoClassifyRule[]
   onCreateRule: (field: "from" | "subject", keyword: string, targetFolderId: string | null, category: MailCategory | null, applyToExisting?: boolean, name?: string) => Promise<{ ok: boolean; error?: string; count?: number }>
@@ -22,7 +23,7 @@ interface AutoRulesViewProps {
   onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number; alreadyClassified?: number }>
 }
 
-export function AutoRulesView({ folders, rules, onCreateRule, onUpdateRule, onToggleRule, onDeleteRule, onApplyRuleToExisting }: AutoRulesViewProps) {
+export function AutoRulesView({ mails, folders, rules, onCreateRule, onUpdateRule, onToggleRule, onDeleteRule, onApplyRuleToExisting }: AutoRulesViewProps) {
   const destinations = [{ id: ARCHIVE_FOLDER_ID, name: "보관함" }, ...folders]
   const [panelOpen, setPanelOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -37,16 +38,42 @@ export function AutoRulesView({ folders, rules, onCreateRule, onUpdateRule, onTo
   const [message, setMessage] = useState<string | null>(null)
   const [menuId, setMenuId] = useState<string | null>(null)
 
+  // 현재 로드된 메일에서 발신자 후보를 뽑아 조건 입력 시 선택할 수 있게 한다 — 직접 입력도 그대로 가능하다.
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const suggestRef = useRef<HTMLDivElement>(null)
+  const senderOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const m of mails) {
+      if (!m.fromEmail || seen.has(m.fromEmail)) continue
+      seen.set(m.fromEmail, m.fromName && m.fromName !== m.fromEmail ? `${m.fromName} <${m.fromEmail}>` : m.fromEmail)
+    }
+    return [...seen.entries()].map(([value, label]) => ({ value, label }))
+  }, [mails])
+  const filteredSenderOptions = useMemo(() => {
+    const q = keyword.trim().toLowerCase()
+    const matches = q ? senderOptions.filter((o) => o.label.toLowerCase().includes(q)) : senderOptions
+    return matches.slice(0, 20)
+  }, [senderOptions, keyword])
+
+  useEffect(() => {
+    if (!suggestOpen) return
+    const handler = (e: MouseEvent) => {
+      if (suggestRef.current && !suggestRef.current.contains(e.target as Node)) setSuggestOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [suggestOpen])
+
   const folderName = (id: string) => destinations.find((folder) => folder.id === id)?.name ?? "삭제된 폴더"
   const openCreate = () => {
     setEditingId(null); setName(""); setField("from"); setKeyword(""); setDestination(`folder:${ARCHIVE_FOLDER_ID}`)
-    setApplyExisting(true); setEnabled(true); setMessage(null); setPanelOpen(true)
+    setApplyExisting(true); setEnabled(true); setMessage(null); setSuggestOpen(false); setPanelOpen(true)
   }
   const openEdit = (rule: AutoClassifyRule) => {
     setEditingId(rule.id); setName(rule.name || `${rule.field === "from" ? "발신자" : "제목"} · ${rule.keyword}`)
     setField(rule.field); setKeyword(rule.keyword)
     setDestination(rule.targetFolderId ? `folder:${rule.targetFolderId}` : `category:${rule.category ?? "primary"}`)
-    setApplyExisting(false); setEnabled(rule.enabled); setMessage(null); setMenuId(null); setPanelOpen(true)
+    setApplyExisting(false); setEnabled(rule.enabled); setMessage(null); setMenuId(null); setSuggestOpen(false); setPanelOpen(true)
   }
 
   const save = async () => {
@@ -111,7 +138,36 @@ export function AutoRulesView({ folders, rules, onCreateRule, onUpdateRule, onTo
         <div className="flex h-16 items-center justify-between border-b px-6"><h3 className="text-lg font-semibold">{editingId ? "규칙 수정" : "새 규칙"}</h3><button type="button" onClick={() => setPanelOpen(false)} className="rounded-md p-2 hover:bg-muted"><X className="size-5" /></button></div>
         <div className="flex-1 space-y-7 overflow-y-auto p-6">
           <label className="block space-y-2"><span className="text-sm font-medium">규칙 이름</span><Input value={name} onChange={(event) => setName(event.target.value)} placeholder="예: 프로모션 메일" /></label>
-          <div className="space-y-3"><p className="text-sm font-medium">조건</p><p className="text-sm text-muted-foreground">다음 조건을 모두 만족할 때</p><div className="grid grid-cols-2 gap-2"><select value={field} onChange={(event) => setField(event.target.value as "from" | "subject")} className="h-10 rounded-md border bg-background px-3 text-sm"><option value="from">발신자</option><option value="subject">제목</option></select><select className="h-10 rounded-md border bg-background px-3 text-sm"><option>포함</option></select></div><Input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder={field === "from" ? "예: pay" : "예: 이벤트"} /></div>
+          <div className="space-y-3">
+            <p className="text-sm font-medium">조건</p>
+            <p className="text-sm text-muted-foreground">다음 조건을 모두 만족할 때</p>
+            <div className="grid grid-cols-2 gap-2">
+              <select value={field} onChange={(event) => { setField(event.target.value as "from" | "subject"); setSuggestOpen(false) }} className="h-10 rounded-md border bg-background px-3 text-sm"><option value="from">발신자</option><option value="subject">제목</option></select>
+              <select className="h-10 rounded-md border bg-background px-3 text-sm"><option>포함</option></select>
+            </div>
+            <div className="relative" ref={suggestRef}>
+              <Input
+                value={keyword}
+                onChange={(event) => { setKeyword(event.target.value); if (field === "from") setSuggestOpen(true) }}
+                onFocus={() => { if (field === "from") setSuggestOpen(true) }}
+                placeholder={field === "from" ? "예: pay (아래 목록에서 선택도 가능)" : "예: 이벤트"}
+              />
+              {field === "from" && suggestOpen && filteredSenderOptions.length > 0 && (
+                <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-background py-1 shadow-lg">
+                  {filteredSenderOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => { setKeyword(option.value); setSuggestOpen(false) }}
+                      className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-muted"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           <label className="block space-y-2"><span className="text-sm font-medium">이동할 폴더</span><select value={destination} onChange={(event) => setDestination(event.target.value)} className="h-11 w-full rounded-md border bg-background px-3 text-sm"><optgroup label="폴더">{destinations.map((folder) => <option key={folder.id} value={`folder:${folder.id}`}>{folder.name}</option>)}</optgroup><optgroup label="카테고리">{Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={`category:${value}`}>{label}</option>)}</optgroup></select></label>
           {destination.startsWith("folder:") && !editingId && <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={applyExisting} onChange={(event) => setApplyExisting(event.target.checked)} className="size-4 accent-primary" />기존 메일에도 적용</label>}
           <div className="flex items-center justify-between"><span className="text-sm font-medium">활성</span><button type="button" role="switch" aria-checked={enabled} onClick={() => setEnabled(!enabled)} className={cn("h-6 w-11 rounded-full p-0.5", enabled ? "bg-green-600" : "bg-muted-foreground/30")}><span className={cn("block size-5 rounded-full bg-white shadow transition-transform", enabled && "translate-x-5")} /></button></div>

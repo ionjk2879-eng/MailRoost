@@ -912,6 +912,7 @@ export function CleanupView({
 
         {mainTab === "auto" && (
           <AutoRulesView
+            mails={mails}
             folders={folders}
             rules={rules}
             onCreateRule={onCreateRule}
