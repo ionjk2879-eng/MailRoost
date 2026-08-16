@@ -231,14 +231,6 @@ export function ComposeView({
             <h2 className="mt-0.5 text-xl font-bold tracking-tight">{title}</h2>
           </div>
           <div className="flex items-center gap-2">
-            {sendableAccounts.length > 0 && (
-              <>
-                <Button type="button" variant="outline" className="hidden gap-2 rounded-xl sm:flex" disabled={isSending} onClick={() => saveDraft()}><Save className="size-4" /> 임시보관</Button>
-                <Button type="submit" className="hidden min-w-28 gap-2 rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20 hover:bg-orange-600 sm:flex" disabled={isSending}>
-                  {isSending ? <><Loader2 className="size-4 animate-spin" /> 전송 중...</> : <><Send className="size-4" /> 보내기</>}
-                </Button>
-              </>
-            )}
             <button
               type="button"
               onClick={onCancel}
@@ -255,6 +247,12 @@ export function ComposeView({
       ) : (
         <div className="grid min-h-0 flex-1 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_280px]">
           <div className="flex min-w-0 flex-col gap-5 px-4 py-5 sm:px-7 xl:border-r">
+          <div className="hidden items-center justify-end gap-2 sm:flex">
+            <Button type="button" variant="outline" className="gap-2 rounded-xl" disabled={isSending} onClick={() => saveDraft()}><Save className="size-4" /> 임시보관</Button>
+            <Button type="submit" className="min-w-28 gap-2 rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20 hover:bg-orange-600" disabled={isSending}>
+              {isSending ? <><Loader2 className="size-4 animate-spin" /> 전송 중...</> : <><Send className="size-4" /> 보내기</>}
+            </Button>
+          </div>
           <section className="overflow-visible rounded-2xl border bg-background shadow-sm">
           <div className="grid items-center gap-2 border-b px-4 py-3 sm:grid-cols-[100px_1fr] sm:px-5">
             <Label htmlFor="compose-from" className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><UserRound className="size-3.5" /> 보내는 사람</Label>
