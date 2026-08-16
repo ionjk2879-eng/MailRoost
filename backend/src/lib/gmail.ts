@@ -55,7 +55,7 @@ async function refreshAccessToken(
   refreshToken: string,
   clientId: string,
   clientSecret: string,
-): Promise<{ access_token: string; expires_in: number }> {
+): Promise<{ access_token: string; expires_in: number; refresh_token?: string }> {
   const res = await fetchWithRetry("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -78,6 +78,10 @@ export async function ensureFreshToken(env: Env, record: GmailAccountRecord): Pr
   return {
     ...record,
     accessToken: refreshed.access_token,
+    // Google은 보통 refresh 응답에 refresh_token을 다시 안 주지만(같은 걸 계속 씀), 드물게
+    // 새 값을 줄 수도 있다는 게 공식 문서상 명시돼 있다 — 오면 반드시 갈아끼워야 한다. 옛 값을
+    // 계속 쓰면 그게 무효화됐을 때(로테이션된 경우) 이후 refresh가 전부 실패하게 된다.
+    refreshToken: refreshed.refresh_token ?? record.refreshToken,
     expiresAt: Date.now() + refreshed.expires_in * 1000,
   }
 }
