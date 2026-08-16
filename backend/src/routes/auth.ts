@@ -4,6 +4,7 @@ import type { Env } from "../types"
 import { isHttps, readRawCookie } from "../lib/cookies"
 import { getUserAccounts, getUserByEmail, saveUser, saveUserAccounts } from "../lib/auth"
 import { buildAuthUrl, exchangeCodeForTokens, fetchProfile } from "../lib/gmail"
+import { registerOrRenewWatch } from "../lib/gmailWatch"
 import { createSessionId, readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
 const STATE_COOKIE = "roost_oauth_state"
@@ -94,6 +95,10 @@ auth.get("/gmail/callback", async (c) => {
   const accounts = await getUserAccounts(c.env, userId)
   accounts[accountId] = gmailRecord
   await saveUserAccounts(c.env, userId, accounts)
+
+  // Gmail push notification 구독 등록. GMAIL_PUBSUB_TOPIC이 아직 설정 안 됐거나 Google 쪽
+  // 설정이 안 끝났으면 내부에서 조용히 로그만 남기고 넘어간다 — 로그인 흐름을 절대 깨지 않는다.
+  await registerOrRenewWatch(c.env, userId, accountId, gmailRecord)
 
   setCookie(c, SESSION_COOKIE, sessionId, sessionCookieOptions(c.req.url))
   return c.redirect("/")

@@ -1,2 +1,20 @@
+# Google OAuth client (Google Cloud Console > APIs & Services > Credentials)
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
+
+# AES-GCM key used to encrypt stored account credentials at rest (src/lib/crypto.ts).
+# 32 random bytes, base64-encoded. Generate with:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+ACCOUNT_ENCRYPTION_KEY=base64-encoded-32-byte-key
+
+# VAPID key pair for Web Push (src/lib/webpush.ts). VAPID_PUBLIC_KEY itself is a plain var in
+# wrangler.jsonc, not a secret, but the private key must stay out of source control.
+# Generate a pair with `npx web-push generate-vapid-keys`, then reformat the private key as a
+# JWK: {"kty":"EC","crv":"P-256","d":"...","x":"...","y":"..."}.
+VAPID_PRIVATE_JWK={"kty":"EC","crv":"P-256","d":"...","x":"...","y":"..."}
+
+# Shared secret used to authenticate Gmail Pub/Sub push webhook requests
+# (src/routes/webhooks.ts). The Pub/Sub push subscription's endpoint URL should include
+# ?token=<this value>. Any random string works, e.g.:
+#   node -e "console.log(require('crypto').randomUUID())"
+GMAIL_PUBSUB_TOKEN=some-random-shared-secret

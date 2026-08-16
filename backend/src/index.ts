@@ -5,6 +5,8 @@ import naver from "./routes/naver"
 import daum from "./routes/daum"
 import imapGeneric from "./routes/imap-generic"
 import api from "./routes/api"
+import webhooks from "./routes/webhooks"
+import { renewExpiringWatches } from "./lib/gmailWatch"
 
 // Workers는 Durable Object 클래스를 wrangler.jsonc의 main이 가리키는 엔트리 모듈에서
 // export해야 한다 (바인딩만으로는 부족함).
@@ -17,6 +19,7 @@ app.route("/auth/naver", naver)
 app.route("/auth/daum", daum)
 app.route("/auth/imap", imapGeneric)
 app.route("/api", api)
+app.route("/webhooks", webhooks)
 
 app.notFound((c) => c.env.ASSETS.fetch(c.req.raw))
 
@@ -28,7 +31,9 @@ app.notFound((c) => c.env.ASSETS.fetch(c.req.raw))
 // 포함돼 있으면 무조건 일반 메시지로 대체한다.
 app.onError((err, c) => {
   console.error(err)
-  const secrets = [c.env.GOOGLE_CLIENT_SECRET, c.env.ACCOUNT_ENCRYPTION_KEY, c.env.VAPID_PRIVATE_JWK].filter(Boolean)
+  const secrets = [c.env.GOOGLE_CLIENT_SECRET, c.env.ACCOUNT_ENCRYPTION_KEY, c.env.VAPID_PRIVATE_JWK, c.env.GMAIL_PUBSUB_TOKEN].filter(
+    Boolean,
+  )
   const leaksSecret = secrets.some((secret) => err.message.includes(secret))
   const message = leaksSecret ? "요청을 처리하는 중 오류가 발생했습니다." : err.message
   return c.json({ error: message }, 500)
@@ -36,4 +41,9 @@ app.onError((err, c) => {
 
 export default {
   fetch: app.fetch,
+  // 매일 새벽 3시(UTC) 실행. Gmail watch는 최대 7일까지만 유효하므로 만료 임박한 것들을 갱신한다
+  // (lib/gmailWatch.ts의 renewExpiringWatches, wrangler.jsonc의 triggers.crons 참고).
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(renewExpiringWatches(env))
+  },
 } satisfies ExportedHandler<Env>

@@ -13,6 +13,13 @@ export interface Env {
   // 로그인한 사용자당 하나씩 뜨는 MailOrgState 저장용 Durable Object. lib/mailOrgStore.ts,
   // durable/MailOrgStore.ts, lib/mailOrg.ts의 resolveMailOrg/mutateMailOrg 참고.
   MAIL_ORG: DurableObjectNamespace<MailOrgStore>
+  // Gmail Pub/Sub push notification 대상 토픽 (예: "projects/xxx/topics/gmail-push"). GCP 쪽
+  // 설정(토픽/구독 생성)이 사용자가 별도로 할 일이라, 아직 안 채워졌을 수 있다 — 비어있으면
+  // lib/gmailWatch.ts의 registerOrRenewWatch가 조용히 아무것도 안 하고 넘어간다.
+  GMAIL_PUBSUB_TOPIC: string
+  // Pub/Sub push 웹훅(routes/webhooks.ts)을 인증하기 위한 공유 비밀. 구독 push 설정의
+  // endpoint URL에 ?token=<this> 쿼리로 붙여서 검증한다.
+  GMAIL_PUBSUB_TOKEN: string
 }
 
 export interface StoredPushSubscription {
@@ -70,6 +77,13 @@ export interface GmailAccountRecord {
   accessToken: string
   refreshToken: string
   expiresAt: number
+  // Gmail watch로 마지막으로 동기화한 historyId. 웹훅이 이 값부터 history.list를 이어서 조회한다.
+  // 기존에 저장된 레코드에는 없을 수 있으므로 optional — 없으면 웹훅이 Pub/Sub 메시지가 실어온
+  // historyId를 그대로 시작점으로 쓴다 (lib/gmailWatch.ts, routes/webhooks.ts 참고).
+  historyId?: string
+  // watch가 만료되는 시각(Unix ms). Gmail watch는 최대 7일이라 주기적으로 갱신해야 한다
+  // (lib/gmailWatch.ts의 renewExpiringWatches, scheduled 크론 참고).
+  watchExpiration?: number
 }
 
 export interface NaverAccountRecord {

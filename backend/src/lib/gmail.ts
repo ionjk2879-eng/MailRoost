@@ -90,6 +90,60 @@ export async function fetchProfile(accessToken: string): Promise<{ emailAddress:
   return res.json()
 }
 
+// Pub/Sub push notification을 받기 위해 이 메일함(INBOX)을 지정한 토픽에 watch 등록한다.
+// Gmail watch는 최대 7일(expiration)까지만 유효해서 주기적으로 다시 걸어야 한다
+// (lib/gmailWatch.ts의 renewExpiringWatches 참고).
+export async function watchMailbox(accessToken: string, topicName: string): Promise<{ historyId: string; expiration: number }> {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/watch`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ topicName, labelIds: ["INBOX"] }),
+  })
+  if (!res.ok) throw new Error(`Gmail watch 등록 실패: ${res.status} ${await res.text()}`)
+  const json = (await res.json()) as { historyId: string; expiration: string }
+  return { historyId: json.historyId, expiration: Number(json.expiration) }
+}
+
+interface GmailHistoryRecord {
+  id: string
+  messagesAdded?: { message: { id: string } }[]
+}
+
+// startHistoryId 이후로 새로 추가된 메시지 id를 전부 모아온다 (INBOX에 국한하지 않고 새로
+// messagesAdded된 것 전부를 대상으로 하되, 실제로 관심 있는 건 새 메일 도착이므로 그걸로 충분하다).
+// startHistoryId가 너무 오래돼 서버가 더는 못 돌려주면(404) null을 반환한다 — 호출부가 이를
+// "히스토리 유실, 다음 정기 동기화가 자연히 커버함"으로 취급하고 조용히 넘어가야 한다.
+export async function listHistory(
+  accessToken: string,
+  startHistoryId: string,
+): Promise<{ messageIds: string[]; newHistoryId: string } | null> {
+  const messageIds = new Set<string>()
+  let newHistoryId = startHistoryId
+  let pageToken: string | undefined
+
+  do {
+    const params = new URLSearchParams({ startHistoryId, historyTypes: "messageAdded" })
+    if (pageToken) params.set("pageToken", pageToken)
+
+    const res = await fetchWithRetry(`${GMAIL_API_BASE}/history?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error(`Gmail history 조회 실패: ${res.status} ${await res.text()}`)
+
+    const json = (await res.json()) as { history?: GmailHistoryRecord[]; historyId?: string; nextPageToken?: string }
+    for (const record of json.history ?? []) {
+      for (const added of record.messagesAdded ?? []) {
+        if (added.message?.id) messageIds.add(added.message.id)
+      }
+    }
+    if (json.historyId) newHistoryId = json.historyId
+    pageToken = json.nextPageToken
+  } while (pageToken)
+
+  return { messageIds: [...messageIds], newHistoryId }
+}
+
 interface GmailHeader {
   name: string
   value: string

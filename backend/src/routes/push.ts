@@ -2,16 +2,30 @@ import { Hono } from "hono"
 import type { Env, StoredPushSubscription } from "../types"
 import { readRawCookie } from "../lib/cookies"
 import { sendEmptyPush } from "../lib/webpush"
-import { SESSION_COOKIE } from "../lib/session"
+import { readSession, SESSION_COOKIE } from "../lib/session"
 
 const push = new Hono<{ Bindings: Env }>()
 
 // ── Web Push ─────────────────────────────────────────────────────────────────
 
 const PUSH_SUBS_PREFIX = "push_subs:"
+const USER_PUSH_SESSIONS_PREFIX = "user:pushsessions:"
 
 function pushSubsKey(sessionId: string): string {
   return `${PUSH_SUBS_PREFIX}${sessionId}`
+}
+
+// 로그인 사용자 -> 그 사용자가 구독을 등록해둔 sessionId 목록. Gmail 웹훅(routes/webhooks.ts)이
+// 새 메일 도착 시 이 사용자의 모든 세션에 빈 푸시를 보내야 하는데, 웹훅에는 브라우저 쿠키가 없어
+// 세션id를 알 방법이 없으므로 userId로 역으로 찾을 수 있는 이 인덱스가 필요하다.
+async function addPushSessionIndex(env: Env, userId: string, sessionId: string): Promise<void> {
+  const key = `${USER_PUSH_SESSIONS_PREFIX}${userId}`
+  const raw = await env.TOKENS.get(key)
+  const sessionIds: string[] = raw ? (JSON.parse(raw) as string[]) : []
+  if (!sessionIds.includes(sessionId)) {
+    sessionIds.push(sessionId)
+    await env.TOKENS.put(key, JSON.stringify(sessionIds))
+  }
 }
 
 async function readPushSubs(env: Env, sessionId: string): Promise<StoredPushSubscription[]> {
@@ -52,6 +66,10 @@ push.post("/push/subscribe", async (c) => {
   else subs.push(entry)
 
   await savePushSubs(c.env, sessionId, subs)
+
+  const session = await readSession(c.env, sessionId)
+  if (session.userId) await addPushSessionIndex(c.env, session.userId, sessionId)
+
   return c.json({ ok: true })
 })
 

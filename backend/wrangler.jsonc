@@ -6,7 +6,7 @@
     "directory": "../frontend/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/auth/*"]
+    "run_worker_first": ["/api/*", "/auth/*", "/webhooks/*"]
   },
   "kv_namespaces": [
     {
@@ -20,6 +20,10 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MailOrgStore"] }],
   "vars": {
     "VAPID_PUBLIC_KEY": "BALF8UfCdC06w2as3arkS8S3HZaBQ4fLkEVAIXCcT4eZ82T6Ndci0NiAeBrXkqexTbdaLSjWnUPaTvw9pOSxP8o",
-    "VAPID_SUBJECT": "mailto:noreply@mailroost.app"
+    "VAPID_SUBJECT": "mailto:noreply@mailroost.app",
+    "GMAIL_PUBSUB_TOPIC": "projects/mailroost/topics/gmail-push"
+  },
+  "triggers": {
+    "crons": ["0 3 * * *"]
   }
 }
