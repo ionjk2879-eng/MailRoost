@@ -29,7 +29,7 @@ import { usePolling } from "@/hooks/use-polling"
 // 그 값을 읽기 전용 입력으로 받는다. 여기 정의해서 App.tsx가 import해서 쓴다 — 값 자체는
 // 네비게이션 개념이지만, 이 훅 안의 여러 핸들러(handleDeleteMail, handleManualRefresh 등)가
 // 이 타입에 의존하기 때문에 타입 순환 import를 피하려고 여기서 export한다.
-export type AppView = "home" | "inbox" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts" | "snoozed" | "muted"
+export type AppView = "home" | "inbox" | "starred" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts" | "snoozed" | "muted"
 
 // 캐시 미스일 때 매번 새 배열 리터럴([])을 리턴하면 참조가 매 렌더링마다 바뀌어서, 이 값에
 // 의존하는 useEffect들이 불필요하게 다시 실행된다 — 안정적인 참조 하나를 재사용한다.

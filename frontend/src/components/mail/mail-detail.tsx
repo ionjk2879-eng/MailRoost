@@ -7,7 +7,7 @@ import { SenderIcon } from "@/components/mail/sender-icon"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AttachmentPreview, isPreviewableAttachment } from "@/components/mail/attachment-preview"
-import { attachmentDownloadUrl } from "@/lib/api"
+import { attachmentDownloadUrl, inlineAttachmentUrl } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Account, Mail, MailAttachment, MailFolder } from "@/types/mail"
@@ -83,7 +83,22 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }
 
-function buildIframeDoc(bodyHtml: string): string {
+function buildIframeDoc(mail: Mail): string {
+  const inlineImages = new Map(
+    (mail.attachments ?? [])
+      .filter((attachment) => attachment.contentId)
+      .map((attachment) => [attachment.contentId!.toLowerCase(), inlineAttachmentUrl(mail.id, mail.accountId, attachment)]),
+  )
+  const bodyHtml = mail.bodyHtml!.replace(
+    /\b(src|background)\s*=\s*(["'])cid:([^"']+)\2/gi,
+    (match, attribute: string, quote: string, rawContentId: string) => {
+      let decodedContentId = rawContentId
+      try { decodedContentId = decodeURIComponent(rawContentId) } catch { /* malformed encoding: use the raw id */ }
+      const contentId = decodedContentId.replace(/^<|>$/g, "").toLowerCase()
+      const url = inlineImages.get(contentId)
+      return url ? `${attribute}=${quote}${url}${quote}` : match
+    },
+  ).replace(/<img\b(?![^>]*\breferrerpolicy=)/gi, '<img referrerpolicy="no-referrer" loading="lazy"')
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="light"><style>
 body{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;word-wrap:break-word;overflow-wrap:break-word;margin:0;padding:16px;color:#1a1a1a;background:#fff}
 img{max-width:100%;height:auto}
@@ -403,7 +418,7 @@ export function MailDetail({
           <iframe
             key={mail.id}
             title={mail.subject}
-            srcDoc={buildIframeDoc(mail.bodyHtml)}
+            srcDoc={buildIframeDoc(mail)}
             sandbox="allow-popups allow-popups-to-escape-sandbox"
             className="h-full w-full border-0"
           />

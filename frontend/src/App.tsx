@@ -198,10 +198,11 @@ function App() {
   }, [allMails])
 
   const accountMails = useMemo(() => {
-    return selectedAccountId
+    const scoped = selectedAccountId
       ? allMails.filter((mail) => mail.accountId === selectedAccountId)
       : allMails
-  }, [allMails, selectedAccountId])
+    return view === "starred" ? scoped.filter((mail) => mail.isStarred) : scoped
+  }, [allMails, selectedAccountId, view])
 
   const categoryCounts = useMemo(() => {
     const counts: Record<MailCategory, number> = {
@@ -247,7 +248,8 @@ function App() {
     }
 
     // 검색 중: 계정·카테고리 필터 무시하고 전체 메일에서 검색 (통합검색)
-    const clientMatches = allMails.filter(
+    const searchScope = view === "starred" ? allMails.filter((mail) => mail.isStarred) : allMails
+    const clientMatches = searchScope.filter(
       (m) =>
         m.fromName.toLowerCase().includes(q) ||
         m.fromEmail.toLowerCase().includes(q) ||
@@ -255,9 +257,10 @@ function App() {
         m.snippet.toLowerCase().includes(q),
     )
     const merged = new Map<string, Mail>()
-    for (const m of [...clientMatches, ...(workspace.serverSearchResults ?? [])]) merged.set(`${m.accountId}:${m.id}`, m)
+    const serverMatches = (workspace.serverSearchResults ?? []).filter((mail) => view !== "starred" || mail.isStarred)
+    for (const m of [...clientMatches, ...serverMatches]) merged.set(`${m.accountId}:${m.id}`, m)
     return [...merged.values()].sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
-  }, [allMails, categoryMails, workspace.searchQuery, workspace.serverSearchResults, mailOrg.snoozed, mailOrg.mutedSet, mailOrg.activeFilter])
+  }, [allMails, categoryMails, workspace.searchQuery, workspace.serverSearchResults, mailOrg.snoozed, mailOrg.mutedSet, mailOrg.activeFilter, view])
 
   const selectedMailStub =
     visibleMails.find((mail) => mail.id === workspace.selectedMailId)
@@ -418,6 +421,18 @@ function App() {
     workspace.loadFolderMails(ARCHIVE_FOLDER_ID)
   }
 
+  const goToStarred = () => {
+    setView("starred")
+    setSelectedAccountId(null)
+    setSelectedCategory(null)
+    workspace.setSelectedMailId(null)
+    workspace.setFocusedMailId(null)
+    workspace.setSearchQuery("")
+    workspace.setCheckedMailIds(new Set())
+    setComposeState(null)
+    mailOrg.setActiveFilter(null)
+  }
+
   // 앱 내부 화면 전환을 브라우저 히스토리와 동기화한다. 데스크톱 PWA에서도
   // 마우스 사이드 버튼과 Alt+Left/Alt+Right가 일반 웹페이지처럼 동작한다.
   useEffect(() => {
@@ -573,7 +588,7 @@ function App() {
   // 정리하기 > 단축키에 안내된 목록을 실제로 동작하게 한다. 입력창/textarea/select에
   // 포커스가 있거나 작성 중일 때는 타이핑을 방해하지 않도록 전부 무시한다.
   useEffect(() => {
-    const activeList = view === "folder" || view === "archive" ? workspace.folderMails : view === "inbox" ? visibleMails : []
+    const activeList = view === "folder" || view === "archive" ? workspace.folderMails : view === "inbox" || view === "starred" ? visibleMails : []
 
     const moveFocus = (direction: 1 | -1) => {
       if (activeList.length === 0) return
@@ -870,6 +885,7 @@ function App() {
         unreadCountByFolder={unreadCountByFolder}
         selectedAccountId={selectedAccountId}
         isInboxView={view === "inbox"}
+        isStarredView={view === "starred"}
         isCleanupView={view === "cleanup"}
         isTrashView={view === "trash"}
         isArchiveView={view === "archive"}
@@ -887,6 +903,7 @@ function App() {
         onGoCleanup={goToCleanup}
         onGoTrash={goToTrash}
         onGoArchive={goToArchive}
+        onGoStarred={goToStarred}
         onGoMemo={goToMemo}
         onGoDrafts={goToDrafts}
         onGoSnooze={goToSnooze}
@@ -913,6 +930,8 @@ function App() {
                   ? "휴지통"
                   : view === "archive"
                     ? "보관함"
+                    : view === "starred"
+                      ? "중요 메일"
                     : view === "memo"
                       ? "메모"
                       : view === "drafts"
@@ -932,7 +951,7 @@ function App() {
                         })()
                       : "전체 받은편지함"}
           </span>
-          {(view === "inbox" || view === "trash" || view === "folder" || view === "archive") && (
+          {(view === "inbox" || view === "starred" || view === "trash" || view === "folder" || view === "archive") && (
             <Button
               variant="ghost"
               size="icon"
@@ -950,7 +969,7 @@ function App() {
             onMarkAllRead={mailOrg.handleMarkAllNotificationsRead}
             onDismiss={mailOrg.handleDismissNotification}
           />
-          {view === "inbox" && sendableAccounts.length > 0 && isMobile && (
+          {(view === "inbox" || view === "starred") && sendableAccounts.length > 0 && isMobile && (
             <Button size="sm" className="gap-2" onClick={handleOpenCompose}>
               <Pencil className="size-4" />
               메일 쓰기
@@ -963,12 +982,15 @@ function App() {
             mails={allMails}
             unreadCountByAccount={unreadCountByAccount}
             snoozedCount={Object.values(mailOrg.snoozed).filter((until) => until > Date.now()).length}
+            trashCount={workspace.trashMails.length}
             currentUserEmail={currentUser?.email}
             onSelectAccount={goToInbox}
             onCompose={sendableAccounts.length > 0 ? handleOpenCompose : undefined}
             onGoToCleanup={goToCleanup}
             onGoToMemo={goToMemo}
             onGoToDrafts={goToDrafts}
+            onGoToTrash={goToTrash}
+            onGoToStarred={goToStarred}
             onOpenSettings={() => setSettingsOpen(true)}
           />
         ) : view === "cleanup" ? (

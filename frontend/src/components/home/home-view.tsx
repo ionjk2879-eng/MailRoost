@@ -10,6 +10,7 @@ import {
   Settings,
   Sparkles,
   Star,
+  Trash2,
   WandSparkles,
 } from "lucide-react"
 import type { ComponentType } from "react"
@@ -23,12 +24,15 @@ interface HomeViewProps {
   mails: Mail[]
   unreadCountByAccount: Record<string, number>
   snoozedCount: number
+  trashCount: number
   currentUserEmail?: string
   onSelectAccount: (accountId: string | null) => void
   onCompose?: () => void
   onGoToCleanup: () => void
   onGoToMemo: () => void
   onGoToDrafts: () => void
+  onGoToTrash: () => void
+  onGoToStarred: () => void
   onOpenSettings: () => void
 }
 
@@ -41,17 +45,19 @@ export function HomeView({
   mails,
   unreadCountByAccount,
   snoozedCount,
+  trashCount,
   currentUserEmail,
   onSelectAccount,
   onCompose,
   onGoToCleanup,
   onGoToMemo,
   onGoToDrafts,
+  onGoToTrash,
+  onGoToStarred,
   onOpenSettings,
 }: HomeViewProps) {
   const totalUnread = Object.values(unreadCountByAccount).reduce((sum, n) => sum + n, 0)
   const starredCount = mails.filter((mail) => mail.isStarred).length
-  const readCount = Math.max(mails.length - totalUnread, 0)
   const name = displayNameFromEmail(currentUserEmail)
 
   const stats: {
@@ -60,12 +66,13 @@ export function HomeView({
     icon: ComponentType<{ className?: string }>
     tint: string
     trend: string
+    onClick: () => void
   }[] = [
-    { label: "전체 메일", value: mails.length, icon: MailIcon, tint: "bg-orange-50 text-orange-500", trend: "모든 계정" },
-    { label: "안 읽은 메일", value: totalUnread, icon: Inbox, tint: "bg-blue-50 text-blue-500", trend: "확인 필요" },
-    { label: "중요 메일", value: starredCount, icon: Star, tint: "bg-amber-50 text-amber-500", trend: "별표 표시" },
-    { label: "스누즈 메일", value: snoozedCount, icon: Clock3, tint: "bg-violet-50 text-violet-500", trend: "나중에 알림" },
-    { label: "읽은 메일", value: readCount, icon: Archive, tint: "bg-emerald-50 text-emerald-500", trend: "정리 완료" },
+    { label: "전체 메일", value: mails.length, icon: MailIcon, tint: "bg-orange-50 text-orange-500", trend: "모든 계정", onClick: () => onSelectAccount(null) },
+    { label: "안 읽은 메일", value: totalUnread, icon: Inbox, tint: "bg-blue-50 text-blue-500", trend: "확인 필요", onClick: () => onSelectAccount(null) },
+    { label: "중요 메일", value: starredCount, icon: Star, tint: "bg-amber-50 text-amber-500", trend: "별표 표시", onClick: onGoToStarred },
+    { label: "스누즈 메일", value: snoozedCount, icon: Clock3, tint: "bg-violet-50 text-violet-500", trend: "나중에 알림", onClick: () => onSelectAccount(null) },
+    { label: "휴지통", value: trashCount, icon: Trash2, tint: "bg-rose-50 text-rose-500", trend: "삭제한 메일", onClick: onGoToTrash },
   ]
 
   const shortcuts: { label: string; desc: string; icon: ComponentType<{ className?: string }>; onClick: () => void }[] = [
@@ -106,7 +113,7 @@ export function HomeView({
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           {stats.map((stat) => (
-            <button key={stat.label} type="button" onClick={() => onSelectAccount(null)} className="group flex items-center gap-4 rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md dark:bg-card">
+            <button key={stat.label} type="button" onClick={stat.onClick} className="group flex items-center gap-4 rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md dark:bg-card">
               <span className={cn("flex size-12 shrink-0 items-center justify-center rounded-full", stat.tint)}><stat.icon className="size-6" /></span>
               <span className="min-w-0">
                 <span className="block text-xs font-medium text-muted-foreground">{stat.label}</span>
@@ -143,7 +150,7 @@ export function HomeView({
             <h2 className="font-semibold">최근 메일함</h2>
             <div className="mt-4 space-y-1">
               {stats.slice(0, 5).map((stat) => (
-                <button key={stat.label} type="button" onClick={() => onSelectAccount(null)} className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-muted">
+                <button key={stat.label} type="button" onClick={stat.onClick} className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-muted">
                   <stat.icon className="size-4 text-orange-500" /><span className="flex-1 text-left">{stat.label}</span><span className="tabular-nums text-muted-foreground">{stat.value.toLocaleString()}</span>
                 </button>
               ))}

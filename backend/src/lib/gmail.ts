@@ -156,6 +156,7 @@ interface GmailHeader {
 interface GmailMessagePart {
   mimeType?: string
   filename?: string
+  headers?: GmailHeader[]
   body?: { data?: string; size?: number; attachmentId?: string }
   parts?: GmailMessagePart[]
 }
@@ -358,12 +359,14 @@ function findPart(part: GmailMessagePart, mimeType: string): GmailMessagePart | 
 // 파일명이 있고 attachmentId가 붙은 파트만 첨부파일로 취급한다 (본문 text/html 파트는 filename이 없다).
 function collectAttachments(part: GmailMessagePart | undefined, out: MailAttachment[]): void {
   if (!part) return
-  if (part.filename && part.body?.attachmentId) {
+  const contentId = getHeader(part.headers, "Content-ID").replace(/^<|>$/g, "") || undefined
+  if (part.body?.attachmentId && (part.filename || contentId)) {
     out.push({
       id: part.body.attachmentId,
-      filename: decodeRfc2047(part.filename),
+      filename: part.filename ? decodeRfc2047(part.filename) : "인라인 이미지",
       mimeType: part.mimeType || "application/octet-stream",
       size: part.body.size ?? 0,
+      contentId,
     })
   }
   if (part.parts) for (const child of part.parts) collectAttachments(child, out)

@@ -47,6 +47,7 @@ export interface MailAttachment {
   filename: string
   mimeType: string
   size: number
+  contentId?: string
 }
 
 export interface Mail {

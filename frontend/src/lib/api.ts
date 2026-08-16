@@ -292,6 +292,10 @@ export function attachmentDownloadUrl(mailId: string, accountId: string, attachm
   return `/api/mail/${encodeURIComponent(mailId)}/attachment/${encodeURIComponent(attachment.id)}?${params}`
 }
 
+export function inlineAttachmentUrl(mailId: string, accountId: string, attachment: MailAttachment): string {
+  return `${attachmentDownloadUrl(mailId, accountId, attachment)}&inline=1`
+}
+
 export async function fetchCurrentUser(): Promise<{ id: string; email: string } | null> {
   const res = await fetch("/api/me")
   if (!res.ok) return null

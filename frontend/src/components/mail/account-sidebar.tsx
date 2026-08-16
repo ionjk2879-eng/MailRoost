@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Settings, Sparkles, StickyNote, Trash2, VolumeX } from "lucide-react"
+import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Settings, Sparkles, Star, StickyNote, Trash2, VolumeX } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -92,6 +92,7 @@ interface AccountSidebarProps {
   unreadCountByFolder: Record<string, number>
   selectedAccountId: string | null
   isInboxView: boolean
+  isStarredView: boolean
   isCleanupView: boolean
   isTrashView: boolean
   isArchiveView: boolean
@@ -109,6 +110,7 @@ interface AccountSidebarProps {
   onGoCleanup: () => void
   onGoTrash: () => void
   onGoArchive: () => void
+  onGoStarred: () => void
   onGoMemo: () => void
   onGoDrafts: () => void
   onGoSnooze: () => void
@@ -130,6 +132,7 @@ export function AccountSidebar({
   unreadCountByFolder,
   selectedAccountId,
   isInboxView,
+  isStarredView,
   isCleanupView,
   isTrashView,
   isArchiveView,
@@ -147,6 +150,7 @@ export function AccountSidebar({
   onGoCleanup,
   onGoTrash,
   onGoArchive,
+  onGoStarred,
   onGoMemo,
   onGoDrafts,
   onGoSnooze,
@@ -275,6 +279,18 @@ export function AccountSidebar({
                   <span>스누즈</span>
                 </SidebarMenuButton>
                 {snoozeCount > 0 && <SidebarMenuBadge>{snoozeCount}</SidebarMenuBadge>}
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isStarredView}
+                  onClick={() => {
+                    onGoStarred()
+                    closeOnMobile()
+                  }}
+                >
+                  <Star />
+                  <span>중요 메일</span>
+                </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton

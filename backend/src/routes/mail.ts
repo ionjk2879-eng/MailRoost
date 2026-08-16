@@ -565,6 +565,7 @@ mail.get("/mail/:id/attachment/:attachmentId", async (c) => {
   // 프론트엔드가 쿼리로 실어보낸다. IMAP 계열은 raw 메시지를 다시 파싱하므로 정확한 값을 직접 얻는다.
   const fallbackFilename = c.req.query("filename") || "attachment"
   const fallbackMimeType = c.req.query("mimeType") || "application/octet-stream"
+  const inline = c.req.query("inline") === "1"
 
   const session = await readSession(c.env, sessionId)
   const accountMap = await resolveAccounts(c.env, session)
@@ -584,7 +585,8 @@ mail.get("/mail/:id/attachment/:attachmentId", async (c) => {
   return new Response(new Blob([result.bytes]), {
     headers: {
       "Content-Type": result.mimeType || fallbackMimeType,
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(result.filename || fallbackFilename)}`,
+      "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(result.filename || fallbackFilename)}`,
+      "Cache-Control": "private, max-age=3600",
     },
   })
 })

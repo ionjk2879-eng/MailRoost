@@ -198,6 +198,7 @@ export interface MimeAttachmentMeta {
   filename: string
   mimeType: string
   size: number
+  contentId?: string
 }
 
 interface AttachmentPartInternal {
@@ -205,6 +206,7 @@ interface AttachmentPartInternal {
   mimeType: string
   transferEncoding: string
   rawBody: string
+  contentId?: string
 }
 
 // RFC 2231 확장 파라미터(filename*=UTF-8''%ED...)와 RFC 2047 encoded-word, 일반 따옴표 문자열을 모두 처리한다.
@@ -258,7 +260,8 @@ function collectAttachmentParts(
   }
 
   const filename = extractFilename(disposition, params)
-  const isAttachment = /attachment/i.test(disposition) || (!!filename && type !== "text/plain" && type !== "text/html")
+  const contentId = (headers["content-id"] ?? "").trim().replace(/^<|>$/g, "") || undefined
+  const isAttachment = /attachment/i.test(disposition) || (!!filename && type !== "text/plain" && type !== "text/html") || (!!contentId && type.startsWith("image/"))
   if (!isAttachment) return
 
   parts.push({
@@ -266,6 +269,7 @@ function collectAttachmentParts(
     mimeType: type || "application/octet-stream",
     transferEncoding,
     rawBody: body.replace(/\r?\n$/, ""),
+    contentId,
   })
 }
 
@@ -279,6 +283,7 @@ export function listMimeAttachments(raw: string): MimeAttachmentMeta[] {
     filename: p.filename,
     mimeType: p.mimeType,
     size: decodeAttachmentBytes(p.rawBody, p.transferEncoding).length,
+    contentId: p.contentId,
   }))
 }
 
