@@ -962,7 +962,14 @@ function App() {
             accounts={accounts}
             mails={allMails}
             unreadCountByAccount={unreadCountByAccount}
+            snoozedCount={Object.values(mailOrg.snoozed).filter((until) => until > Date.now()).length}
+            currentUserEmail={currentUser?.email}
             onSelectAccount={goToInbox}
+            onCompose={sendableAccounts.length > 0 ? handleOpenCompose : undefined}
+            onGoToCleanup={goToCleanup}
+            onGoToMemo={goToMemo}
+            onGoToDrafts={goToDrafts}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         ) : view === "cleanup" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
