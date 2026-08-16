@@ -5,7 +5,7 @@ import { isHttps, readRawCookie } from "../lib/cookies"
 import { getUserAccounts, getUserByEmail, saveUser, saveUserAccounts } from "../lib/auth"
 import { buildAuthUrl, exchangeCodeForTokens, fetchProfile } from "../lib/gmail"
 import { registerOrRenewWatch } from "../lib/gmailWatch"
-import { createSessionId, readSession, SESSION_COOKIE, writeSession } from "../lib/session"
+import { createSessionId, deleteSession, readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
 const STATE_COOKIE = "roost_oauth_state"
 
@@ -65,8 +65,8 @@ auth.get("/gmail/callback", async (c) => {
     expiresAt: Date.now() + tokens.expires_in * 1000,
   }
 
-  let sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
-  if (!sessionId) sessionId = createSessionId()
+  const preLoginSessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  let sessionId = preLoginSessionId ?? createSessionId()
 
   const session = await readSession(c.env, sessionId)
 
@@ -89,7 +89,12 @@ auth.get("/gmail/callback", async (c) => {
       await saveUserAccounts(c.env, userId, { ...existing, ...session.accounts })
     }
 
+    // 세션 고정(session fixation) 방지: 로그인 전에 있었을 수 있는 sessionId를 그대로 "로그인된
+    // 세션"으로 승격하지 않고 새 sessionId를 발급해 로그인 상태를 그쪽에 쓴다. 로그인 전
+    // sessionId를 제3자가 미리 심어뒀더라도(쿠키 주입 등) 로그인 후에는 무효가 된다.
+    sessionId = createSessionId()
     await writeSession(c.env, sessionId, { userId, accounts: {} })
+    if (preLoginSessionId) await deleteSession(c.env, preLoginSessionId)
   }
 
   const accounts = await getUserAccounts(c.env, userId)
@@ -104,8 +109,10 @@ auth.get("/gmail/callback", async (c) => {
   return c.redirect("/")
 })
 
-auth.post("/logout", (c) => {
+auth.post("/logout", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   deleteCookie(c, SESSION_COOKIE, { path: "/" })
+  if (sessionId) await deleteSession(c.env, sessionId)
   return c.json({ ok: true })
 })
 
