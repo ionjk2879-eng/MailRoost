@@ -606,8 +606,10 @@ function App() {
 
       if (e.key === "Escape") {
         if (shortcutsHelpOpen) setShortcutsHelpOpen(false)
-        else if (workspace.selectedMailId) workspace.setSelectedMailId(null)
-        else if (workspace.checkedMailIds.size > 0) workspace.setCheckedMailIds(new Set())
+        else if (workspace.selectedMailId) {
+          workspace.setSelectedMailId(null)
+          workspace.setFocusedMailId(null)
+        } else if (workspace.checkedMailIds.size > 0) workspace.setCheckedMailIds(new Set())
         else if (workspace.focusedMailId) workspace.setFocusedMailId(null)
         return
       }
