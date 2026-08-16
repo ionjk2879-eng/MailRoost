@@ -1003,7 +1003,9 @@ function App() {
             </span>
           </button>
         </header>
-        {view === "home" ? (
+        {composeState ? (
+          <div className="min-h-0 flex-1 overflow-hidden">{mailDetailPane}</div>
+        ) : view === "home" ? (
           <HomeView
             accounts={accounts}
             mails={allMails}

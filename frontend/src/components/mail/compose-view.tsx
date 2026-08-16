@@ -1,9 +1,10 @@
-import { ChevronLeft, FileText, Loader2, MessageSquarePlus, Paperclip, Send, ShieldCheck, UserRound, X } from "lucide-react"
+import { ChevronLeft, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, Save, Send, ShieldCheck, UserRound, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RecipientInput, type RecipientOption } from "@/components/mail/recipient-input"
+import { ProviderIcon } from "@/components/mail/provider-icon"
 import { createDraft, deleteDraft, sendMail, updateDraft } from "@/lib/api"
 import type { Account, Draft, ForwardedAttachmentRef, Mail, QuickReply } from "@/types/mail"
 
@@ -75,6 +76,7 @@ export function ComposeView({
   const [isSending, setIsSending] = useState(false)
   const [quickReplyOpen, setQuickReplyOpen] = useState(false)
   const quickReplyRef = useRef<HTMLDivElement>(null)
+  const selectedAccount = sendableAccounts.find((account) => account.id === accountId)
 
   const recipientOptions = useMemo<RecipientOption[]>(() => {
     const seen = new Map<string, RecipientOption>()
@@ -222,7 +224,8 @@ export function ComposeView({
       {sendableAccounts.length === 0 ? (
         <div className="m-6 rounded-2xl border border-dashed p-8 text-center"><p className="text-muted-foreground text-sm">메일을 보낼 수 있는 계정이 없습니다.</p></div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-5 sm:px-7">
+        <div className="grid min-h-0 flex-1 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="flex min-w-0 flex-col gap-5 px-4 py-5 sm:px-7 xl:border-r">
           <section className="overflow-visible rounded-2xl border bg-background shadow-sm">
           <div className="grid items-center gap-2 border-b px-4 py-3 sm:grid-cols-[100px_1fr] sm:px-5">
             <Label htmlFor="compose-from" className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><UserRound className="size-3.5" /> 보내는 사람</Label>
@@ -367,18 +370,47 @@ export function ComposeView({
             />
           </section>
           {error && <p className="text-destructive rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm">{error}</p>}
+          </div>
+          <aside className="hidden min-w-0 flex-col gap-6 bg-background px-5 py-6 xl:flex">
+            <section>
+              <h3 className="text-sm font-bold">발신 계정</h3>
+              {selectedAccount && (
+                <div className="mt-3 flex items-center gap-3 rounded-xl border p-3 shadow-sm">
+                  <ProviderIcon provider={selectedAccount.provider} label={selectedAccount.email} className="size-9 rounded-full" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold">{selectedAccount.email}</p>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground">{selectedAccount.label}</p>
+                  </div>
+                </div>
+              )}
+            </section>
+            <section>
+              <div className="flex items-center justify-between"><h3 className="text-sm font-bold">빠른 답장</h3><MessageSquarePlus className="size-4 text-orange-500" /></div>
+              <div className="mt-3 space-y-2">
+                {quickReplies.length > 0 ? quickReplies.slice(0, 5).map((reply) => (
+                  <button key={reply.id} type="button" onClick={() => insertQuickReply(reply)} className="w-full rounded-xl border p-3 text-left transition hover:border-orange-200 hover:bg-orange-50/50">
+                    <span className="block truncate text-xs font-semibold">{reply.title}</span>
+                    <span className="mt-1 block truncate text-[10px] text-muted-foreground">{reply.body}</span>
+                  </button>
+                )) : <p className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">설정에서 자주 쓰는 답장을 등록해 보세요.</p>}
+              </div>
+            </section>
+            <section className="mt-auto rounded-2xl bg-orange-50 p-4 dark:bg-orange-500/10">
+              <div className="flex items-center gap-2 text-xs font-bold text-orange-600"><Lightbulb className="size-4" /> TIP</div>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">작성 중인 메일은 자동으로 임시보관함에 저장됩니다. 자주 쓰는 문구는 빠른 답장으로 관리할 수 있어요.</p>
+            </section>
+          </aside>
         </div>
       )}
       {sendableAccounts.length > 0 && (
         <div className="flex shrink-0 items-center gap-3 border-t bg-background/95 px-4 py-3 shadow-[0_-8px_24px_-20px_rgba(0,0,0,.35)] backdrop-blur sm:px-7">
-          <span className="hidden items-center gap-1.5 text-[11px] text-muted-foreground sm:flex"><ShieldCheck className="size-3.5 text-emerald-500" /> 작성 내용은 자동으로 임시 저장됩니다.</span>
-          <div className="flex-1" />
-          <Button type="button" variant="ghost" className="rounded-xl" disabled={isSending} onClick={onCancel}>
-            취소
-          </Button>
           <Button type="submit" className="min-w-28 gap-2 rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20 hover:bg-orange-600" disabled={isSending}>
             {isSending ? <><Loader2 className="size-4 animate-spin" /> 전송 중...</> : <><Send className="size-4" /> 보내기</>}
           </Button>
+          <Button type="button" variant="outline" className="gap-2 rounded-xl" disabled={isSending} onClick={() => saveDraft()}><Save className="size-4" /> 임시보관</Button>
+          <div className="flex-1" />
+          <span className="hidden items-center gap-1.5 text-[11px] text-muted-foreground sm:flex"><ShieldCheck className="size-3.5 text-emerald-500" /> 자동 임시저장</span>
+          <Button type="button" variant="ghost" className="rounded-xl" disabled={isSending} onClick={onCancel}>취소</Button>
         </div>
       )}
     </form>
