@@ -15,6 +15,20 @@ async function persistContacts(env: Env, sessionId: string, session: StoredSessi
   else { session.contacts = items; await writeSession(env, sessionId, session) }
 }
 
+// 쓰기 직전에 다시 읽은 최신 목록 위에 이 요청의 변경만 적용한다 — mailOrg에 썼던 것과 같은
+// 레이스 회피 패턴(backend/CLAUDE.md 참고).
+async function mutateContacts(
+  env: Env,
+  sessionId: string,
+  session: StoredSession,
+  mutate: (items: Contact[]) => Contact[],
+): Promise<Contact[]> {
+  const fresh = await resolveContacts(env, session)
+  const next = mutate(fresh)
+  if (next !== fresh) await persistContacts(env, sessionId, session, next)
+  return next
+}
+
 contacts.get("/contacts", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ contacts: [] })
@@ -29,20 +43,28 @@ contacts.post("/contacts", async (c) => {
   const email = body?.email?.trim().toLowerCase() ?? ""
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.json({ error: "올바른 이메일 주소를 입력해주세요." }, 400)
   const session = await readSession(c.env, sessionId)
-  const items = await resolveContacts(c.env, session)
-  if (items.some((item) => item.email.toLowerCase() === email)) return c.json({ error: "이미 주소록에 저장된 이메일입니다." }, 409)
-  const contact: Contact = { id: crypto.randomUUID(), name: body?.name?.trim() || email.split("@")[0], email, createdAt: Date.now() }
-  items.unshift(contact)
-  await persistContacts(c.env, sessionId, session, items)
-  return c.json({ contact })
+
+  let created: Contact | null = null
+  let conflict = false
+  await mutateContacts(c.env, sessionId, session, (items) => {
+    if (items.some((item) => item.email.toLowerCase() === email)) {
+      conflict = true
+      return items
+    }
+    const contact: Contact = { id: crypto.randomUUID(), name: body?.name?.trim() || email.split("@")[0], email, createdAt: Date.now() }
+    created = contact
+    return [contact, ...items]
+  })
+  if (conflict) return c.json({ error: "이미 주소록에 저장된 이메일입니다." }, 409)
+  return c.json({ contact: created })
 })
 
 contacts.delete("/contacts/:id", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
   const session = await readSession(c.env, sessionId)
-  const items = await resolveContacts(c.env, session)
-  await persistContacts(c.env, sessionId, session, items.filter((item) => item.id !== c.req.param("id")))
+  const id = c.req.param("id")
+  await mutateContacts(c.env, sessionId, session, (items) => items.filter((item) => item.id !== id))
   return c.json({ ok: true })
 })
 
