@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { AutoClassifyRule, MailFolder, MailOrgState } from "../types"
-import { emptyMailOrgState } from "./mailOrg"
+import { assignmentKey, emptyMailOrgState } from "./mailOrg"
 import { applyMailOrgOp } from "./mailOrgOps"
 
 function makeOrg(overrides: Partial<MailOrgState> = {}): MailOrgState {
@@ -24,6 +24,11 @@ function makeRule(overrides: Partial<AutoClassifyRule> = {}): AutoClassifyRule {
     ...overrides,
   }
 }
+
+const acctMail1 = assignmentKey("acct", "mail1")
+const acctMail2 = assignmentKey("acct", "mail2")
+const acct1Mail1 = assignmentKey("acct1", "mail1")
+const acct1Mail2 = assignmentKey("acct1", "mail2")
 
 describe("folders", () => {
   it("createFolder adds a folder and returns it", () => {
@@ -69,12 +74,12 @@ describe("folders", () => {
   it("deleteFolder removes the folder and strips it from assignments", () => {
     const org = makeOrg({
       folders: [makeFolder({ id: "f1" }), makeFolder({ id: "f2" })],
-      assignments: { "acct1mail1": ["f1", "f2"], "acct1mail2": ["f1"] },
+      assignments: { [acct1Mail1]: ["f1", "f2"], [acct1Mail2]: ["f1"] },
     })
     applyMailOrgOp(org, { type: "deleteFolder", folderId: "f1" })
     expect(org.folders.map((f) => f.id)).toEqual(["f2"])
-    expect(org.assignments["acct1mail1"]).toEqual(["f2"])
-    expect(org.assignments["acct1mail2"]).toBeUndefined()
+    expect(org.assignments[acct1Mail1]).toEqual(["f2"])
+    expect(org.assignments[acct1Mail2]).toBeUndefined()
   })
 })
 
@@ -143,7 +148,7 @@ describe("applyRuleMatches", () => {
   it("assigns new matches and counts already-classified ones", () => {
     const org = makeOrg({
       folders: [makeFolder({ id: "f1" })],
-      assignments: { acctmail2: ["f1"] },
+      assignments: { [acctMail2]: ["f1"] },
     })
     const result = applyMailOrgOp(org, {
       type: "applyRuleMatches",
@@ -155,19 +160,19 @@ describe("applyRuleMatches", () => {
     }) as { count: number; alreadyClassified: number }
     expect(result.count).toBe(1)
     expect(result.alreadyClassified).toBe(1)
-    expect(org.assignments["acctmail1"]).toEqual(["f1"])
-    expect(org.classified["acctmail1"]).toBe(true)
+    expect(org.assignments[acctMail1]).toEqual(["f1"])
+    expect(org.classified[acctMail1]).toBe(true)
   })
 
   it("skips archived mail", () => {
-    const org = makeOrg({ folders: [makeFolder({ id: "f1" })], archived: { acctmail1: true } })
+    const org = makeOrg({ folders: [makeFolder({ id: "f1" })], archived: { [acctMail1]: true } })
     const result = applyMailOrgOp(org, {
       type: "applyRuleMatches",
       targetFolderId: "f1",
       matches: [{ accountId: "acct", mailId: "mail1" }],
     }) as { count: number; alreadyClassified: number }
     expect(result.count).toBe(0)
-    expect(org.assignments["acctmail1"]).toBeUndefined()
+    expect(org.assignments[acctMail1]).toBeUndefined()
   })
 })
 
@@ -178,14 +183,14 @@ describe("moveMail", () => {
     const org = makeOrg()
     const result = applyMailOrgOp(org, { type: "moveMail", items, folderId: "archive", fromFolderId: null }) as { ok: true } | { ok: false }
     expect(result.ok).toBe(true)
-    expect(org.archived["acctmail1"]).toBe(true)
+    expect(org.archived[acctMail1]).toBe(true)
   })
 
   it("assigns a custom folder", () => {
     const org = makeOrg({ folders: [makeFolder({ id: "f1" })] })
     const result = applyMailOrgOp(org, { type: "moveMail", items, folderId: "f1", fromFolderId: null }) as { ok: true } | { ok: false; error: string }
     expect(result.ok).toBe(true)
-    expect(org.assignments["acctmail1"]).toEqual(["f1"])
+    expect(org.assignments[acctMail1]).toEqual(["f1"])
   })
 
   it("fails when the target folder doesn't exist", () => {
@@ -197,23 +202,23 @@ describe("moveMail", () => {
   })
 
   it("un-assigns from a specific folder when moving back to inbox with fromFolderId", () => {
-    const org = makeOrg({ folders: [makeFolder({ id: "f1" })], assignments: { acctmail1: ["f1"] } })
+    const org = makeOrg({ folders: [makeFolder({ id: "f1" })], assignments: { [acctMail1]: ["f1"] } })
     const result = applyMailOrgOp(org, { type: "moveMail", items, folderId: null, fromFolderId: "f1" }) as { ok: true } | { ok: false }
     expect(result.ok).toBe(true)
-    expect(org.assignments["acctmail1"]).toBeUndefined()
+    expect(org.assignments[acctMail1]).toBeUndefined()
   })
 
   it("unarchives when moving back to inbox with fromFolderId 'archive'", () => {
-    const org = makeOrg({ archived: { acctmail1: true } })
+    const org = makeOrg({ archived: { [acctMail1]: true } })
     applyMailOrgOp(org, { type: "moveMail", items, folderId: null, fromFolderId: "archive" })
-    expect(org.archived["acctmail1"]).toBeUndefined()
+    expect(org.archived[acctMail1]).toBeUndefined()
   })
 
   it("clears both archived and assignments when moving to inbox with no fromFolderId context", () => {
-    const org = makeOrg({ folders: [makeFolder({ id: "f1" })], assignments: { acctmail1: ["f1"] }, archived: { acctmail1: true } })
+    const org = makeOrg({ folders: [makeFolder({ id: "f1" })], assignments: { [acctMail1]: ["f1"] }, archived: { [acctMail1]: true } })
     applyMailOrgOp(org, { type: "moveMail", items, folderId: null, fromFolderId: null })
-    expect(org.assignments["acctmail1"]).toBeUndefined()
-    expect(org.archived["acctmail1"]).toBeUndefined()
+    expect(org.assignments[acctMail1]).toBeUndefined()
+    expect(org.archived[acctMail1]).toBeUndefined()
   })
 })
 
@@ -224,10 +229,10 @@ describe("toggleMailFolder", () => {
       | { ok: true }
       | { ok: false }
     expect(assignResult.ok).toBe(true)
-    expect(org.assignments["acctmail1"]).toEqual(["f1"])
+    expect(org.assignments[acctMail1]).toEqual(["f1"])
 
     applyMailOrgOp(org, { type: "toggleMailFolder", accountId: "acct", mailId: "mail1", folderId: "f1", assign: false })
-    expect(org.assignments["acctmail1"]).toBeUndefined()
+    expect(org.assignments[acctMail1]).toBeUndefined()
   })
 
   it("fails when the folder doesn't exist", () => {
@@ -243,10 +248,10 @@ describe("snoozeMail / unsnooze", () => {
   it("round-trips a snooze", () => {
     const org = makeOrg()
     applyMailOrgOp(org, { type: "snoozeMail", accountId: "acct", mailId: "mail1", until: 1000 })
-    expect(org.snoozed["acctmail1"]).toBe(1000)
+    expect(org.snoozed[acctMail1]).toBe(1000)
 
     applyMailOrgOp(org, { type: "unsnooze", accountId: "acct", mailId: "mail1" })
-    expect(org.snoozed["acctmail1"]).toBeUndefined()
+    expect(org.snoozed[acctMail1]).toBeUndefined()
   })
 
   it("pruneExpiredSnoozes removes only expired entries", () => {
@@ -269,14 +274,14 @@ describe("classifyMails", () => {
     }) as { archived: boolean; folderIds: string[]; category: string }[]
 
     expect(result[0].folderIds).toEqual(["f1"])
-    expect(org.classified["acctmail1"]).toBe(true)
+    expect(org.classified[acctMail1]).toBe(true)
   })
 
   it("does not re-classify a mail already marked classified", () => {
     const org = makeOrg({
       folders: [makeFolder({ id: "f1" })],
       rules: [makeRule({ targetFolderId: "f1", enabled: true })],
-      classified: { acctmail1: true },
+      classified: { [acctMail1]: true },
     })
     const result = applyMailOrgOp(org, {
       type: "classifyMails",
@@ -284,23 +289,23 @@ describe("classifyMails", () => {
     }) as { archived: boolean; folderIds: string[]; category: string }[]
 
     expect(result[0].folderIds).toEqual([])
-    expect(org.assignments["acctmail1"]).toBeUndefined()
+    expect(org.assignments[acctMail1]).toBeUndefined()
   })
 })
 
 describe("clearMailKeys", () => {
   it("clears assignments/archived/snoozed/classified for the given mail ids", () => {
     const org = makeOrg({
-      assignments: { acctmail1: ["f1"] },
-      archived: { acctmail1: true },
-      snoozed: { acctmail1: 1000 },
-      classified: { acctmail1: true },
+      assignments: { [acctMail1]: ["f1"] },
+      archived: { [acctMail1]: true },
+      snoozed: { [acctMail1]: 1000 },
+      classified: { [acctMail1]: true },
     })
     applyMailOrgOp(org, { type: "clearMailKeys", accountId: "acct", mailIds: ["mail1"] })
-    expect(org.assignments["acctmail1"]).toBeUndefined()
-    expect(org.archived["acctmail1"]).toBeUndefined()
-    expect(org.snoozed["acctmail1"]).toBeUndefined()
-    expect(org.classified["acctmail1"]).toBeUndefined()
+    expect(org.assignments[acctMail1]).toBeUndefined()
+    expect(org.archived[acctMail1]).toBeUndefined()
+    expect(org.snoozed[acctMail1]).toBeUndefined()
+    expect(org.classified[acctMail1]).toBeUndefined()
   })
 })
 

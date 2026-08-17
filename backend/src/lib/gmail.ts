@@ -1,5 +1,5 @@
 import type { Env, GmailAccountRecord, Mail, MailAttachment, MailCategory } from "../types"
-import { buildMimeMessage, decodeRfc2047, parseAddressList, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
+import { buildMimeMessage, decodeBase64ToBytes, decodeRfc2047, parseAddressList, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
 import type { OutgoingAttachment } from "./mime"
 import { fetchWithRetry } from "./httpRetry"
 
@@ -335,10 +335,10 @@ export async function toggleStar(accessToken: string, messageId: string, starred
   if (!res.ok) throw new Error(`Gmail 별표 처리 실패: ${res.status}`)
 }
 
+// mime.ts의 decodeBase64ToBytes가 base64url(-/_) 치환과 개행/공백 제거를 모두 하므로 그대로 위임한다
+// (여기서 따로 구현을 두면 한쪽만 고쳐지고 다른 쪽은 그대로인 드리프트가 생기기 쉽다).
 function decodeBase64UrlToBytes(data: string): Uint8Array {
-  const base64 = data.replace(/-/g, "+").replace(/_/g, "/")
-  const binary = atob(base64)
-  return Uint8Array.from(binary, (c) => c.charCodeAt(0))
+  return decodeBase64ToBytes(data)
 }
 
 function decodeBase64Url(data: string): string {

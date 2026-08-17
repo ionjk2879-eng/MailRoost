@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers"
 import type { Env, MailOrgState } from "../types"
-import { getUserMailOrg } from "../lib/mailOrg"
+import { getUserMailOrg, normalizeMailOrgState } from "../lib/mailOrg"
 import { applyMailOrgOp, type MailOrgOp } from "../lib/mailOrgOps"
 
 // 로그인한 사용자당 하나씩 뜨는 Durable Object. MailOrgState(분류 메일함/규칙/배정/보관/스누즈/
@@ -11,7 +11,10 @@ import { applyMailOrgOp, type MailOrgOp } from "../lib/mailOrgOps"
 export class MailOrgStore extends DurableObject<Env> {
   private async loadState(userId: string): Promise<MailOrgState> {
     const existing = await this.ctx.storage.get<MailOrgState>("state")
-    if (existing) return existing
+    // normalizeMailOrgState로 한 번 더 거른다 — storage에 저장된 값은 그 DO가 storage에 처음
+    // 채워진 시점의 스키마 그대로일 수 있고, 그 뒤에 MailOrgState에 필드가 추가되면(예: savedFilters)
+    // 이 DO 입장에선 영원히 undefined로 남는다. 매번 정규화하면 새 필드도 기본값으로 채워진다.
+    if (existing) return normalizeMailOrgState(existing)
     // 이 DO에 처음 들어온 요청이면 레거시 KV blob(user:mailorg:<userId>)을 한 번 읽어들여
     // storage로 옮긴다 (지연 마이그레이션). 이후로는 이 DO의 storage가 유일한 출처가 된다.
     const migrated = await getUserMailOrg(this.env, userId)

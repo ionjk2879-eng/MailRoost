@@ -7,9 +7,15 @@ import { writeSession } from "./session"
 // org.folders 목록에는 들어가지 않으므로 이름변경/삭제 대상이 되지 않는다.
 export const ARCHIVE_FOLDER_ID = "archive"
 
-// accountId와 mailId 사이에 구분자 없이 그냥 이어붙인다 (accountId 자체에 콜론이 포함될 수 있어
-// -예: imap:host:email- 구분자를 넣더라도 accountId만 보고는 어차피 못 나눈다). 대신 되돌릴 때
-// (parseAssignmentKey)는 지금 연결된 계정 id 목록과 접두사 대조로 나눈다.
+// accountId와 mailId 사이에 구분자 없이 그냥 이어붙인다. 이미 저장된 모든 사용자 데이터가 이
+// 형식이라(assignmentKey 결과를 org.assignments/archived/snoozed/classified의 키로 그대로 써왔다),
+// 여기에 구분자를 새로 넣으면 폴더 배정/보관/스누즈/분류 표시 함수들(folderIdsOf, isArchived,
+// toggleFolderAssignment 등 — 전부 parseAssignmentKey가 아니라 assignmentKey를 다시 계산해서
+// org 맵에 직접 인덱싱한다)이 배포 즉시 기존에 저장된 모든 키를 못 찾게 된다 — 마이그레이션 없이는
+// 절대 바꿀 수 없다. 대신 되돌릴 때(parseAssignmentKey)는 지금 연결된 계정 id 목록과 접두사
+// 대조로 나눈다. (한 계정 id가 다른 계정 id의 완전한 prefix인 경우 오판 가능성이 이론적으로
+// 남지만, 마이그레이션이 필요한 키 형식 변경보다 위험이 훨씬 작다고 판단해 감수하기로 했다 —
+// docs/incidents/2026-08-13-folder-and-snooze-lookup-broken.md 참고.)
 export function assignmentKey(accountId: string, mailId: string): string {
   return `${accountId}${mailId}`
 }

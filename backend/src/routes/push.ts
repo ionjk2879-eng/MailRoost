@@ -31,7 +31,16 @@ async function addPushSessionIndex(env: Env, userId: string, sessionId: string):
 async function readPushSubs(env: Env, sessionId: string): Promise<StoredPushSubscription[]> {
   const raw = await env.TOKENS.get(pushSubsKey(sessionId))
   if (!raw) return []
-  try { return JSON.parse(raw) as StoredPushSubscription[] } catch { return [] }
+  try {
+    return JSON.parse(raw) as StoredPushSubscription[]
+  } catch (err) {
+    // 여기서 조용히 []를 돌려주면 호출부가 "구독 없음"으로 착각해 곧이어 이 블롭을 통째로
+    // 덮어써서 다른 기기들의 푸시 구독을 전부 지워버린다 — 이 앱의 대표적인 실패 모드(에러 없이
+    // 조용히 빈 값 반환)를 그대로 반복하는 셈이라, 대신 에러를 던져 요청을 실패시킨다
+    // (app.onError가 로그를 남기고 500으로 응답한다).
+    console.error(`[push] corrupted push_subs blob for session ${sessionId}:`, err)
+    throw new Error("push subscriptions data is corrupted")
+  }
 }
 
 async function savePushSubs(env: Env, sessionId: string, subs: StoredPushSubscription[]): Promise<void> {
