@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import type { Env, Mail, MailFolder } from "../types"
 import { ensureFreshToken, fetchMailsByIds as gmailFetchByIds } from "../lib/gmail"
 import { daumFetchByUids, imapFetchByUids, naverFetchByUids } from "../lib/imap"
-import { persistAccounts, resolveAccounts } from "../lib/auth"
+import { type GmailTokenPatch, gmailTokenPatchOf, persistAccountTokenRefresh, resolveAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import { ARCHIVE_FOLDER_ID, folderIdsOf, mutateMailOrg, parseAssignmentKey, resolveMailOrg } from "../lib/mailOrg"
 import type { CreateFolderResult, RenameFolderResult } from "../lib/mailOrgOps"
@@ -131,7 +131,7 @@ folders.get("/folders/:id/mail", async (c) => {
     else idsByAccount.set(parsed.accountId, [parsed.mailId])
   }
 
-  let accountsChanged = false
+  const accountPatch: Record<string, GmailTokenPatch> = {}
   const perAccountResults = await Promise.all(
     [...idsByAccount.entries()].map(async ([accountId, mailIds]): Promise<Mail[]> => {
       const record = accountMap[accountId]
@@ -150,8 +150,7 @@ folders.get("/folders/:id/mail", async (c) => {
 
         const fresh = await ensureFreshToken(c.env, record)
         if (fresh.accessToken !== record.accessToken) {
-          accountMap[accountId] = fresh
-          accountsChanged = true
+          accountPatch[accountId] = gmailTokenPatchOf(fresh)
         }
         return await gmailFetchByIds(fresh.accessToken, accountId, mailIds)
       } catch (err) {
@@ -161,7 +160,7 @@ folders.get("/folders/:id/mail", async (c) => {
     }),
   )
 
-  if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
+  if (Object.keys(accountPatch).length > 0) await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, accountPatch)
 
   const mails = perAccountResults.flat()
   for (const mail of mails) mail.folderIds = folderIdsOf(org, mail.accountId, mail.id)

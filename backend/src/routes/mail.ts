@@ -45,7 +45,7 @@ import {
   naverToggleStar,
   naverToggleStarBulk,
 } from "../lib/imap"
-import { persistAccounts, resolveAccounts } from "../lib/auth"
+import { type GmailTokenPatch, gmailTokenPatchOf, persistAccountTokenRefresh, resolveAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import { type CursorMap, decodeCursor, encodeCursor } from "../lib/cursor"
 import { fetchImapMails, searchImapMails } from "../lib/mailFetch"
@@ -76,6 +76,9 @@ mail.post("/mail/move", async (c) => {
   const fromFolderId = body?.fromFolderId ?? null
 
   const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  if (items.some((item) => !accountMap[item.accountId])) return c.json({ error: "not found" }, 404)
+
   const result = await mutateMailOrg<MoveMailResult>(c.env, sessionId, session, {
     type: "moveMail",
     items,
@@ -101,6 +104,9 @@ mail.post("/mail/folders/toggle", async (c) => {
   }
 
   const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  if (!accountMap[accountId]) return c.json({ error: "not found" }, 404)
+
   const result = await mutateMailOrg<ToggleMailFolderResult>(c.env, sessionId, session, {
     type: "toggleMailFolder",
     accountId,
@@ -128,7 +134,7 @@ mail.get("/mail", async (c) => {
 
   const results: Mail[] = []
   const failedAccountIds: string[] = []
-  let accountsChanged = false
+  const accountPatch: Record<string, GmailTokenPatch> = {}
 
   const IMAP_PAGE = 50
   const GMAIL_PAGE = 50
@@ -222,12 +228,11 @@ mail.get("/mail", async (c) => {
     }
     if (result.cursor) nextCursorMap[result.accountId] = result.cursor
     if (result.updatedRecord) {
-      accountMap[result.accountId] = result.updatedRecord
-      accountsChanged = true
+      accountPatch[result.accountId] = gmailTokenPatchOf(result.updatedRecord)
     }
   }
 
-  if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
+  if (Object.keys(accountPatch).length > 0) await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, accountPatch)
 
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   const nextCursor = Object.keys(nextCursorMap).length > 0 ? encodeCursor(nextCursorMap) : null
@@ -252,7 +257,7 @@ mail.get("/mail/search", async (c) => {
 
   const results: Mail[] = []
   const failedAccountIds: string[] = []
-  let accountsChanged = false
+  const accountPatch: Record<string, GmailTokenPatch> = {}
 
   const perAccountResults = await Promise.all(
     accountIds.map(async (accountId) => {
@@ -290,12 +295,11 @@ mail.get("/mail/search", async (c) => {
       results.push(item)
     }
     if ('updatedRecord' in result && result.updatedRecord) {
-      accountMap[result.accountId] = result.updatedRecord
-      accountsChanged = true
+      accountPatch[result.accountId] = gmailTokenPatchOf(result.updatedRecord)
     }
   }
 
-  if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
+  if (Object.keys(accountPatch).length > 0) await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, accountPatch)
 
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   return c.json({ mails: results, failedAccountIds })
@@ -334,8 +338,9 @@ mail.patch("/mail/:id/read", async (c) => {
 
   const fresh = await ensureFreshToken(c.env, record)
   if (fresh.accessToken !== record.accessToken) {
-    accountMap[accountId] = fresh
-    await persistAccounts(c.env, sessionId, session, accountMap)
+    await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+      [accountId]: gmailTokenPatchOf(fresh),
+    })
   }
   if (read) await gmailMarkAsRead(fresh.accessToken, mailId)
   else await gmailMarkAsUnread(fresh.accessToken, mailId)
@@ -371,8 +376,9 @@ mail.patch("/mail/:id/star", async (c) => {
 
   const fresh = await ensureFreshToken(c.env, record)
   if (fresh.accessToken !== record.accessToken) {
-    accountMap[accountId] = fresh
-    await persistAccounts(c.env, sessionId, session, accountMap)
+    await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+      [accountId]: gmailTokenPatchOf(fresh),
+    })
   }
   await gmailToggleStar(fresh.accessToken, mailId, starred)
   return c.json({ ok: true })
@@ -407,8 +413,9 @@ mail.patch("/mail/mark-all-read", async (c) => {
 
   const fresh = await ensureFreshToken(c.env, record)
   if (fresh.accessToken !== record.accessToken) {
-    accountMap[accountId] = fresh
-    await persistAccounts(c.env, sessionId, session, accountMap)
+    await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+      [accountId]: gmailTokenPatchOf(fresh),
+    })
   }
   await gmailMarkAllUnread(fresh.accessToken)
   return c.json({ ok: true })
@@ -444,8 +451,9 @@ mail.patch("/mail/bulk/read", async (c) => {
 
   const fresh = await ensureFreshToken(c.env, record)
   if (fresh.accessToken !== record.accessToken) {
-    accountMap[accountId] = fresh
-    await persistAccounts(c.env, sessionId, session, accountMap)
+    await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+      [accountId]: gmailTokenPatchOf(fresh),
+    })
   }
   await gmailBatchModify(fresh.accessToken, mailIds, read ? { removeLabelIds: ["UNREAD"] } : { addLabelIds: ["UNREAD"] })
   return c.json({ ok: true })
@@ -481,8 +489,9 @@ mail.patch("/mail/bulk/star", async (c) => {
 
   const fresh = await ensureFreshToken(c.env, record)
   if (fresh.accessToken !== record.accessToken) {
-    accountMap[accountId] = fresh
-    await persistAccounts(c.env, sessionId, session, accountMap)
+    await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+      [accountId]: gmailTokenPatchOf(fresh),
+    })
   }
   await gmailBatchModify(fresh.accessToken, mailIds, starred ? { addLabelIds: ["STARRED"] } : { removeLabelIds: ["STARRED"] })
   return c.json({ ok: true })
@@ -511,8 +520,9 @@ mail.post("/mail/bulk-delete", async (c) => {
   } else {
     const fresh = await ensureFreshToken(c.env, record)
     if (fresh.accessToken !== record.accessToken) {
-      accountMap[accountId] = fresh
-      await persistAccounts(c.env, sessionId, session, accountMap)
+      await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+        [accountId]: gmailTokenPatchOf(fresh),
+      })
     }
     await gmailTrashBulk(fresh.accessToken, mailIds)
   }
@@ -548,8 +558,9 @@ mail.get("/mail/:id", async (c) => {
 
   const fresh = await ensureFreshToken(c.env, record)
   if (fresh.accessToken !== record.accessToken) {
-    accountMap[accountId] = fresh
-    await persistAccounts(c.env, sessionId, session, accountMap)
+    await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+      [accountId]: gmailTokenPatchOf(fresh),
+    })
   }
   return c.json(await getMailDetail(fresh.accessToken, accountId, mailId))
 })
@@ -576,8 +587,9 @@ mail.get("/mail/:id/attachment/:attachmentId", async (c) => {
     mimeType: fallbackMimeType,
   })
   if (updatedRecord) {
-    accountMap[accountId] = updatedRecord
-    await persistAccounts(c.env, sessionId, session, accountMap)
+    await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+      [accountId]: gmailTokenPatchOf(updatedRecord),
+    })
   }
 
   if (!result) return c.json({ error: "첨부파일을 찾을 수 없습니다." }, 404)
@@ -611,8 +623,9 @@ mail.delete("/mail/:id", async (c) => {
   } else {
     const fresh = await ensureFreshToken(c.env, record)
     if (fresh.accessToken !== record.accessToken) {
-      accountMap[accountId] = fresh
-      await persistAccounts(c.env, sessionId, session, accountMap)
+      await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+        [accountId]: gmailTokenPatchOf(fresh),
+      })
     }
     await gmailTrash(fresh.accessToken, mailId)
   }
@@ -650,7 +663,9 @@ mail.post("/mail/send", async (c) => {
   if (forwardedAttachments?.length) {
     const resolved = await resolveForwardedAttachments(c.env, accountMap, forwardedAttachments)
     attachments = resolved.attachments
-    if (resolved.accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
+    if (Object.keys(resolved.accountPatch).length > 0) {
+      await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, resolved.accountPatch)
+    }
   }
 
   const totalUploadSize = (uploadedAttachments ?? []).reduce((sum, item) => sum + (item.size || 0), 0)
@@ -663,8 +678,9 @@ mail.post("/mail/send", async (c) => {
 
   const { updatedRecord } = await sendViaRecord(c.env, record, to, subject, mailBody, cc, bcc, attachments, htmlBody ? sanitizeHtml(htmlBody) : undefined)
   if (updatedRecord) {
-    accountMap[accountId] = updatedRecord
-    await persistAccounts(c.env, sessionId, session, accountMap)
+    await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+      [accountId]: gmailTokenPatchOf(updatedRecord),
+    })
   }
   return c.json({ ok: true })
 })

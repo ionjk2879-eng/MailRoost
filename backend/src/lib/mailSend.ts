@@ -1,4 +1,5 @@
-import type { ConnectedAccountRecord, Env, ForwardedAttachmentRef } from "../types"
+import type { ConnectedAccountRecord, Env, ForwardedAttachmentRef, GmailAccountRecord } from "../types"
+import { type GmailTokenPatch, gmailTokenPatchOf } from "./auth"
 import { ensureFreshToken, getAttachment as gmailGetAttachment, sendGmailMessage } from "./gmail"
 import { daumGetAttachment, imapGetAttachment, naverGetAttachment } from "./imap"
 import type { OutgoingAttachment } from "./mime"
@@ -15,7 +16,7 @@ export async function fetchAttachmentForAccount(
   fallback: { filename: string; mimeType: string },
 ): Promise<{
   result: { bytes: Uint8Array; mimeType: string; filename: string } | null
-  updatedRecord?: ConnectedAccountRecord
+  updatedRecord?: GmailAccountRecord
 }> {
   const record = accountMap[accountId]
   if (!record) return { result: null }
@@ -49,9 +50,9 @@ export async function resolveForwardedAttachments(
   env: Env,
   accountMap: Record<string, ConnectedAccountRecord>,
   refs: ForwardedAttachmentRef[],
-): Promise<{ attachments: OutgoingAttachment[]; accountsChanged: boolean }> {
+): Promise<{ attachments: OutgoingAttachment[]; accountPatch: Record<string, GmailTokenPatch> }> {
   const attachments: OutgoingAttachment[] = []
-  let accountsChanged = false
+  const accountPatch: Record<string, GmailTokenPatch> = {}
   for (const ref of refs) {
     const { result, updatedRecord } = await fetchAttachmentForAccount(env, accountMap, ref.accountId, ref.mailId, ref.attachmentId, {
       filename: ref.filename,
@@ -59,11 +60,11 @@ export async function resolveForwardedAttachments(
     })
     if (updatedRecord) {
       accountMap[ref.accountId] = updatedRecord
-      accountsChanged = true
+      accountPatch[ref.accountId] = gmailTokenPatchOf(updatedRecord)
     }
     if (result) attachments.push({ filename: result.filename || ref.filename, mimeType: result.mimeType || ref.mimeType, bytes: result.bytes })
   }
-  return { attachments, accountsChanged }
+  return { attachments, accountPatch }
 }
 
 // 계정 provider별 발송 분기. 토큰이 갱신됐으면 updatedRecord로 돌려줘서 호출부가 저장하게 한다.
@@ -77,7 +78,7 @@ export async function sendViaRecord(
   bcc?: string,
   attachments?: OutgoingAttachment[],
   htmlBody?: string,
-): Promise<{ updatedRecord?: ConnectedAccountRecord }> {
+): Promise<{ updatedRecord?: GmailAccountRecord }> {
   if (record.provider === "naver") {
     await naverSendMail(record.email, record.appPassword, to, subject, body, cc, bcc, attachments, htmlBody)
     return {}

@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import type { Env, Mail, MailCategory } from "../types"
 import { ensureFreshToken, searchMails as gmailSearchMails } from "../lib/gmail"
 import { naverSearchInbox } from "../lib/imap"
-import { persistAccounts, resolveAccounts } from "../lib/auth"
+import { type GmailTokenPatch, gmailTokenPatchOf, persistAccountTokenRefresh, resolveAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import { searchImapMails } from "../lib/mailFetch"
 import { mutateMailOrg, resolveMailOrg } from "../lib/mailOrg"
@@ -111,7 +111,7 @@ rules.post("/rules/:id/apply", async (c) => {
 
   const accountMap = await resolveAccounts(c.env, session)
   const accountIds = Object.keys(accountMap)
-  let accountsChanged = false
+  const accountPatch: Record<string, GmailTokenPatch> = {}
 
   const perAccountMatches = await Promise.all(
     accountIds.map(async (accountId): Promise<Mail[]> => {
@@ -121,8 +121,7 @@ rules.post("/rules/:id/apply", async (c) => {
         if (record.provider === "gmail") {
           const fresh = await ensureFreshToken(c.env, record)
           if (fresh.accessToken !== record.accessToken) {
-            accountMap[accountId] = fresh
-            accountsChanged = true
+            accountPatch[accountId] = gmailTokenPatchOf(fresh)
           }
           // Gmail은 from:/subject: 연산자로 그 필드만 정확히 검색할 수 있다.
           const op = rule.field === "from" ? "from" : "subject"
@@ -144,7 +143,7 @@ rules.post("/rules/:id/apply", async (c) => {
     }),
   )
 
-  if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
+  if (Object.keys(accountPatch).length > 0) await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, accountPatch)
 
   // 매치된 메일 목록을 op에 실어보내고, 최종 반영(이미 배정된 것 스킵 / archived 스킵 / 배정+classified
   // 표시)은 mutateMailOrg 호출 하나(로그인 사용자는 DO의 applyOp RPC 호출 하나) 안에서 현재 상태를

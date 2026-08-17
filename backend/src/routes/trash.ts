@@ -19,7 +19,7 @@ import {
   naverPermanentDeleteBulk,
   naverRestoreFromTrashBulk,
 } from "../lib/imap"
-import { persistAccounts, resolveAccounts } from "../lib/auth"
+import { type GmailTokenPatch, gmailTokenPatchOf, persistAccountTokenRefresh, resolveAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import { type CursorMap, decodeCursor, encodeCursor } from "../lib/cursor"
 import { fetchImapTrash } from "../lib/mailFetch"
@@ -44,7 +44,7 @@ trash.get("/trash", async (c) => {
   const accountIds = accountIdParam ? [accountIdParam] : Object.keys(accountMap)
 
   const results: Mail[] = []
-  let accountsChanged = false
+  const accountPatch: Record<string, GmailTokenPatch> = {}
 
   const IMAP_PAGE = 50
   const GMAIL_PAGE = 50
@@ -88,12 +88,11 @@ trash.get("/trash", async (c) => {
     results.push(...result.mails)
     if (result.cursor) nextCursorMap[result.accountId] = result.cursor
     if (result.updatedRecord) {
-      accountMap[result.accountId] = result.updatedRecord
-      accountsChanged = true
+      accountPatch[result.accountId] = gmailTokenPatchOf(result.updatedRecord)
     }
   }
 
-  if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
+  if (Object.keys(accountPatch).length > 0) await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, accountPatch)
 
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   const nextCursor = Object.keys(nextCursorMap).length > 0 ? encodeCursor(nextCursorMap) : null
@@ -123,8 +122,9 @@ trash.post("/trash/bulk-delete", async (c) => {
   } else {
     const fresh = await ensureFreshToken(c.env, record)
     if (fresh.accessToken !== record.accessToken) {
-      accountMap[accountId] = fresh
-      await persistAccounts(c.env, sessionId, session, accountMap)
+      await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+        [accountId]: gmailTokenPatchOf(fresh),
+      })
     }
     await gmailBatchDelete(fresh.accessToken, mailIds)
   }
@@ -156,8 +156,9 @@ trash.post("/trash/restore", async (c) => {
   } else {
     const fresh = await ensureFreshToken(c.env, record)
     if (fresh.accessToken !== record.accessToken) {
-      accountMap[accountId] = fresh
-      await persistAccounts(c.env, sessionId, session, accountMap)
+      await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+        [accountId]: gmailTokenPatchOf(fresh),
+      })
     }
     await gmailRestoreFromTrash(fresh.accessToken, mailIds)
   }
@@ -197,8 +198,9 @@ trash.post("/trash/empty", async (c) => {
 
   const fresh = await ensureFreshToken(c.env, record)
   if (fresh.accessToken !== record.accessToken) {
-    accountMap[accountId] = fresh
-    await persistAccounts(c.env, sessionId, session, accountMap)
+    await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+      [accountId]: gmailTokenPatchOf(fresh),
+    })
   }
   await gmailEmptyTrash(fresh.accessToken)
   return c.json({ ok: true })
@@ -212,7 +214,7 @@ trash.post("/trash/empty-all", async (c) => {
   const accountMap = await resolveAccounts(c.env, session)
   const accountIds = Object.keys(accountMap)
 
-  let accountsChanged = false
+  const accountPatch: Record<string, GmailTokenPatch> = {}
 
   // 계정별로 병렬 처리하되, 하나가 실패해도 나머지 계정은 계속 비워지도록 에러를 개별로 잡는다.
   const results = await Promise.all(
@@ -229,8 +231,7 @@ trash.post("/trash/empty-all", async (c) => {
         } else {
           const fresh = await ensureFreshToken(c.env, record)
           if (fresh.accessToken !== record.accessToken) {
-            accountMap[accountId] = fresh
-            accountsChanged = true
+            accountPatch[accountId] = gmailTokenPatchOf(fresh)
           }
           await gmailEmptyTrash(fresh.accessToken)
         }
@@ -242,7 +243,7 @@ trash.post("/trash/empty-all", async (c) => {
     }),
   )
 
-  if (accountsChanged) await persistAccounts(c.env, sessionId, session, accountMap)
+  if (Object.keys(accountPatch).length > 0) await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, accountPatch)
 
   const failed = results.filter((r) => !r.ok)
   return c.json({ ok: failed.length === 0, failedAccountIds: failed.map((f) => f.accountId) })

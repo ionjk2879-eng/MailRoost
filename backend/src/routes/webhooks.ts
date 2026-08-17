@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import type { Env, StoredPushSubscription } from "../types"
 import { getWatchIndex } from "../lib/gmailWatch"
 import { ensureFreshToken, fetchMailsByIds, listHistory } from "../lib/gmail"
-import { getUserAccounts, saveUserAccounts } from "../lib/auth"
+import { getUserAccounts, gmailTokenPatchOf, patchGmailTokens, saveUserAccounts } from "../lib/auth"
 import { mutateMailOrg } from "../lib/mailOrg"
 import type { ClassifyMailsResult } from "../lib/mailOrgOps"
 import { sendEmptyPush } from "../lib/webpush"
@@ -56,8 +56,7 @@ async function processGmailPush(env: Env, email: string, pushedHistoryId: string
 
   const fresh = await ensureFreshToken(env, record)
   if (fresh.accessToken !== record.accessToken) {
-    accounts[accountId] = fresh
-    await saveUserAccounts(env, userId, accounts)
+    await patchGmailTokens(env, userId, { [accountId]: gmailTokenPatchOf(fresh) })
   }
 
   const startHistoryId = fresh.historyId ?? pushedHistoryId
