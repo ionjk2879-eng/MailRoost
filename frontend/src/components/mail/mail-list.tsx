@@ -314,7 +314,7 @@ export function MailList({
                 }}
                 onClick={handleRowClick}
                 className={cn(
-                  "group flex w-full min-w-0 flex-col items-start gap-1.5 border-b border-l-2 border-l-transparent px-4 py-3.5 text-left text-sm transition-colors",
+                  "group flex w-full min-w-0 flex-col items-start gap-1.5 border-b border-l-2 border-l-transparent px-4 py-3.5 text-left text-sm outline-none transition-colors",
                   // 마우스 오버는 중립적인 muted 톤으로, 실제 열려있는(선택된) 메일은 accent + 왼쪽 테두리로
                   // 뚜렷하게 구분한다 — 둘 다 같은 accent를 쓰면 호버가 마치 "이게 선택된 메일"처럼 보여 헷갈린다.
                   "hover:bg-muted/60",
