@@ -1,6 +1,6 @@
 import { connect } from "cloudflare:sockets"
 import type { Mail } from "../types"
-import { decodeRfc2047, extractMimeAttachment, listMimeAttachments, parseAddressList, parseFromHeader, parseHeaderBlock, parseMimeMessage, sanitizeHtml, stripHtml } from "./mime"
+import { decodeRfc2047, embedInlineMimeImages, extractMimeAttachment, listMimeAttachments, parseAddressList, parseFromHeader, parseHeaderBlock, parseMimeMessage, sanitizeHtml, stripHtml } from "./mime"
 import { retryAsync } from "./retry"
 
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
@@ -618,7 +618,7 @@ export async function imapGetMailDetail(config: ImapConfig, accountId: string, u
   const subject = decodeRfc2047(headers["subject"] ?? "") || "(제목 없음)"
 
   const { text, html } = parseMimeMessage(raw)
-  const bodyHtml = html ? sanitizeHtml(html) : undefined
+  const bodyHtml = html ? sanitizeHtml(embedInlineMimeImages(raw, html)) : undefined
   const body = text || (html ? stripHtml(html) : "")
   const attachments = listMimeAttachments(raw)
 

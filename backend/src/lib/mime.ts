@@ -306,6 +306,29 @@ export function extractMimeAttachment(
 
 // ── 발송용 MIME 메시지 빌더 (첨부파일 포함) ──────────────────────────────────────
 
+// IMAP 상세 조회는 이미 RFC822 원문 전체를 내려받는다. cid 이미지를 별도 URL로 두면
+// 이미지마다 같은 원문을 다시 FETCH하게 되므로, 작은 인라인 이미지는 즉시 data URL로 치환한다.
+export function embedInlineMimeImages(raw: string, html: string, maxTotalBytes = 5 * 1024 * 1024): string {
+  const { headerBlock, bodyBlock } = splitHeaderAndBody(raw)
+  const parts: AttachmentPartInternal[] = []
+  collectAttachmentParts(parseHeaderBlock(headerBlock), bodyBlock, parts)
+
+  let result = html
+  let embeddedBytes = 0
+  for (const part of parts) {
+    if (!part.contentId || !part.mimeType.startsWith("image/")) continue
+    const escapedId = part.contentId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    const cidPattern = new RegExp(`cid:(?:%3C|<)?${escapedId}(?:%3E|>)?`, "gi")
+    if (!cidPattern.test(result)) continue
+
+    const bytes = decodeAttachmentBytes(part.rawBody, part.transferEncoding)
+    if (embeddedBytes + bytes.length > maxTotalBytes) continue
+    embeddedBytes += bytes.length
+    result = result.replace(cidPattern, `data:${part.mimeType};base64,${bytesToBase64(bytes)}`)
+  }
+  return result
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = ""
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
