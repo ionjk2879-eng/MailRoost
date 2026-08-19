@@ -96,6 +96,7 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
   const [focusedMailId, setFocusedMailId] = useState<string | null>(null)
 
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const loadGenerationRef = useRef(0)
 
   // 이미 알고 있는 메일 ID 집합 — 새 메일 감지용 (초기 로드 시에는 트리거 안 함)
   const knownMailKeysRef = useRef<Set<string> | null>(null)
@@ -112,9 +113,12 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
   const filterOutDeleted = (mails: Mail[]) =>
     mails.filter((m) => !deletedKeysRef.current.has(`${m.accountId}:${m.id}`))
 
-  const loadAccountsAndMails = () => {
+  const loadAccountsAndMails = async (notifyOnError = false) => {
     // 계정 목록과 메일 목록을 동시에 요청 (순차 요청 시 왕복 지연이 두 배로 누적됨)
-    return Promise.all([fetchAccounts(), fetchMails()]).then(([accounts, { mails, nextCursor: cursor, failedAccountIds: failed }]) => {
+    const generation = ++loadGenerationRef.current
+    try {
+      const [accounts, { mails, nextCursor: cursor, failedAccountIds: failed }] = await Promise.all([fetchAccounts(), fetchMails()])
+      if (generation !== loadGenerationRef.current) return
       setRealAccounts(accounts)
       setFailedAccountIds(failed ?? [])
       const failedSet = new Set(failed ?? [])
@@ -143,7 +147,11 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
         return [...freshMails, ...kept.filter((m) => !freshIds.has(`${m.accountId}:${m.id}`))]
       })
       setNextCursor(cursor)
-    })
+    } catch (error) {
+      // 실패 응답을 빈 목록으로 덮어쓰지 않고 다음 폴링 때 복구한다.
+      console.error("[mail-workspace] 계정/메일 새로고침 실패:", error)
+      if (notifyOnError) showError("계정과 메일을 새로고침하지 못했습니다. 잠시 후 다시 시도해 주세요.")
+    }
   }
 
   // 탭이 보일 때만 20초마다 자동 새로고침
@@ -556,7 +564,7 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     try {
       if (view === "trash") await loadTrash()
       else if ((view === "folder" || view === "archive") && selectedFolderId) await loadFolderMails(selectedFolderId)
-      else await loadAccountsAndMails()
+      else await loadAccountsAndMails(true)
     } finally {
       setIsRefreshing(false)
     }

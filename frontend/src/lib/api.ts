@@ -4,6 +4,30 @@ const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
 export const gmailLoginUrl = `${AUTH_BASE}/auth/gmail/login`
 
+async function fetchWithTransientRetry(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const delays = [250, 750]
+  let lastError: unknown
+
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      const res = await fetch(input, init)
+      if (res.ok || res.status < 500 || attempt === delays.length) return res
+    } catch (error) {
+      lastError = error
+      if (attempt === delays.length) throw error
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, delays[attempt]))
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("요청에 실패했습니다.")
+}
+
+async function requireOk(res: Response, fallbackMessage: string): Promise<Response> {
+  if (res.ok) return res
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  throw new Error(data.error ?? `${fallbackMessage} (${res.status})`)
+}
+
 export async function fetchContacts(): Promise<Contact[]> {
   const res = await fetch("/api/contacts")
   if (!res.ok) return []
@@ -21,8 +45,7 @@ export async function deleteContact(id: string): Promise<boolean> {
 }
 
 export async function fetchAccounts(): Promise<Account[]> {
-  const res = await fetch("/api/accounts")
-  if (!res.ok) return []
+  const res = await requireOk(await fetchWithTransientRetry("/api/accounts"), "계정 목록을 불러오지 못했습니다.")
   return res.json()
 }
 
@@ -44,8 +67,7 @@ export async function updateAccountSignature(
 
 export async function fetchMails(cursor?: string): Promise<{ mails: Mail[]; nextCursor: string | null; failedAccountIds: string[] }> {
   const url = cursor ? `/api/mail?cursor=${encodeURIComponent(cursor)}` : "/api/mail"
-  const res = await fetch(url)
-  if (!res.ok) return { mails: [], nextCursor: null, failedAccountIds: [] }
+  const res = await requireOk(await fetchWithTransientRetry(url), "메일 목록을 불러오지 못했습니다.")
   return res.json()
 }
 
