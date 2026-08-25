@@ -136,8 +136,8 @@ mail.get("/mail", async (c) => {
   const failedAccountIds: string[] = []
   const accountPatch: Record<string, GmailTokenPatch> = {}
 
-  const IMAP_PAGE = 50
-  const GMAIL_PAGE = 50
+  const IMAP_PAGE = 20
+  const GMAIL_PAGE = 20
 
   // 계정별로 병렬 조회 (직렬로 하면 계정 수만큼 지연이 누적됨).
   // 계정 하나가 실패해도(네트워크 문제 등) 나머지 계정 결과까지 통째로 날아가면 안 되므로

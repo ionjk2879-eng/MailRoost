@@ -171,7 +171,9 @@ function App() {
           } else if (saved?.view === "trash") {
             loads.push(workspace.loadTrash())
           }
-          return Promise.all(loads)
+          // Render as soon as authentication is known; mailbox providers can
+          // continue loading in parallel behind the list skeleton.
+          void Promise.allSettled(loads)
         }
       })
       .finally(() => setIsBootstrapping(false))

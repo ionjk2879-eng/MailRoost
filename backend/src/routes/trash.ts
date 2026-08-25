@@ -46,8 +46,8 @@ trash.get("/trash", async (c) => {
   const results: Mail[] = []
   const accountPatch: Record<string, GmailTokenPatch> = {}
 
-  const IMAP_PAGE = 50
-  const GMAIL_PAGE = 50
+  const IMAP_PAGE = 20
+  const GMAIL_PAGE = 20
 
   // 계정 하나가 실패해도 나머지 계정의 휴지통 결과까지 통째로 사라지면 안 되므로
   // 계정별로 에러를 잡아서 그 계정만 건너뛴다.
