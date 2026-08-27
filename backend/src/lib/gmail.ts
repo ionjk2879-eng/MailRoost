@@ -439,7 +439,7 @@ export async function batchModifyMessages(
 }
 
 export async function trashMailBulk(accessToken: string, ids: string[]): Promise<void> {
-  await Promise.all(ids.map((id) => trashMail(accessToken, id)))
+  await batchModifyMessages(accessToken, ids, { addLabelIds: ["TRASH"], removeLabelIds: ["INBOX"] })
 }
 
 // 휴지통(TRASH 라벨)에서 완전히 삭제
