@@ -29,7 +29,7 @@ import { useMailOrg } from "@/hooks/use-mail-org"
 import { cn } from "@/lib/utils"
 import { HomeView } from "@/components/home/home-view"
 import { LandingView } from "@/components/home/landing-view"
-import { fetchCurrentUser, fetchMailDetail, logout, snoozeKey } from "@/lib/api"
+import { fetchCurrentUser, fetchMailDetail, inlineAttachmentUrl, logout, snoozeKey } from "@/lib/api"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Draft, ForwardedAttachmentRef, Mail, MailCategory, SavedFilter } from "@/types/mail"
 import { applyTheme, getStoredTheme, watchSystemTheme } from "@/lib/theme"
@@ -517,11 +517,52 @@ function App() {
     workspace.setSelectedMailId(null)
   }
 
+  const buildQuotedHtml = (mail: Mail): string => {
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    const dateStr = new Date(mail.receivedAt).toLocaleString("ko-KR")
+    const headerHtml = [
+      `<b>보낸사람:</b> ${esc(mail.fromName)} &lt;${esc(mail.fromEmail)}&gt;`,
+      `<b>날짜:</b> ${dateStr}`,
+      `<b>제목:</b> ${esc(mail.subject)}`,
+      ...(mail.toRecipients?.length ? [`<b>받는사람:</b> ${mail.toRecipients.map(esc).join(", ")}`] : []),
+    ].join("<br>")
+
+    let bodyHtml: string
+    if (mail.bodyHtml) {
+      const inlineImages = new Map(
+        (mail.attachments ?? [])
+          .filter((att) => att.contentId)
+          .map((att) => [att.contentId!.replace(/^<|>$/g, "").toLowerCase(), inlineAttachmentUrl(mail.id, mail.accountId, att)]),
+      )
+      bodyHtml = mail.bodyHtml.replace(
+        /\b(src|background)\s*=\s*(["'])cid:([^"']+)\2/gi,
+        (_match, attr: string, quote: string, rawCid: string) => {
+          let cid = rawCid
+          try { cid = decodeURIComponent(rawCid) } catch { /* use raw */ }
+          cid = cid.replace(/^<|>$/g, "").toLowerCase()
+          const url = inlineImages.get(cid)
+          return url ? `${attr}=${quote}${url}${quote}` : _match
+        },
+      )
+    } else {
+      bodyHtml = esc(mail.body ?? "").replace(/\n/g, "<br>")
+    }
+
+    return (
+      `<br><br>` +
+      `<div style="border-left:3px solid #d1d5db;margin:0;padding:0 0 0 12px;color:#6b7280;font-size:13px">` +
+      `<div style="margin-bottom:8px">---------- 원본 메일 ----------<br>${headerHtml}</div>` +
+      `<div style="color:inherit">${bodyHtml}</div>` +
+      `</div>`
+    )
+  }
+
   const handleReply = (mail: Mail) => {
     setComposeState({
       accountId: mail.accountId,
       to: mail.fromEmail,
       subject: mail.subject.startsWith("Re:") ? mail.subject : `Re: ${mail.subject}`,
+      body: buildQuotedHtml(mail),
       title: "답장",
     })
   }
@@ -538,25 +579,16 @@ function App() {
       to: mail.fromEmail,
       cc: uniqueOthers.length > 0 ? uniqueOthers.join(", ") : undefined,
       subject: mail.subject.startsWith("Re:") ? mail.subject : `Re: ${mail.subject}`,
+      body: buildQuotedHtml(mail),
       title: "전체답장",
     })
   }
 
   const handleForward = (mail: Mail) => {
-    const headerLines = [
-      "",
-      "",
-      "---------- 원본 메일 ----------",
-      `보낸사람: ${mail.fromName} <${mail.fromEmail}>`,
-      `날짜: ${new Date(mail.receivedAt).toLocaleString("ko-KR")}`,
-      `제목: ${mail.subject}`,
-      ...(mail.toRecipients?.length ? [`받는사람: ${mail.toRecipients.join(", ")}`] : []),
-      "",
-    ]
     setComposeState({
       accountId: mail.accountId,
       subject: mail.subject.startsWith("Fwd:") ? mail.subject : `Fwd: ${mail.subject}`,
-      body: headerLines.join("\n") + (mail.body || ""),
+      body: buildQuotedHtml(mail),
       title: "전달",
       forwardedAttachments: mail.attachments?.map((att) => ({
         accountId: mail.accountId,
