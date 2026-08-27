@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2 } from "lucide-react"
+import { AlertTriangle, Loader2, Plus, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -743,28 +743,21 @@ function QuickReplyTab({
   onUpdateQuickReply: (id: string, title: string, body: string) => Promise<{ ok: boolean; error?: string }>
   onDeleteQuickReply: (id: string) => void
 }) {
+  const [panelOpen, setPanelOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [title, setTitle] = useState("")
   const [body, setBody] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  const resetForm = () => {
-    setEditingId(null)
-    setTitle("")
-    setBody("")
-    setError(null)
+  const openCreate = () => {
+    setEditingId(null); setTitle(""); setBody(""); setError(null); setPanelOpen(true)
+  }
+  const openEdit = (qr: QuickReply) => {
+    setEditingId(qr.id); setTitle(qr.title); setBody(qr.body); setError(null); setPanelOpen(true)
   }
 
-  const startEdit = (qr: QuickReply) => {
-    setEditingId(qr.id)
-    setTitle(qr.title)
-    setBody(qr.body)
-    setError(null)
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async () => {
     const trimmedTitle = title.trim()
     if (!trimmedTitle || !body.trim()) return
     setIsSaving(true)
@@ -777,74 +770,69 @@ function QuickReplyTab({
       setError(result.error ?? "저장에 실패했습니다.")
       return
     }
-    resetForm()
+    setPanelOpen(false)
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <div className="rounded-lg border p-4">
-        <h3 className="mb-1 font-medium">{editingId ? "빠른 답장 수정" : "새 빠른 답장 만들기"}</h3>
-        <p className="text-muted-foreground mb-4 text-sm">
-          자주 쓰는 답장 문구를 저장해두면 메일 작성 화면에서 바로 끼워넣을 수 있습니다.
-        </p>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-muted-foreground text-xs">제목</label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 회의 일정 안내" required />
+    <div className="relative min-h-full">
+      <div className={cn("transition-[padding]", panelOpen && "xl:pr-[390px]")}>
+        <div className="mb-10 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">빠른 답장</h2>
+            <p className="mt-3 text-sm text-muted-foreground">자주 쓰는 답장 문구를 저장해두면 메일 작성 화면에서 바로 끼워넣을 수 있습니다.</p>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-muted-foreground text-xs">내용</label>
+          <Button className="h-11 gap-2 px-5" onClick={openCreate}><Plus className="size-4" />새 빠른 답장</Button>
+        </div>
+
+        <div className="space-y-3">
+          {quickReplies.map((qr) => (
+            <div key={qr.id} className="flex items-start justify-between gap-4 rounded-xl border bg-background px-5 py-4 shadow-sm">
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-semibold">{qr.title}</p>
+                <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-sm text-muted-foreground">{qr.body}</p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => openEdit(qr)}>수정</Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs text-destructive hover:text-destructive"
+                  onClick={() => {
+                    if (editingId === qr.id) setPanelOpen(false)
+                    onDeleteQuickReply(qr.id)
+                  }}
+                >
+                  삭제
+                </Button>
+              </div>
+            </div>
+          ))}
+          {quickReplies.length === 0 && (
+            <div className="rounded-xl border border-dashed py-20 text-center text-sm text-muted-foreground">아직 저장된 빠른 답장이 없습니다.<br />새 빠른 답장을 만들어 반복 작업을 줄여보세요.</div>
+          )}
+        </div>
+      </div>
+
+      {panelOpen && <aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-[400px] flex-col border-l bg-background shadow-2xl">
+        <div className="flex h-16 items-center justify-between border-b px-6"><h3 className="text-lg font-semibold">{editingId ? "빠른 답장 수정" : "새 빠른 답장"}</h3><button type="button" onClick={() => setPanelOpen(false)} className="rounded-md p-2 hover:bg-muted"><X className="size-5" /></button></div>
+        <div className="flex-1 space-y-5 overflow-y-auto p-6">
+          <label className="block space-y-2"><span className="text-sm font-medium">제목</span><Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 회의 일정 안내" /></label>
+          <label className="block space-y-2">
+            <span className="text-sm font-medium">내용</span>
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="답장 본문에 들어갈 내용을 입력하세요"
-              required
-              className="border-input bg-background placeholder:text-muted-foreground min-h-[100px] w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:outline-none"
+              className="border-input bg-background placeholder:text-muted-foreground min-h-[200px] w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:outline-none"
             />
-          </div>
-          {error && <p className="text-destructive text-sm">{error}</p>}
-          <div className="flex justify-end gap-2">
-            {editingId && (
-              <Button type="button" variant="outline" size="sm" onClick={resetForm}>
-                취소
-              </Button>
-            )}
-            <Button type="submit" size="sm" disabled={isSaving || !title.trim() || !body.trim()}>
-              {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : editingId ? "저장" : "추가"}
-            </Button>
-          </div>
-        </form>
-      </div>
-
-      <div className="space-y-2">
-        {quickReplies.map((qr) => (
-          <div key={qr.id} className="flex items-start justify-between gap-3 rounded-lg border p-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-medium text-sm">{qr.title}</p>
-              <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs whitespace-pre-wrap">{qr.body}</p>
-            </div>
-            <div className="flex shrink-0 gap-1">
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => startEdit(qr)}>
-                수정
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-destructive hover:text-destructive h-7 text-xs"
-                onClick={() => {
-                  if (editingId === qr.id) resetForm()
-                  onDeleteQuickReply(qr.id)
-                }}
-              >
-                삭제
-              </Button>
-            </div>
-          </div>
-        ))}
-        {quickReplies.length === 0 && (
-          <p className="text-muted-foreground py-8 text-center text-sm">아직 저장된 빠른 답장이 없습니다.</p>
-        )}
-      </div>
+          </label>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+        <div className="grid grid-cols-[96px_1fr] gap-3 border-t p-6">
+          <Button variant="outline" className="h-11" onClick={() => setPanelOpen(false)}>취소</Button>
+          <Button className="h-11" disabled={isSaving || !title.trim() || !body.trim()} onClick={handleSubmit}>{isSaving ? <Loader2 className="size-4 animate-spin" /> : editingId ? "저장" : "추가"}</Button>
+        </div>
+      </aside>}
     </div>
   )
 }
@@ -860,157 +848,104 @@ function ContactsTab({
   onUpdateContact: (id: string, name: string, email: string) => Promise<{ ok: boolean; error?: string }>
   onDeleteContact: (id: string) => void
 }) {
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
-
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editName, setEditName] = useState("")
-  const [editEmail, setEditEmail] = useState("")
-  const [editError, setEditError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const openCreate = () => {
+    setEditingId(null); setName(""); setEmail(""); setError(null); setPanelOpen(true)
+  }
+  const openEdit = (contact: Contact) => {
+    setEditingId(contact.id); setName(contact.name); setEmail(contact.email); setError(null); setPanelOpen(true)
+  }
+
+  const handleSubmit = async () => {
     const trimmedName = name.trim()
     const trimmedEmail = email.trim()
     if (!trimmedEmail) return
-    setIsCreating(true)
+    setIsSaving(true)
     setError(null)
-    const result = await onCreateContact(trimmedName, trimmedEmail)
-    setIsCreating(false)
+    const result = editingId
+      ? await onUpdateContact(editingId, trimmedName, trimmedEmail)
+      : await onCreateContact(trimmedName, trimmedEmail)
+    setIsSaving(false)
     if (!result.ok) {
       setError(result.error ?? "저장에 실패했습니다.")
       return
     }
-    setName("")
-    setEmail("")
-  }
-
-  const startEdit = (contact: Contact) => {
-    setEditingId(contact.id)
-    setEditName(contact.name)
-    setEditEmail(contact.email)
-    setEditError(null)
-  }
-
-  const cancelEdit = () => {
-    setEditingId(null)
-    setEditError(null)
-  }
-
-  const handleSaveEdit = async (id: string) => {
-    const trimmedName = editName.trim()
-    const trimmedEmail = editEmail.trim()
-    if (!trimmedName || !trimmedEmail) return
-    setIsSaving(true)
-    setEditError(null)
-    const result = await onUpdateContact(id, trimmedName, trimmedEmail)
-    setIsSaving(false)
-    if (!result.ok) {
-      setEditError(result.error ?? "수정에 실패했습니다.")
-      return
-    }
-    setEditingId(null)
+    setPanelOpen(false)
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <div className="rounded-lg border p-4">
-        <h3 className="mb-1 font-medium">새 주소 추가</h3>
-        <p className="text-muted-foreground mb-4 text-sm">
-          메일 작성 화면의 주소록에서도 같이 사용됩니다.
-        </p>
-        <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-muted-foreground text-xs">이름</label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 홍길동" className="h-9 w-40" />
+    <div className="relative min-h-full">
+      <div className={cn("transition-[padding]", panelOpen && "xl:pr-[390px]")}>
+        <div className="mb-10 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">주소록</h2>
+            <p className="mt-3 text-sm text-muted-foreground">메일 작성 화면의 주소록에서도 같이 사용됩니다.</p>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-muted-foreground text-xs">이메일</label>
-            <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="email@example.com" required className="h-9 w-56" />
-          </div>
-          <Button type="submit" size="sm" disabled={isCreating || !email.trim()}>
-            {isCreating ? <Loader2 className="size-3.5 animate-spin" /> : "추가"}
-          </Button>
-        </form>
-        {error && <p className="text-destructive mt-2 text-sm">{error}</p>}
+          <Button className="h-11 gap-2 px-5" onClick={openCreate}><Plus className="size-4" />새 주소</Button>
+        </div>
+
+        <div className="overflow-hidden rounded-xl border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50">
+              <tr>
+                <th className="px-5 py-3 text-left font-medium">이름</th>
+                <th className="px-5 py-3 text-left font-medium">이메일</th>
+                <th className="px-5 py-3 text-right font-medium">관리</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {contacts.map((contact) => (
+                <tr key={contact.id} className="hover:bg-muted/30">
+                  <td className="px-5 py-3.5">{contact.name}</td>
+                  <td className="px-5 py-3.5 text-muted-foreground">{contact.email}</td>
+                  <td className="px-5 py-3.5 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => openEdit(contact)}>수정</Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-destructive hover:text-destructive"
+                        onClick={() => {
+                          if (editingId === contact.id) setPanelOpen(false)
+                          onDeleteContact(contact.id)
+                        }}
+                      >
+                        삭제
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {contacts.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-5 py-20 text-center text-sm text-muted-foreground">
+                    아직 저장된 주소가 없습니다.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="px-4 py-2.5 text-left font-medium">이름</th>
-              <th className="px-4 py-2.5 text-left font-medium">이메일</th>
-              <th className="px-4 py-2.5 text-right font-medium">관리</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {contacts.map((contact) => (
-              <tr key={contact.id} className="hover:bg-muted/30">
-                {editingId === contact.id ? (
-                  <>
-                    <td className="px-4 py-2">
-                      <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8 text-sm" />
-                    </td>
-                    <td className="px-4 py-2">
-                      <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} type="email" className="h-8 text-sm" />
-                      {editError && <p className="text-destructive mt-1 text-xs">{editError}</p>}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={cancelEdit} disabled={isSaving}>
-                          취소
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="h-7 text-xs"
-                          disabled={isSaving || !editName.trim() || !editEmail.trim()}
-                          onClick={() => handleSaveEdit(contact.id)}
-                        >
-                          {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : "저장"}
-                        </Button>
-                      </div>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td className="px-4 py-3">{contact.name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{contact.email}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => startEdit(contact)}>
-                          수정
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-destructive hover:text-destructive text-xs"
-                          onClick={() => {
-                            if (editingId === contact.id) cancelEdit()
-                            onDeleteContact(contact.id)
-                          }}
-                        >
-                          삭제
-                        </Button>
-                      </div>
-                    </td>
-                  </>
-                )}
-              </tr>
-            ))}
-            {contacts.length === 0 && (
-              <tr>
-                <td colSpan={3} className="text-muted-foreground px-4 py-8 text-center text-sm">
-                  아직 저장된 주소가 없습니다.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {panelOpen && <aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-[400px] flex-col border-l bg-background shadow-2xl">
+        <div className="flex h-16 items-center justify-between border-b px-6"><h3 className="text-lg font-semibold">{editingId ? "주소 수정" : "새 주소 추가"}</h3><button type="button" onClick={() => setPanelOpen(false)} className="rounded-md p-2 hover:bg-muted"><X className="size-5" /></button></div>
+        <div className="flex-1 space-y-5 overflow-y-auto p-6">
+          <label className="block space-y-2"><span className="text-sm font-medium">이름</span><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 홍길동" /></label>
+          <label className="block space-y-2"><span className="text-sm font-medium">이메일</span><Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="email@example.com" /></label>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+        <div className="grid grid-cols-[96px_1fr] gap-3 border-t p-6">
+          <Button variant="outline" className="h-11" onClick={() => setPanelOpen(false)}>취소</Button>
+          <Button className="h-11" disabled={isSaving || !email.trim()} onClick={handleSubmit}>{isSaving ? <Loader2 className="size-4 animate-spin" /> : editingId ? "저장" : "추가"}</Button>
+        </div>
+      </aside>}
     </div>
   )
 }
