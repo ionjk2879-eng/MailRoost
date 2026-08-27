@@ -5,9 +5,9 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { AutoRulesView } from "@/components/cleanup/auto-rules-view"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
-import type { Account, AutoClassifyRule, Mail, MailCategory, MailFolder, QuickReply } from "@/types/mail"
+import type { Account, AutoClassifyRule, Contact, Mail, MailCategory, MailFolder, QuickReply } from "@/types/mail"
 
-type MainTab = "mailbox" | "auto" | "quickreply" | "shortcuts"
+type MainTab = "mailbox" | "auto" | "quickreply" | "contacts" | "shortcuts"
 type MailboxSubTab = "manage" | "unread" | "bydate"
 
 const CATEGORY_LABELS: Record<MailCategory, string> = {
@@ -43,6 +43,10 @@ interface CleanupViewProps {
   onCreateQuickReply: (title: string, body: string) => Promise<{ ok: boolean; error?: string }>
   onUpdateQuickReply: (id: string, title: string, body: string) => Promise<{ ok: boolean; error?: string }>
   onDeleteQuickReply: (id: string) => void
+  contacts: Contact[]
+  onCreateContact: (name: string, email: string) => Promise<{ ok: boolean; error?: string }>
+  onUpdateContact: (id: string, name: string, email: string) => Promise<{ ok: boolean; error?: string }>
+  onDeleteContact: (id: string) => void
 }
 
 export const SHORTCUTS = [
@@ -845,6 +849,172 @@ function QuickReplyTab({
   )
 }
 
+function ContactsTab({
+  contacts,
+  onCreateContact,
+  onUpdateContact,
+  onDeleteContact,
+}: {
+  contacts: Contact[]
+  onCreateContact: (name: string, email: string) => Promise<{ ok: boolean; error?: string }>
+  onUpdateContact: (id: string, name: string, email: string) => Promise<{ ok: boolean; error?: string }>
+  onDeleteContact: (id: string) => void
+}) {
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
+
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editEmail, setEditEmail] = useState("")
+  const [editError, setEditError] = useState<string | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmedName = name.trim()
+    const trimmedEmail = email.trim()
+    if (!trimmedEmail) return
+    setIsCreating(true)
+    setError(null)
+    const result = await onCreateContact(trimmedName, trimmedEmail)
+    setIsCreating(false)
+    if (!result.ok) {
+      setError(result.error ?? "저장에 실패했습니다.")
+      return
+    }
+    setName("")
+    setEmail("")
+  }
+
+  const startEdit = (contact: Contact) => {
+    setEditingId(contact.id)
+    setEditName(contact.name)
+    setEditEmail(contact.email)
+    setEditError(null)
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditError(null)
+  }
+
+  const handleSaveEdit = async (id: string) => {
+    const trimmedName = editName.trim()
+    const trimmedEmail = editEmail.trim()
+    if (!trimmedName || !trimmedEmail) return
+    setIsSaving(true)
+    setEditError(null)
+    const result = await onUpdateContact(id, trimmedName, trimmedEmail)
+    setIsSaving(false)
+    if (!result.ok) {
+      setEditError(result.error ?? "수정에 실패했습니다.")
+      return
+    }
+    setEditingId(null)
+  }
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <div className="rounded-lg border p-4">
+        <h3 className="mb-1 font-medium">새 주소 추가</h3>
+        <p className="text-muted-foreground mb-4 text-sm">
+          메일 작성 화면의 주소록에서도 같이 사용됩니다.
+        </p>
+        <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-muted-foreground text-xs">이름</label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 홍길동" className="h-9 w-40" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-muted-foreground text-xs">이메일</label>
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="email@example.com" required className="h-9 w-56" />
+          </div>
+          <Button type="submit" size="sm" disabled={isCreating || !email.trim()}>
+            {isCreating ? <Loader2 className="size-3.5 animate-spin" /> : "추가"}
+          </Button>
+        </form>
+        {error && <p className="text-destructive mt-2 text-sm">{error}</p>}
+      </div>
+
+      <div className="overflow-hidden rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="px-4 py-2.5 text-left font-medium">이름</th>
+              <th className="px-4 py-2.5 text-left font-medium">이메일</th>
+              <th className="px-4 py-2.5 text-right font-medium">관리</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {contacts.map((contact) => (
+              <tr key={contact.id} className="hover:bg-muted/30">
+                {editingId === contact.id ? (
+                  <>
+                    <td className="px-4 py-2">
+                      <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="h-8 text-sm" />
+                    </td>
+                    <td className="px-4 py-2">
+                      <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} type="email" className="h-8 text-sm" />
+                      {editError && <p className="text-destructive mt-1 text-xs">{editError}</p>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={cancelEdit} disabled={isSaving}>
+                          취소
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs"
+                          disabled={isSaving || !editName.trim() || !editEmail.trim()}
+                          onClick={() => handleSaveEdit(contact.id)}
+                        >
+                          {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : "저장"}
+                        </Button>
+                      </div>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-4 py-3">{contact.name}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{contact.email}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => startEdit(contact)}>
+                          수정
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-destructive hover:text-destructive text-xs"
+                          onClick={() => {
+                            if (editingId === contact.id) cancelEdit()
+                            onDeleteContact(contact.id)
+                          }}
+                        >
+                          삭제
+                        </Button>
+                      </div>
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))}
+            {contacts.length === 0 && (
+              <tr>
+                <td colSpan={3} className="text-muted-foreground px-4 py-8 text-center text-sm">
+                  아직 저장된 주소가 없습니다.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 
 export function CleanupView({
   accounts,
@@ -864,6 +1034,10 @@ export function CleanupView({
   onCreateQuickReply,
   onUpdateQuickReply,
   onDeleteQuickReply,
+  contacts,
+  onCreateContact,
+  onUpdateContact,
+  onDeleteContact,
 }: CleanupViewProps) {
   const [mainTab, setMainTab] = useState<MainTab>("mailbox")
 
@@ -871,6 +1045,7 @@ export function CleanupView({
     { key: "mailbox", label: "메일함 관리" },
     { key: "auto", label: "자동분류" },
     { key: "quickreply", label: "빠른 답장" },
+    { key: "contacts", label: "주소록" },
     { key: "shortcuts", label: "단축키" },
   ]
 
@@ -929,6 +1104,15 @@ export function CleanupView({
             onCreateQuickReply={onCreateQuickReply}
             onUpdateQuickReply={onUpdateQuickReply}
             onDeleteQuickReply={onDeleteQuickReply}
+          />
+        )}
+
+        {mainTab === "contacts" && (
+          <ContactsTab
+            contacts={contacts}
+            onCreateContact={onCreateContact}
+            onUpdateContact={onUpdateContact}
+            onDeleteContact={onDeleteContact}
           />
         )}
 

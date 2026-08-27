@@ -59,6 +59,40 @@ contacts.post("/contacts", async (c) => {
   return c.json({ contact: created })
 })
 
+contacts.patch("/contacts/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+  const id = c.req.param("id")
+  const body = await c.req.json<{ name?: string; email?: string }>().catch(() => null)
+  const email = body?.email !== undefined ? body.email.trim().toLowerCase() : undefined
+  if (email !== undefined && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return c.json({ error: "올바른 이메일 주소를 입력해주세요." }, 400)
+  }
+  if (body?.name !== undefined && !body.name.trim()) return c.json({ error: "이름을 입력해주세요." }, 400)
+  const session = await readSession(c.env, sessionId)
+
+  let updated: Contact | null = null
+  let conflict = false
+  await mutateContacts(c.env, sessionId, session, (items) => {
+    const contact = items.find((item) => item.id === id)
+    if (!contact) return items
+    if (email !== undefined && items.some((item) => item.id !== id && item.email.toLowerCase() === email)) {
+      conflict = true
+      return items
+    }
+    const next: Contact = {
+      ...contact,
+      ...(body?.name !== undefined ? { name: body.name.trim() } : {}),
+      ...(email !== undefined ? { email } : {}),
+    }
+    updated = next
+    return items.map((item) => (item.id === id ? next : item))
+  })
+  if (conflict) return c.json({ error: "이미 주소록에 저장된 이메일입니다." }, 409)
+  if (!updated) return c.json({ error: "연락처를 찾을 수 없습니다." }, 404)
+  return c.json({ contact: updated })
+})
+
 contacts.delete("/contacts/:id", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)

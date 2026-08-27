@@ -827,6 +827,9 @@ function App() {
       accounts={accounts}
       mails={allMails}
       quickReplies={mailOrg.quickReplies}
+      contacts={mailOrg.contacts}
+      onCreateContact={mailOrg.handleCreateContact}
+      onDeleteContact={mailOrg.handleDeleteContact}
       title={composeState.title}
       defaultAccountId={composeState.accountId}
       defaultTo={composeState.to}
@@ -892,6 +895,9 @@ function App() {
       accounts={accounts}
       mails={allMails}
       quickReplies={mailOrg.quickReplies}
+      contacts={mailOrg.contacts}
+      onCreateContact={mailOrg.handleCreateContact}
+      onDeleteContact={mailOrg.handleDeleteContact}
       title={composeState.title}
       defaultAccountId={composeState.accountId}
       defaultTo={composeState.to}
@@ -1082,6 +1088,10 @@ function App() {
               onCreateQuickReply={mailOrg.handleCreateQuickReply}
               onUpdateQuickReply={mailOrg.handleUpdateQuickReply}
               onDeleteQuickReply={mailOrg.handleDeleteQuickReply}
+              contacts={mailOrg.contacts}
+              onCreateContact={mailOrg.handleCreateContact}
+              onUpdateContact={mailOrg.handleUpdateContact}
+              onDeleteContact={mailOrg.handleDeleteContact}
             />
           </div>
         ) : view === "trash" ? (

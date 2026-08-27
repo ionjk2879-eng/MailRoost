@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label"
 import { RecipientInput, type RecipientOption } from "@/components/mail/recipient-input"
 import { ProviderIcon } from "@/components/mail/provider-icon"
 import { RichTextEditor } from "@/components/mail/rich-text-editor"
-import { createContact, createDraft, deleteContact, deleteDraft, fetchContacts, sendMail, updateDraft } from "@/lib/api"
+import { createDraft, deleteDraft, sendMail, updateDraft } from "@/lib/api"
 import type { Account, Contact, Draft, ForwardedAttachmentRef, Mail, QuickReply } from "@/types/mail"
 
 export const COMPOSE_SUPPORTED: Array<Account["provider"]> = ["gmail", "naver", "daum", "imap"]
@@ -29,6 +29,9 @@ interface ComposeViewProps {
   accounts: Account[]
   mails?: Mail[]
   quickReplies?: QuickReply[]
+  contacts?: Contact[]
+  onCreateContact?: (name: string, email: string) => Promise<{ ok: boolean; error?: string }>
+  onDeleteContact?: (id: string) => void
   title?: string
   defaultAccountId?: string
   defaultTo?: string
@@ -49,6 +52,9 @@ export function ComposeView({
   accounts,
   mails = [],
   quickReplies = [],
+  contacts = [],
+  onCreateContact,
+  onDeleteContact,
   title = "새 메일",
   defaultAccountId,
   defaultTo = "",
@@ -83,7 +89,6 @@ export function ComposeView({
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [quickReplyOpen, setQuickReplyOpen] = useState(false)
-  const [contacts, setContacts] = useState<Contact[]>([])
   const [addressBookOpen, setAddressBookOpen] = useState(false)
   const [contactName, setContactName] = useState("")
   const [contactEmail, setContactEmail] = useState("")
@@ -102,17 +107,11 @@ export function ComposeView({
     return [...seen.values()]
   }, [contacts, mails])
 
-  useEffect(() => { fetchContacts().then(setContacts) }, [])
-
   const handleCreateContact = async () => {
-    const result = await createContact(contactName, contactEmail)
-    if (!result.ok) { setContactError(result.error); return }
-    setContacts((items) => [result.contact, ...items])
+    if (!onCreateContact) return
+    const result = await onCreateContact(contactName, contactEmail)
+    if (!result.ok) { setContactError(result.error ?? "주소 저장에 실패했습니다."); return }
     setContactName(""); setContactEmail(""); setContactError(null)
-  }
-
-  const handleDeleteContact = async (id: string) => {
-    if (await deleteContact(id)) setContacts((items) => items.filter((item) => item.id !== id))
   }
 
   const draftIdRef = useRef<string | null>(defaultDraftId ?? null)
@@ -339,7 +338,7 @@ export function ComposeView({
                       <button type="button" onClick={() => { setTo((value) => `${value}${value.trim() ? ", " : ""}${contact.email}, `); setAddressBookOpen(false) }} className="min-w-0 flex-1 text-left">
                         <span className="block truncate text-xs font-semibold">{contact.name}</span><span className="block truncate text-[10px] text-muted-foreground">{contact.email}</span>
                       </button>
-                      <button type="button" onClick={() => handleDeleteContact(contact.id)} className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={`${contact.name} 삭제`}><Trash2 className="size-3.5" /></button>
+                      {onDeleteContact && <button type="button" onClick={() => onDeleteContact(contact.id)} className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={`${contact.name} 삭제`}><Trash2 className="size-3.5" /></button>}
                     </div>
                   ))}
                 </div>

@@ -40,6 +40,19 @@ export async function createContact(name: string, email: string): Promise<{ ok: 
   return res.ok && data.contact ? { ok: true, contact: data.contact } : { ok: false, error: data.error ?? "주소 저장에 실패했습니다." }
 }
 
+export async function updateContact(
+  id: string,
+  patch: Partial<Pick<Contact, "name" | "email">>,
+): Promise<{ ok: true; contact: Contact } | { ok: false; error: string }> {
+  const res = await fetch(`/api/contacts/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  })
+  const data = (await res.json().catch(() => ({}))) as { contact?: Contact; error?: string }
+  return res.ok && data.contact ? { ok: true, contact: data.contact } : { ok: false, error: data.error ?? "주소 수정에 실패했습니다." }
+}
+
 export async function deleteContact(id: string): Promise<boolean> {
   return (await fetch(`/api/contacts/${encodeURIComponent(id)}`, { method: "DELETE" })).ok
 }

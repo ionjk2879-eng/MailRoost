@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react"
 import {
   applyRuleToExisting as apiApplyRuleToExisting,
+  createContact,
   createFolder as apiCreateFolder,
   createMemo,
   createQuickReply,
   createRule as apiCreateRule,
   createSavedFilter as apiCreateSavedFilter,
+  deleteContact,
   deleteDraft,
   deleteFolder as apiDeleteFolder,
   deleteMemo,
@@ -13,6 +15,7 @@ import {
   deleteRule as apiDeleteRule,
   deleteSavedFilter as apiDeleteSavedFilter,
   dismissNotification,
+  fetchContacts,
   fetchDrafts,
   fetchFolders,
   fetchMemos,
@@ -31,11 +34,12 @@ import {
   snoozeMail,
   unmuteSender,
   unsnoozeMail,
+  updateContact,
   updateMemo,
   updateQuickReply,
   updateRule as apiUpdateRule,
 } from "@/lib/api"
-import type { AppNotification, AutoClassifyRule, Draft, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"
+import type { AppNotification, AutoClassifyRule, Contact, Draft, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"
 
 interface UseMailOrgParams {
   currentUser: { id: string; email: string } | null
@@ -61,6 +65,7 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
   const [activeFilter, setActiveFilter] = useState<SavedFilter | null>(null)
   const [memos, setMemos] = useState<MemoItem[]>([])
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
+  const [contacts, setContacts] = useState<Contact[]>([])
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [drafts, setDrafts] = useState<Draft[]>([])
 
@@ -71,6 +76,7 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
     fetchRules().then(setRules),
     fetchMemos().then(setMemos),
     fetchQuickReplies().then(setQuickReplies),
+    fetchContacts().then(setContacts),
     fetchNotifications().then(setNotifications),
     fetchDrafts().then(setDrafts),
     fetchSnoozed().then(setSnoozed),
@@ -281,6 +287,35 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
     }
   }
 
+  // 주소록
+  const handleCreateContact = async (name: string, email: string): Promise<{ ok: boolean; error?: string }> => {
+    const result = await createContact(name, email)
+    if (!result.ok) return { ok: false, error: result.error }
+    setContacts((prev) => [result.contact, ...prev])
+    return { ok: true }
+  }
+
+  const handleUpdateContact = async (
+    id: string,
+    name: string,
+    email: string,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const result = await updateContact(id, { name, email })
+    if (!result.ok) return { ok: false, error: result.error }
+    setContacts((prev) => prev.map((c) => (c.id === id ? result.contact : c)))
+    return { ok: true }
+  }
+
+  const handleDeleteContact = async (id: string) => {
+    const removed = contacts.find((c) => c.id === id)
+    setContacts((prev) => prev.filter((c) => c.id !== id))
+    const ok = await deleteContact(id)
+    if (!ok) {
+      if (removed) setContacts((prev) => [removed, ...prev])
+      showError("주소록 삭제에 실패했습니다.")
+    }
+  }
+
   // 알림 — 예약발송 재시도/실패 알림은 cron이 백그라운드에서 쌓으므로 App.tsx가 1분마다 이 함수를
   // 폴링해서 반영한다.
   const refreshNotifications = () => fetchNotifications().then(setNotifications)
@@ -338,6 +373,7 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
     activeFilter,
     memos,
     quickReplies,
+    contacts,
     notifications,
     drafts,
 
@@ -367,6 +403,9 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
     handleCreateQuickReply,
     handleUpdateQuickReply,
     handleDeleteQuickReply,
+    handleCreateContact,
+    handleUpdateContact,
+    handleDeleteContact,
     handleMarkNotificationRead,
     handleMarkAllNotificationsRead,
     handleDismissNotification,
