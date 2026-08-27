@@ -36,3 +36,17 @@ MailRoost — 여러 메일 계정(Gmail/네이버/다음/범용 IMAP)을 한 �
 
 - 서로 다른 기능/수정은 별도 커밋으로 나눈다 (한 파일 안에 여러 논리적 변경이 섞여도 `git add`로 필요한 부분만 골라 커밋). 커밋 메시지는 영어, `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>` 트레일러 포함.
 - 커밋/push는 명시적으로 요청받았을 때만 한다.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repo: `CONTEXT.md` at root + `docs/adr/`. See `docs/agents/domain.md`.
