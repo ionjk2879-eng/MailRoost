@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { AutoClassifyRule, Mail, MailCategory, MailFolder } from "@/types/mail"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 const CATEGORY_LABELS: Record<MailCategory, string> = {
@@ -116,7 +117,12 @@ export function AutoRulesView({ mails, folders, rules, onCreateRule, onUpdateRul
             {rules.map((rule) => (
               <div key={rule.id} className={cn("relative grid items-start gap-4 rounded-xl border bg-background px-4 py-5 shadow-sm md:grid-cols-[1.1fr_1.35fr_1fr_.75fr_.7fr]", !rule.enabled && "opacity-55")}>
                 <div className="flex min-w-0 items-center gap-2"><GripVertical className="size-4 shrink-0 text-muted-foreground" /><strong className="truncate">{rule.name || `${rule.field === "from" ? "발신자" : "제목"} · ${rule.keyword}`}</strong></div>
-                <div><span className="inline-flex rounded-md bg-muted px-3 py-2 text-sm">{rule.field === "from" ? "발신자" : "제목"}에 {rule.keyword} 포함</span></div>
+                <div className="min-w-0">
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="block w-full truncate rounded-md bg-muted px-3 py-2 text-sm">{rule.field === "from" ? "발신자" : "제목"}에 {rule.keyword} 포함</span>} />
+                    <TooltipContent>{rule.field === "from" ? "발신자" : "제목"}에 {rule.keyword} 포함</TooltipContent>
+                  </Tooltip>
+                </div>
                 <div>{rule.targetFolderId ? <span className="inline-flex items-center gap-2 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700"><Folder className="size-4" />{folderName(rule.targetFolderId)}</span> : <span className="text-sm">{rule.category ? CATEGORY_LABELS[rule.category] : "-"}</span>}</div>
                 <div className="flex items-center gap-2">
                   {rule.targetFolderId ? <button type="button" title="기존 메일에도 적용" disabled={applyingId === rule.id} onClick={() => apply(rule.id)} className="flex size-7 items-center justify-center rounded-full border border-green-600 text-green-600 hover:bg-green-50">{applyingId === rule.id ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-4" />}</button> : <span className="text-muted-foreground">-</span>}
