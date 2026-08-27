@@ -2,6 +2,7 @@ import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, 
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
+import { BrandMark } from "@/components/brand-mark"
 import { ProviderIcon } from "@/components/mail/provider-icon"
 import {
   Dialog,
@@ -234,9 +235,7 @@ export function AccountSidebar({
           }}
           className="flex cursor-pointer items-center gap-2 rounded-md text-xl font-bold tracking-tight outline-none transition-opacity hover:opacity-75 focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <span className="flex size-9 items-center justify-center rounded-xl bg-orange-500 text-white shadow-md shadow-orange-500/25">
-            <Inbox className="size-4.5" />
-          </span>
+          <BrandMark className="size-9 rounded-xl shadow-md shadow-orange-500/25" />
           <span>Mail<span className="text-primary">Roost</span></span>
         </button>
         {onCompose && (

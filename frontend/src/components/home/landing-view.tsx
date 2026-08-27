@@ -1,4 +1,5 @@
-import { Check, Inbox, ShieldCheck } from "lucide-react"
+import { Check, ShieldCheck } from "lucide-react"
+import { BrandMark } from "@/components/brand-mark"
 import { ProviderIcon } from "@/components/mail/provider-icon"
 import { Button } from "@/components/ui/button"
 import { gmailLoginUrl } from "@/lib/api"
@@ -17,9 +18,7 @@ export function LandingView() {
 
       <header className="relative z-20 mx-auto flex h-20 w-full max-w-[1440px] items-center justify-between px-5 sm:px-8 lg:px-12">
         <div className="flex items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-orange-500 text-white shadow-md shadow-orange-500/25">
-            <Inbox className="size-4.5" />
-          </span>
+          <BrandMark className="size-9 rounded-xl shadow-md shadow-orange-500/25" />
           <span className="text-xl font-bold tracking-[-0.04em]">
             Mail<span className="text-orange-500">Roost</span>
           </span>
