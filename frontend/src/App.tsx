@@ -973,7 +973,7 @@ function App() {
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-3 border-b bg-background px-5">
+        <header className="flex h-16 shrink-0 items-center gap-3 border-b border-sidebar-border bg-sidebar/40 px-5 backdrop-blur-sm">
           <SidebarTrigger />
           <span className="min-w-0 truncate text-base font-semibold tracking-tight">
             {view === "home"

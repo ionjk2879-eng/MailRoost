@@ -225,7 +225,7 @@ export function AccountSidebar({
 
   return (
     <Sidebar className="border-r bg-sidebar/95">
-      <SidebarHeader className="gap-4 border-b px-4 py-5">
+      <SidebarHeader className="gap-4 border-b border-sidebar-border px-4 py-5">
         <button
           type="button"
           onClick={() => {
@@ -234,7 +234,9 @@ export function AccountSidebar({
           }}
           className="flex cursor-pointer items-center gap-2 rounded-md text-xl font-bold tracking-tight outline-none transition-opacity hover:opacity-75 focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <img src="/favicon.svg" alt="" className="size-8 rounded-lg shadow-sm" />
+          <span className="flex size-9 items-center justify-center rounded-xl bg-orange-500 text-white shadow-md shadow-orange-500/25">
+            <Inbox className="size-4.5" />
+          </span>
           <span>Mail<span className="text-primary">Roost</span></span>
         </button>
         {onCompose && (
