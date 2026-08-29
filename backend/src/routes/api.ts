@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import type { Env } from "../types"
 import accounts from "./accounts"
+import attachments from "./attachments"
 import backup from "./backup"
 import folders from "./folders"
 import memos from "./memos"
@@ -18,6 +19,7 @@ import contacts from "./contacts"
 const api = new Hono<{ Bindings: Env }>()
 
 api.route("/", accounts)
+api.route("/", attachments)
 api.route("/", backup)
 api.route("/", folders)
 api.route("/", memos)
