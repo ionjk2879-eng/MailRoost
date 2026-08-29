@@ -50,6 +50,20 @@ export interface MailAttachment {
   contentId?: string
 }
 
+// 첨부함 화면용 — 계정 전체를 훑어서 나온 "메일 하나 + 첨부파일 하나" 평탄화된 항목.
+export interface AttachmentListItem {
+  accountId: string
+  mailId: string
+  attachmentId: string
+  filename: string
+  mimeType: string
+  size: number
+  fromName: string
+  fromEmail: string
+  subject: string
+  receivedAt: string
+}
+
 export interface Mail {
   id: string
   accountId: string
