@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { MessageCard } from "@/components/mail/message-card"
@@ -5,7 +6,7 @@ import { ChevronLeft } from "lucide-react"
 import type { Account, Mail, MailFolder } from "@/types/mail"
 
 interface MailDetailProps {
-  mail: Mail | null
+  thread: Mail[] | null
   accounts: Account[]
   isLoadingBody?: boolean
   onBack?: () => void
@@ -22,7 +23,7 @@ interface MailDetailProps {
   onToggleFolder?: (mailId: string, accountId: string, folderId: string, assign: boolean) => void
   onSnooze?: (mailId: string, accountId: string, until: number) => void
   onMute?: (fromEmail: string) => void
-  isMuted?: boolean
+  mutedSet?: Set<string>
 }
 
 function BackButton({ onBack }: { onBack: () => void }) {
@@ -34,8 +35,70 @@ function BackButton({ onBack }: { onBack: () => void }) {
   )
 }
 
-export function MailDetail({ mail, isLoadingBody, onBack, ...rest }: MailDetailProps) {
-  if (!mail) {
+function MailDetailBody({
+  thread,
+  onBack,
+  mutedSet,
+  ...rest
+}: {
+  thread: Mail[]
+  onBack?: () => void
+  mutedSet?: Set<string>
+} & Omit<MailDetailProps, "thread" | "mail" | "isLoadingBody" | "onBack" | "mutedSet">) {
+  // thread가 바뀔 때마다(다른 대화를 열 때마다) 이 컴포넌트가 새 key로 다시 마운트되므로,
+  // expandedIds는 항상 "새로 연 스레드는 최신 메일만 펼침"으로 초기화된다.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set([thread[thread.length - 1].id]))
+
+  const toggle = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {onBack && (
+        <div className="shrink-0 border-b bg-background px-7 pt-4">
+          <BackButton onBack={onBack} />
+        </div>
+      )}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {thread.map((mail) => {
+          const expanded = expandedIds.has(mail.id)
+          if (!expanded) {
+            return (
+              <button
+                key={mail.id}
+                type="button"
+                onClick={() => toggle(mail.id)}
+                className="hover:bg-muted/40 flex w-full items-center gap-3 border-b px-7 py-3 text-left transition-colors"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  <span className="font-medium">{mail.fromName}</span>{" "}
+                  <span className="text-muted-foreground">{mail.snippet}</span>
+                </span>
+                <span className="text-muted-foreground shrink-0 text-xs">
+                  {new Date(mail.receivedAt).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}
+                </span>
+              </button>
+            )
+          }
+          return (
+            <div key={mail.id} className="border-b last:border-b-0">
+              <MessageCard mail={mail} isMuted={mutedSet?.has(mail.fromEmail)} {...rest} />
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+export function MailDetail({ thread, isLoadingBody, onBack, mutedSet, ...rest }: MailDetailProps) {
+  if (!thread || thread.length === 0) {
     return (
       <div className="flex h-full min-h-0 w-full flex-col">
         {onBack && <BackButton onBack={onBack} />}
@@ -74,25 +137,23 @@ export function MailDetail({ mail, isLoadingBody, onBack, ...rest }: MailDetailP
     )
   }
 
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      {onBack && (
-        <div className="shrink-0 border-b bg-background px-7 pt-4">
-          <BackButton onBack={onBack} />
-        </div>
-      )}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {isLoadingBody ? (
-          <div className="flex flex-col gap-3 p-6">
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-5/6" />
-            <Skeleton className="h-4 w-2/3" />
+  if (isLoadingBody) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        {onBack && (
+          <div className="shrink-0 border-b bg-background px-7 pt-4">
+            <BackButton onBack={onBack} />
           </div>
-        ) : (
-          <MessageCard mail={mail} {...rest} />
         )}
+        <div className="flex flex-col gap-3 p-6">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
+
+  return <MailDetailBody key={thread[0].id} thread={thread} onBack={onBack} mutedSet={mutedSet} {...rest} />
 }
