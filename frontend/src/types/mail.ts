@@ -81,6 +81,10 @@ export interface Mail {
   ccRecipients?: string[]
   // 배정된 사용자 정의 분류 메일함 id 목록 (여러 개에 동시에 속할 수 있다)
   folderIds?: string[]
+  threadId?: string
+  messageId?: string
+  references?: string[]
+  inReplyTo?: string
 }
 
 export interface QuickReply {

@@ -1,6 +1,7 @@
 import { connect } from "cloudflare:sockets"
 import type { Mail } from "../types"
 import { decodeRfc2047, embedInlineMimeImages, extractMimeAttachment, listMimeAttachments, parseAddressList, parseFromHeader, parseHeaderBlock, parseMimeMessage, sanitizeHtml, stripHtml } from "./mime"
+import { mapFetchLinesToMails, parseFetchLine, parseInternalDate } from "./imap-parse"
 import { retryAsync } from "./retry"
 
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
@@ -205,49 +206,6 @@ const daumConfig = (email: string, password: string): ImapConfig => ({
   loginErrorMsg: "다음 메일 로그인에 실패했습니다. 이메일 또는 비밀번호를 확인해주세요.",
 })
 
-// ── Parsing helpers ───────────────────────────────────────────────────────────
-
-interface ParsedFetchLine {
-  uid?: number
-  flags: string[]
-  internalDate?: string
-  literalText?: string
-}
-
-function parseFetchLine(line: string): ParsedFetchLine | null {
-  if (!/^\*\s+\d+\s+FETCH/i.test(line)) return null
-  const uidMatch = line.match(/\bUID\s+(\d+)/i)
-  const flagsMatch = line.match(/FLAGS\s*\(([^)]*)\)/i)
-  const dateMatch = line.match(/INTERNALDATE\s+"([^"]+)"/i)
-  const literalMatch = line.match(/BODY\[[^\]]*\]\s*([\s\S]*)\)\s*$/i)
-  return {
-    uid: uidMatch ? Number(uidMatch[1]) : undefined,
-    flags: flagsMatch ? flagsMatch[1].split(/\s+/).filter(Boolean) : [],
-    internalDate: dateMatch?.[1],
-    literalText: literalMatch?.[1],
-  }
-}
-
-const MONTH_NUMBERS: Record<string, string> = {
-  Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
-  Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12",
-}
-
-function parseInternalDate(raw: string | undefined): string {
-  const match = raw?.match(/^(\d{1,2})-(\w{3})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})\s+([+-]\d{4})$/)
-  if (!match) return new Date().toISOString()
-  const [, day, monthName, year, hh, mm, ss, tz] = match
-  const month = MONTH_NUMBERS[monthName] ?? "01"
-  const isoLike = `${year}-${month}-${day.padStart(2, "0")}T${hh}:${mm}:${ss}${tz.slice(0, 3)}:${tz.slice(3)}`
-  const date = new Date(isoLike)
-  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString()
-}
-
-function parseHeaderFields(text: string | undefined): { from: string; subject: string } {
-  const headers = parseHeaderBlock(text ?? "")
-  return { from: headers["from"] ?? "", subject: headers["subject"] ?? "" }
-}
-
 // ── Trash folder discovery ────────────────────────────────────────────────────
 
 const TRASH_NAME_CANDIDATES = [
@@ -347,7 +305,7 @@ async function fetchMailPageFromSelected(
   const hasMore = start > 1
 
   const fetchResult = await client.command(
-    `FETCH ${start}:${end} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])`,
+    `FETCH ${start}:${end} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT MESSAGE-ID REFERENCES IN-REPLY-TO)])`,
   )
   // 이 명령이 실패했는데도 그냥 넘어가면, 그 구간의 메일들이 조용히 통째로 빈 결과로 취급되어
   // "더 보기"가 앞으로만 진행하는 이 페이지네이션 구조상 다시는 화면에 나타나지 않게 된다.
@@ -363,34 +321,6 @@ async function fetchMailPageFromSelected(
   }
 
   return { mails, hasMore }
-}
-
-function mapFetchLinesToMails(lines: string[], accountId: string): Mail[] {
-  const mails: Mail[] = []
-  for (const line of lines) {
-    if (!/^\*\s+\d+\s+FETCH/i.test(line)) continue
-    const parsed = parseFetchLine(line)
-    if (!parsed || parsed.uid === undefined) {
-      console.error(`[imap] failed to parse FETCH line, skipping message: ${line.slice(0, 300)}`)
-      continue
-    }
-    const { from, subject } = parseHeaderFields(parsed.literalText)
-    const { name: fromName, email: fromEmail } = parseFromHeader(from)
-    mails.push({
-      id: String(parsed.uid),
-      accountId,
-      fromName,
-      fromEmail,
-      subject: decodeRfc2047(subject) || "(제목 없음)",
-      snippet: "",
-      body: "",
-      category: "primary",
-      receivedAt: parseInternalDate(parsed.internalDate),
-      isRead: parsed.flags.includes("\\Seen"),
-      isStarred: parsed.flags.includes("\\Flagged"),
-    })
-  }
-  return mails
 }
 
 export async function imapListInbox(
@@ -442,7 +372,7 @@ export async function imapSearchInbox(
     // SEARCH는 보통 오름차순(오래된 것부터)으로 UID를 돌려주므로, 뒤쪽(최신 것)만 취한다.
     const targetUids = uids.slice(-maxResults)
     const fetchResult = await client.command(
-      `UID FETCH ${targetUids.join(",")} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])`,
+      `UID FETCH ${targetUids.join(",")} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT MESSAGE-ID REFERENCES IN-REPLY-TO)])`,
     )
     if (!fetchResult.ok) return []
     return mapFetchLinesToMails(fetchResult.lines, accountId)
@@ -473,7 +403,7 @@ export async function imapFetchByUids(config: ImapConfig, accountId: string, uid
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
     const fetchResult = await client.command(
-      `UID FETCH ${uids.join(",")} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])`,
+      `UID FETCH ${uids.join(",")} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT MESSAGE-ID REFERENCES IN-REPLY-TO)])`,
     )
     return mapFetchLinesToMails(fetchResult.lines, accountId)
   })

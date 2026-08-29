@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils"
 import { HomeView } from "@/components/home/home-view"
 import { LandingView } from "@/components/home/landing-view"
 import { fetchCurrentUser, fetchMailDetail, inlineAttachmentUrl, logout, snoozeKey } from "@/lib/api"
+import { groupIntoThreads } from "@/lib/threading"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Draft, ForwardedAttachmentRef, Mail, MailCategory, SavedFilter } from "@/types/mail"
 import { applyTheme, getStoredTheme, watchSystemTheme } from "@/lib/theme"
@@ -285,19 +286,37 @@ function App() {
     ?? workspace.folderMails.find((mail) => mail.id === workspace.selectedMailId)
     ?? null
 
+  // 상세 패널에 넘길 스레드 — visibleMails(받은편지함/중요메일) 우선, 없으면 folderMails(분류함/
+  // 보관함/휴지통) 순으로 찾는다. selectedMailStub과 동일한 우선순위를 그대로 따른다.
+  const selectedThread = useMemo(() => {
+    if (!selectedMailStub) return null
+    const fromVisible = groupIntoThreads(visibleMails).find((t) => t.some((m) => m.id === selectedMailStub.id))
+    if (fromVisible) return fromVisible
+    const fromFolder = groupIntoThreads(workspace.folderMails).find((t) => t.some((m) => m.id === selectedMailStub.id))
+    if (fromFolder) return fromFolder
+    return [selectedMailStub]
+  }, [visibleMails, workspace.folderMails, selectedMailStub])
+
   useEffect(() => {
-    if (!selectedMailStub || !isRealAccountId(selectedMailStub.accountId)) return
-    if (workspace.mailDetails[selectedMailStub.id]) return
-    fetchMailDetail(selectedMailStub.id, selectedMailStub.accountId).then((detail) => {
-      if (detail) workspace.setMailDetail(detail)
-    })
+    if (!selectedThread) return
+    for (const m of selectedThread) {
+      if (!isRealAccountId(m.accountId)) continue
+      if (workspace.mailDetails[m.id]) continue
+      fetchMailDetail(m.id, m.accountId).then((detail) => {
+        if (detail) workspace.setMailDetail(detail)
+      })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedMailStub, workspace.mailDetails])
+  }, [selectedThread, workspace.mailDetails])
 
   const isLoadingDetail =
-    selectedMailStub !== null &&
-    isRealAccountId(selectedMailStub.accountId) &&
-    !workspace.mailDetails[selectedMailStub.id]
+    selectedThread !== null &&
+    selectedThread.some((m) => isRealAccountId(m.accountId) && !workspace.mailDetails[m.id])
+
+  // 이미 상세가 로드된 메일은 workspace.mailDetails로 덮어써서(bodyHtml/attachments 포함)
+  // MailDetail에 넘긴다. 아직 안 불러와진 메일은 리스트에서 온 스텁 그대로 넘어간다 —
+  // isLoadingDetail이 true인 동안은 MailDetail이 스켈레톤을 보여주므로 화면엔 안 보인다.
+  const threadWithDetails = selectedThread?.map((m) => workspace.mailDetails[m.id] ?? m) ?? null
 
   const selectedMail = selectedMailStub
     ? (workspace.mailDetails[selectedMailStub.id] ?? selectedMailStub)
@@ -644,7 +663,13 @@ function App() {
   // 정리하기 > 단축키에 안내된 목록을 실제로 동작하게 한다. 입력창/textarea/select에
   // 포커스가 있거나 작성 중일 때는 타이핑을 방해하지 않도록 전부 무시한다.
   useEffect(() => {
-    const activeList = view === "folder" || view === "archive" ? workspace.folderMails : view === "inbox" || view === "starred" ? visibleMails : []
+    const activeList = (
+      view === "folder" || view === "archive"
+        ? groupIntoThreads(workspace.folderMails)
+        : view === "inbox" || view === "starred"
+          ? groupIntoThreads(visibleMails)
+          : []
+    ).map((group) => group[group.length - 1])
 
     const moveFocus = (direction: 1 | -1) => {
       if (activeList.length === 0) return
@@ -817,6 +842,7 @@ function App() {
           hasMore={!workspace.searchQuery && !!workspace.nextCursor}
           isLoadingMore={workspace.isLoadingMore}
           onLoadMore={workspace.handleLoadMore}
+          groupThreads={!workspace.searchQuery}
         />
       </div>
     </div>
@@ -847,7 +873,7 @@ function App() {
     />
   ) : (
     <MailDetail
-      mail={selectedMail}
+      thread={threadWithDetails}
       accounts={accounts}
       isLoadingBody={isLoadingDetail}
       onBack={isMobile ? () => workspace.setSelectedMailId(null) : undefined}
@@ -863,7 +889,7 @@ function App() {
       onToggleFolder={workspace.handleToggleMailFolder}
       onSnooze={handleSnooze}
       onMute={mailOrg.handleMuteSender}
-      isMuted={!!selectedMailStub && mailOrg.mutedSet.has(selectedMailStub.fromEmail)}
+      mutedSet={mailOrg.mutedSet}
     />
   )
 
@@ -915,7 +941,7 @@ function App() {
     />
   ) : (
     <MailDetail
-      mail={selectedMail}
+      thread={threadWithDetails}
       accounts={accounts}
       isLoadingBody={isLoadingDetail}
       onBack={isMobile ? () => workspace.setSelectedMailId(null) : undefined}
@@ -934,6 +960,7 @@ function App() {
       currentFolderId={selectedFolderId ?? undefined}
       onMove={workspace.handleMoveMailFromFolder}
       onToggleFolder={workspace.handleToggleMailFolder}
+      mutedSet={mailOrg.mutedSet}
     />
   )
 

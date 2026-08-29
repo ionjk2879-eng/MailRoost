@@ -5,6 +5,7 @@ import { SenderIcon } from "@/components/mail/sender-icon"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import type { Mail, MailFolder } from "@/types/mail"
 import { cn } from "@/lib/utils"
+import { groupIntoThreads } from "@/lib/threading"
 
 type SelectFilter = "all" | "none" | "read" | "unread" | "starred" | "unstarred"
 
@@ -34,6 +35,8 @@ interface MailListProps {
   isLoadingMore?: boolean
   hasMore?: boolean
   onLoadMore?: () => void
+  // 답장 체인을 하나의 대화로 묶어서 보여줄지. 검색 결과 화면에서는 false로 넘어온다.
+  groupThreads?: boolean
 }
 
 function formatTime(iso: string): string {
@@ -79,7 +82,9 @@ export function MailList({
   isLoadingMore,
   hasMore,
   onLoadMore,
+  groupThreads = true,
 }: MailListProps) {
+  const groups = groupThreads ? groupIntoThreads(mails) : mails.map((mail) => [mail])
   const [filterOpen, setFilterOpen] = useState(false)
   const filterRef = useRef<HTMLDivElement>(null)
   const [moveOpen, setMoveOpen] = useState(false)
@@ -272,32 +277,43 @@ export function MailList({
       {/* 메일 목록 */}
       <ScrollArea className="min-h-0 flex-1">
         <div className="flex w-full min-w-0 flex-col">
-          {mails.length === 0 && (
+          {groups.length === 0 && (
             <p className="text-muted-foreground p-6 text-sm">메일이 없습니다.</p>
           )}
-          {mails.map((mail, index) => {
-            const isChecked = checkedIds.has(mail.id)
+          {groups.map((group, index) => {
+            const mail = group[group.length - 1] // 그룹 대표 = 최신 메일
+            const groupIds = group.map((m) => m.id)
+            const isChecked = groupIds.every((id) => checkedIds.has(id))
 
             // shift 범위선택이면 true를 반환해 호출부가 별도 처리를 건너뛰게 한다.
             const trySelectRange = (e: React.MouseEvent): boolean => {
               if (!e.shiftKey || !anchorId) return false
-              const anchorIndex = mails.findIndex((m) => m.id === anchorId)
+              const anchorIndex = groups.findIndex((g) => g[g.length - 1].id === anchorId)
               if (anchorIndex === -1) return false
               const [start, end] = anchorIndex < index ? [anchorIndex, index] : [index, anchorIndex]
-              onCheckRange(mails.slice(start, end + 1).map((m) => m.id))
+              onCheckRange(groups.slice(start, end + 1).flatMap((g) => g.map((m) => m.id)))
               setAnchorId(mail.id)
               return true
+            }
+
+            // 그룹 체크박스는 항상 "전부 켜기" 또는 "전부 끄기"로 귀결되도록, 목표 상태와 다른
+            // 멤버만 골라 기존 단일-id 토글을 호출한다 (그룹 전용 콜백을 새로 추가하지 않는다).
+            const toggleGroup = () => {
+              const target = !isChecked
+              for (const id of groupIds) {
+                if (checkedIds.has(id) !== target) onToggleCheck(id)
+              }
             }
 
             const handleRowClick = (e: React.MouseEvent) => {
               if (trySelectRange(e)) return
               if (e.ctrlKey || e.metaKey) {
-                onToggleCheck(mail.id)
+                toggleGroup()
                 setAnchorId(mail.id)
                 return
               }
               if (isSelecting) {
-                onToggleCheck(mail.id)
+                toggleGroup()
               } else {
                 onSelectMail(mail.id)
               }
@@ -333,7 +349,7 @@ export function MailList({
                       onClick={(e) => {
                         e.stopPropagation()
                         if (trySelectRange(e)) return
-                        onToggleCheck(mail.id)
+                        toggleGroup()
                         setAnchorId(mail.id)
                       }}
                       aria-label={isChecked ? "선택 해제" : "선택"}
@@ -352,6 +368,9 @@ export function MailList({
                   <span className={cn("min-w-0 flex-1 truncate text-[13px]", !mail.isRead && "font-semibold text-foreground")}>
                     {mail.fromName}
                   </span>
+                  {group.length > 1 && (
+                    <span className="text-muted-foreground shrink-0 text-[11px] font-medium">{group.length}</span>
+                  )}
                   <span className="text-muted-foreground ml-auto shrink-0 text-[11px]">
                     {formatTime(mail.receivedAt)}
                   </span>
