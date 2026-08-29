@@ -19,3 +19,6 @@ backend/.wrangler/
 .dev.vars.*
 !.dev.vars.example
 *.local
+
+### Superpowers subagent-driven-development scratch ###
+.superpowers/
