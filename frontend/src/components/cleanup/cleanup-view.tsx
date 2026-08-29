@@ -1,22 +1,14 @@
 import { AlertTriangle, Loader2, Plus, X } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { AutoRulesView } from "@/components/cleanup/auto-rules-view"
-import { ARCHIVE_FOLDER_ID } from "@/types/mail"
+import type { RuleConditions } from "@/lib/api"
 import type { Account, AutoClassifyRule, Contact, Mail, MailCategory, MailFolder, QuickReply } from "@/types/mail"
 
 type MainTab = "mailbox" | "auto" | "quickreply" | "contacts" | "shortcuts"
 type MailboxSubTab = "manage" | "unread" | "bydate"
-
-const CATEGORY_LABELS: Record<MailCategory, string> = {
-  primary: "기본",
-  social: "소셜",
-  promotions: "프로모션",
-  updates: "업데이트",
-  forums: "포럼",
-}
 
 interface CleanupViewProps {
   accounts: Account[]
@@ -28,15 +20,14 @@ interface CleanupViewProps {
   folders: MailFolder[]
   rules: AutoClassifyRule[]
   onCreateRule: (
-    field: "from" | "subject",
-    keyword: string,
+    conditions: RuleConditions,
     targetFolderId: string | null,
     category: MailCategory | null,
     applyToExisting?: boolean,
     name?: string,
   ) => Promise<{ ok: boolean; error?: string; count?: number }>
   onToggleRule: (ruleId: string, enabled: boolean) => void
-  onUpdateRule: (ruleId: string, patch: Partial<Pick<AutoClassifyRule, "name" | "field" | "keyword" | "targetFolderId" | "category" | "enabled">>) => Promise<{ ok: boolean; error?: string }>
+  onUpdateRule: (ruleId: string, patch: Partial<Omit<AutoClassifyRule, "id" | "createdAt">>) => Promise<{ ok: boolean; error?: string }>
   onDeleteRule: (ruleId: string) => void
   onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number; alreadyClassified?: number }>
   quickReplies: QuickReply[]
@@ -427,307 +418,6 @@ function MailboxManageTab({
         </div>
       )}
 
-    </div>
-  )
-}
-
-export function AutoClassifyTab({
-  mails,
-  folders,
-  rules,
-  onCreateRule,
-  onToggleRule,
-  onDeleteRule,
-  onApplyRuleToExisting,
-}: {
-  mails: Mail[]
-  folders: MailFolder[]
-  rules: AutoClassifyRule[]
-  onCreateRule: (
-    field: "from" | "subject",
-    keyword: string,
-    targetFolderId: string | null,
-    category: MailCategory | null,
-    applyToExisting?: boolean,
-  ) => Promise<{ ok: boolean; error?: string; count?: number }>
-  onToggleRule: (ruleId: string, enabled: boolean) => void
-  onDeleteRule: (ruleId: string) => void
-  onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number; alreadyClassified?: number }>
-}) {
-  const folderOptions = [{ id: ARCHIVE_FOLDER_ID, name: "보관함" }, ...folders]
-  const [field, setField] = useState<"from" | "subject">("from")
-  const [keyword, setKeyword] = useState("")
-  const [suggestOpen, setSuggestOpen] = useState(false)
-  const suggestRef = useRef<HTMLDivElement>(null)
-
-  // 현재 로드된 메일에서 보낸사람/제목 자동완성 후보를 뽑는다 — 직접 입력도 그대로 가능하다.
-  const senderOptions = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const m of mails) {
-      if (!m.fromEmail || seen.has(m.fromEmail)) continue
-      seen.set(m.fromEmail, m.fromName && m.fromName !== m.fromEmail ? `${m.fromName} <${m.fromEmail}>` : m.fromEmail)
-    }
-    return [...seen.entries()].map(([value, label]) => ({ value, label }))
-  }, [mails])
-
-  const subjectOptions = useMemo(() => {
-    const seen = new Set<string>()
-    for (const m of mails) if (m.subject) seen.add(m.subject)
-    return [...seen].map((s) => ({ value: s, label: s }))
-  }, [mails])
-
-  const allOptions = field === "from" ? senderOptions : subjectOptions
-  const filteredOptions = useMemo(() => {
-    const q = keyword.trim().toLowerCase()
-    const matches = q ? allOptions.filter((o) => o.label.toLowerCase().includes(q)) : allOptions
-    return matches.slice(0, 20)
-  }, [allOptions, keyword])
-
-  useEffect(() => {
-    if (!suggestOpen) return
-    const handler = (e: MouseEvent) => {
-      if (suggestRef.current && !suggestRef.current.contains(e.target as Node)) setSuggestOpen(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [suggestOpen])
-
-  // "folder:<id>" 또는 "category:<name>" 형태로 인코딩해 하나의 select로 둘 다 고른다.
-  const [destination, setDestination] = useState(`folder:${folderOptions[0].id}`)
-  const [applyToExisting, setApplyToExisting] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [createSuccessMsg, setCreateSuccessMsg] = useState<string | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
-  const [applyingRuleId, setApplyingRuleId] = useState<string | null>(null)
-  const [applyResult, setApplyResult] = useState<{ ruleId: string; message: string } | null>(null)
-
-  const folderName = (id: string) =>
-    id === ARCHIVE_FOLDER_ID ? "보관함" : (folders.find((f) => f.id === id)?.name ?? "(삭제된 분류 메일함)")
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const trimmed = keyword.trim()
-    if (!trimmed) return
-    setIsCreating(true)
-    setError(null)
-    setCreateSuccessMsg(null)
-    const [kind, value] = destination.split(":") as ["folder" | "category", string]
-    const result = await onCreateRule(
-      field,
-      trimmed,
-      kind === "folder" ? value : null,
-      kind === "category" ? (value as MailCategory) : null,
-      kind === "folder" && applyToExisting,
-    )
-    setIsCreating(false)
-    if (!result.ok) {
-      setError(result.error ?? "규칙 생성에 실패했습니다.")
-      return
-    }
-    setKeyword("")
-    setApplyToExisting(true)
-    if (kind === "folder" && applyToExisting) {
-      setCreateSuccessMsg(
-        result.count != null && result.count > 0
-          ? `규칙을 추가하고 기존 메일 ${result.count}개를 분류 메일함으로 옮겼어요.`
-          : "규칙을 추가했어요. 기존 메일 중 조건에 맞는 것은 없었습니다.",
-      )
-    }
-  }
-
-  const handleApplyToExisting = async (ruleId: string) => {
-    setApplyingRuleId(ruleId)
-    setApplyResult(null)
-    const result = await onApplyRuleToExisting(ruleId)
-    setApplyingRuleId(null)
-    setApplyResult({
-      ruleId,
-      message: result.ok
-        ? result.count != null && result.count > 0
-          ? `기존 메일 ${result.count}개를 분류 메일함으로 옮겼어요.`
-          : result.alreadyClassified != null && result.alreadyClassified > 0
-            ? `조건에 맞는 메일 ${result.alreadyClassified}개가 이미 이 분류 메일함에 있어요.`
-            : "조건에 맞는 기존 메일이 없어요."
-        : (result.error ?? "적용에 실패했습니다."),
-    })
-  }
-
-  return (
-    <div className="max-w-2xl space-y-6">
-      <div className="rounded-lg border p-4">
-        <h3 className="mb-1 font-medium">새 규칙 만들기</h3>
-        <p className="text-muted-foreground mb-4 text-sm">
-          분류 메일함으로 이동은 새로 도착하는 메일부터 적용되고, 카테고리 지정은 이미 있는 메일에도 바로 적용됩니다.
-        </p>
-        <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1.5">
-            <label className="text-muted-foreground text-xs">조건</label>
-            <select
-              value={field}
-              onChange={(e) => setField(e.target.value as "from" | "subject")}
-              className="border-input bg-background h-9 rounded-md border px-2 text-sm focus:outline-none"
-            >
-              <option value="from">보낸사람</option>
-              <option value="subject">제목</option>
-            </select>
-          </div>
-          <div ref={suggestRef} className="relative min-w-[140px] flex-1 space-y-1.5">
-            <label className="text-muted-foreground text-xs">포함 키워드</label>
-            <Input
-              value={keyword}
-              onChange={(e) => {
-                setKeyword(e.target.value)
-                setSuggestOpen(true)
-              }}
-              onFocus={() => setSuggestOpen(true)}
-              placeholder={field === "from" ? "예: fantia.jp (직접 입력 또는 목록에서 선택)" : "예: 뉴스레터"}
-              autoComplete="off"
-              required
-            />
-            {suggestOpen && filteredOptions.length > 0 && (
-              <div className="bg-background absolute top-full left-0 z-20 mt-1 max-h-56 w-full min-w-[220px] overflow-y-auto rounded-md border shadow-md">
-                {filteredOptions.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    onClick={() => {
-                      setKeyword(o.value)
-                      setSuggestOpen(false)
-                    }}
-                    className="hover:bg-accent flex w-full items-center px-3 py-1.5 text-left text-sm"
-                  >
-                    <span className="truncate">{o.label}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-muted-foreground text-xs">동작</label>
-            <select
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              className="border-input bg-background h-9 rounded-md border px-2 text-sm focus:outline-none"
-            >
-              <optgroup label="분류 메일함으로 이동">
-                {folderOptions.map((f) => (
-                  <option key={f.id} value={`folder:${f.id}`}>{f.name}</option>
-                ))}
-              </optgroup>
-              <optgroup label="카테고리 지정">
-                {(Object.keys(CATEGORY_LABELS) as MailCategory[]).map((c) => (
-                  <option key={c} value={`category:${c}`}>{CATEGORY_LABELS[c]}</option>
-                ))}
-              </optgroup>
-            </select>
-          </div>
-          <Button type="submit" size="sm" disabled={isCreating || !keyword.trim()}>
-            {isCreating ? <Loader2 className="size-3.5 animate-spin" /> : "추가"}
-          </Button>
-        </form>
-        {destination.startsWith("folder:") && (
-          <label className="text-muted-foreground mt-3 flex items-center gap-2 text-xs">
-            <input
-              type="checkbox"
-              checked={applyToExisting}
-              onChange={(e) => setApplyToExisting(e.target.checked)}
-              className="size-3.5"
-            />
-            이미 받은 메일에도 바로 적용 (서버에서 최대 200개 검색)
-          </label>
-        )}
-        {folders.length === 0 && (
-          <p className="text-muted-foreground mt-3 flex items-start gap-1.5 text-xs">
-            <AlertTriangle className="mt-0.5 size-3 shrink-0" />
-            사이드바에서 분류 메일함을 만들어두면 보관함 대신 그쪽으로 보낼 수도 있어요.
-          </p>
-        )}
-        {error && <p className="text-destructive mt-2 text-sm">{error}</p>}
-        {createSuccessMsg && <p className="text-green-600 dark:text-green-400 mt-2 text-sm">{createSuccessMsg}</p>}
-      </div>
-
-      <div className="overflow-hidden rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="px-4 py-2.5 text-left font-medium">조건</th>
-              <th className="px-4 py-2.5 text-left font-medium">동작</th>
-              <th className="px-4 py-2.5 text-center font-medium">사용</th>
-              <th className="px-4 py-2.5 text-right font-medium">관리</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {rules.map((rule) => (
-              <tr key={rule.id} className={cn("hover:bg-muted/30", !rule.enabled && "opacity-50")}>
-                <td className="px-4 py-3">
-                  {rule.field === "from" ? "보낸사람" : "제목"}에 <strong>"{rule.keyword}"</strong> 포함
-                </td>
-                <td className="px-4 py-3">
-                  {rule.targetFolderId && `${folderName(rule.targetFolderId)}(으)로 이동`}
-                  {rule.targetFolderId && rule.category && " · "}
-                  {rule.category && `${CATEGORY_LABELS[rule.category]} 카테고리`}
-                </td>
-                <td className="px-4 py-3 text-center">
-                  <button
-                    type="button"
-                    onClick={() => onToggleRule(rule.id, !rule.enabled)}
-                    className={cn(
-                      "h-5 w-9 rounded-full transition-colors",
-                      rule.enabled ? "bg-primary" : "bg-muted-foreground/30",
-                    )}
-                    aria-label={rule.enabled ? "규칙 끄기" : "규칙 켜기"}
-                  >
-                    <span
-                      className={cn(
-                        "block size-4 rounded-full bg-background shadow transition-transform",
-                        rule.enabled ? "translate-x-4.5" : "translate-x-0.5",
-                      )}
-                    />
-                  </button>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    {rule.targetFolderId && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs"
-                        disabled={applyingRuleId === rule.id}
-                        onClick={() => handleApplyToExisting(rule.id)}
-                        title="서버에서 기존 메일을 검색해 이 분류 메일함으로 옮깁니다 (최대 200개)"
-                      >
-                        {applyingRuleId === rule.id ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          "기존 메일에 적용"
-                        )}
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-destructive hover:text-destructive text-xs"
-                      onClick={() => onDeleteRule(rule.id)}
-                    >
-                      삭제
-                    </Button>
-                  </div>
-                  {applyResult?.ruleId === rule.id && (
-                    <p className="text-muted-foreground mt-1 text-xs">{applyResult.message}</p>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {rules.length === 0 && (
-              <tr>
-                <td colSpan={4} className="text-muted-foreground px-4 py-8 text-center text-sm">
-                  아직 규칙이 없습니다.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
     </div>
   )
 }

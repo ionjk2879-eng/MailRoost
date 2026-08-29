@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { Env } from "../types"
-import { assignmentKey, mutateMailOrg, parseAssignmentKey } from "./mailOrg"
+import { assignmentKey, mutateMailOrg, normalizeMailOrgState, parseAssignmentKey } from "./mailOrg"
 import { readSession, writeSession } from "./session"
 
 // env.TOKENS의 get/put만 구현한 최소 페이크. getUserMailOrg/saveUserMailOrg가 쓰는
@@ -20,6 +20,37 @@ class FakeTokensKV {
 function fakeEnv(): Env {
   return { TOKENS: new FakeTokensKV() } as unknown as Env
 }
+
+describe("normalizeMailOrgState — legacy rule migration", () => {
+  it("converts a legacy field/keyword rule into the from/subject shape", () => {
+    const state = normalizeMailOrgState({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rules: [{ id: "r1", field: "from", keyword: "alice", targetFolderId: null, category: "social", enabled: true, createdAt: 1 } as any],
+    })
+    expect(state.rules).toEqual([
+      { id: "r1", from: "alice", subject: "", excludeFrom: "", excludeSubject: "", targetFolderId: null, category: "social", enabled: true, createdAt: 1, name: undefined },
+    ])
+  })
+
+  it("converts a legacy subject-field rule into the subject shape", () => {
+    const state = normalizeMailOrgState({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rules: [{ id: "r1", field: "subject", keyword: "invoice", targetFolderId: "f1", category: null, enabled: false, createdAt: 2 } as any],
+    })
+    expect(state.rules[0]).toMatchObject({ from: "", subject: "invoice", excludeFrom: "", excludeSubject: "" })
+  })
+
+  it("leaves an already-migrated rule untouched", () => {
+    const state = normalizeMailOrgState({
+      rules: [{ id: "r1", from: "a", subject: "b", excludeFrom: "c", excludeSubject: "d", targetFolderId: null, category: "social", enabled: true, createdAt: 1 }],
+    })
+    expect(state.rules[0]).toMatchObject({ from: "a", subject: "b", excludeFrom: "c", excludeSubject: "d" })
+  })
+
+  it("defaults to an empty rules array when none is stored", () => {
+    expect(normalizeMailOrgState({}).rules).toEqual([])
+  })
+})
 
 describe("assignmentKey / parseAssignmentKey", () => {
   it("round-trips a simple accountId/mailId pair", () => {

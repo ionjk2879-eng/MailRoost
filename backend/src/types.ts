@@ -134,11 +134,15 @@ export interface MailFolder {
 // - targetFolderId가 있으면 지정한 분류(또는 보관함)으로 이동 (새로 도착한 메일에만, 소급 적용 안 됨)
 // - category가 있으면 카테고리 탭으로 분류 (매번 다시 계산되는 값이라 기존 메일에도 바로 적용됨)
 // 최소 하나는 있어야 한다.
+// 조건은 전부 AND로 결합된다 (OR이 필요하면 규칙을 여러 개 만든다). 비어있는 문자열("")은 그
+// 조건을 따지지 않는다는 뜻 — from/subject 중 최소 하나는 비어있지 않아야 한다(라우트에서 검증).
 export interface AutoClassifyRule {
   id: string
   name?: string
-  field: "from" | "subject"
-  keyword: string
+  from: string
+  subject: string
+  excludeFrom: string
+  excludeSubject: string
   targetFolderId: string | null
   category: MailCategory | null
   enabled: boolean

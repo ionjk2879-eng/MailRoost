@@ -18,13 +18,26 @@ export type MailOrgOp =
   | { type: "renameFolder"; folderId: string; name: string; color?: string }
   | { type: "deleteFolder"; folderId: string }
   | { type: "reorderFolders"; order: string[] }
-  | { type: "createRule"; id: string; name: string; field: "from" | "subject"; keyword: string; targetFolderId: string | null; category: MailCategory | null; createdAt: number }
+  | {
+      type: "createRule"
+      id: string
+      name: string
+      from: string
+      subject: string
+      excludeFrom: string
+      excludeSubject: string
+      targetFolderId: string | null
+      category: MailCategory | null
+      createdAt: number
+    }
   | {
       type: "updateRule"
       ruleId: string
       name?: string
-      field?: string
-      keyword?: string
+      from?: string
+      subject?: string
+      excludeFrom?: string
+      excludeSubject?: string
       targetFolderId?: string | null
       category?: string | null
       enabled?: boolean
@@ -124,11 +137,16 @@ export function applyMailOrgOp(org: MailOrgState, op: MailOrgOp): unknown {
       if (op.targetFolderId && op.targetFolderId !== ARCHIVE_FOLDER_ID && !org.folders.some((f) => f.id === op.targetFolderId)) {
         return { ok: false as const, error: "분류 메일함을 찾을 수 없습니다." }
       }
+      if (!op.from.trim() && !op.subject.trim()) {
+        return { ok: false as const, error: "발신자 또는 제목 포함 조건을 하나 이상 입력해주세요." }
+      }
       const rule: AutoClassifyRule = {
         id: op.id,
         name: op.name,
-        field: op.field,
-        keyword: op.keyword,
+        from: op.from.trim(),
+        subject: op.subject.trim(),
+        excludeFrom: op.excludeFrom.trim(),
+        excludeSubject: op.excludeSubject.trim(),
         targetFolderId: op.targetFolderId,
         category: op.category,
         enabled: true,
@@ -148,16 +166,12 @@ export function applyMailOrgOp(org: MailOrgState, op: MailOrgOp): unknown {
         rule.name = name
       }
 
-      if (op.field !== undefined) {
-        if (op.field !== "from" && op.field !== "subject") {
-          return { ok: false as const, status: 400 as const, error: "잘못된 조건입니다." }
-        }
-        rule.field = op.field
-      }
-      if (op.keyword !== undefined) {
-        const keyword = op.keyword.trim()
-        if (!keyword) return { ok: false as const, status: 400 as const, error: "키워드를 입력해주세요." }
-        rule.keyword = keyword
+      if (op.from !== undefined) rule.from = op.from.trim()
+      if (op.subject !== undefined) rule.subject = op.subject.trim()
+      if (op.excludeFrom !== undefined) rule.excludeFrom = op.excludeFrom.trim()
+      if (op.excludeSubject !== undefined) rule.excludeSubject = op.excludeSubject.trim()
+      if (!rule.from && !rule.subject) {
+        return { ok: false as const, status: 400 as const, error: "발신자 또는 제목 포함 조건을 하나 이상 입력해주세요." }
       }
       if (op.targetFolderId !== undefined) {
         const targetFolderId = op.targetFolderId

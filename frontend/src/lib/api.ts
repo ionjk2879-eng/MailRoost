@@ -166,9 +166,15 @@ export async function fetchRules(): Promise<AutoClassifyRule[]> {
   return data.rules
 }
 
+export interface RuleConditions {
+  from: string
+  subject: string
+  excludeFrom: string
+  excludeSubject: string
+}
+
 export async function createRule(
-  field: "from" | "subject",
-  keyword: string,
+  conditions: RuleConditions,
   targetFolderId: string | null,
   category: MailCategory | null,
   name?: string,
@@ -176,7 +182,7 @@ export async function createRule(
   const res = await fetch("/api/rules", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ field, keyword, targetFolderId, category, name }),
+    body: JSON.stringify({ ...conditions, targetFolderId, category, name }),
   })
   const data = (await res.json().catch(() => ({}))) as { rule?: AutoClassifyRule; error?: string }
   if (!res.ok || !data.rule) return { ok: false, error: data.error ?? "규칙 생성에 실패했습니다." }
@@ -185,7 +191,7 @@ export async function createRule(
 
 export async function updateRule(
   id: string,
-  patch: Partial<Pick<AutoClassifyRule, "name" | "field" | "keyword" | "targetFolderId" | "category" | "enabled">>,
+  patch: Partial<Omit<AutoClassifyRule, "id" | "createdAt">>,
 ): Promise<{ ok: true; rule: AutoClassifyRule } | { ok: false; error: string }> {
   const res = await fetch(`/api/rules/${encodeURIComponent(id)}`, {
     method: "PATCH",

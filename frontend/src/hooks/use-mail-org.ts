@@ -6,6 +6,7 @@ import {
   createMemo,
   createQuickReply,
   createRule as apiCreateRule,
+  type RuleConditions,
   createSavedFilter as apiCreateSavedFilter,
   deleteContact,
   deleteDraft,
@@ -142,14 +143,13 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
   }
 
   const handleCreateRule = async (
-    field: "from" | "subject",
-    keyword: string,
+    conditions: RuleConditions,
     targetFolderId: string | null,
     category: MailCategory | null,
     applyToExisting?: boolean,
     name?: string,
   ): Promise<{ ok: boolean; error?: string; count?: number }> => {
-    const result = await apiCreateRule(field, keyword, targetFolderId, category, name)
+    const result = await apiCreateRule(conditions, targetFolderId, category, name)
     if (!result.ok) return { ok: false, error: result.error }
     setRules((prev) => [...prev, result.rule])
     if (applyToExisting && targetFolderId) {
@@ -161,7 +161,7 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
 
   const handleUpdateRule = async (
     ruleId: string,
-    patch: Partial<Pick<AutoClassifyRule, "name" | "field" | "keyword" | "targetFolderId" | "category" | "enabled">>,
+    patch: Partial<Omit<AutoClassifyRule, "id" | "createdAt">>,
   ): Promise<{ ok: boolean; error?: string }> => {
     const result = await apiUpdateRule(ruleId, patch)
     if (!result.ok) return result

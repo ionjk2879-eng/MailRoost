@@ -5,9 +5,18 @@ import type { AutoClassifyRule, Mail, MailCategory } from "../types"
 // Mail은 이 필드들을 전부 갖고 있으니 기존 호출부는 그대로 통과한다.
 type MatchableMail = Pick<Mail, "fromName" | "fromEmail" | "subject">
 
+function includesCI(haystack: string, needle: string): boolean {
+  return haystack.toLowerCase().includes(needle.toLowerCase())
+}
+
+// 조건은 전부 AND — 비어있는 조건("")은 따지지 않는다. include는 만족해야, exclude는 안 만족해야 통과.
 export function matchRule(rule: AutoClassifyRule, mail: MatchableMail): boolean {
-  const haystack = (rule.field === "from" ? `${mail.fromName} ${mail.fromEmail}` : mail.subject).toLowerCase()
-  return haystack.includes(rule.keyword.toLowerCase())
+  const fromHaystack = `${mail.fromName} ${mail.fromEmail}`
+  if (rule.from && !includesCI(fromHaystack, rule.from)) return false
+  if (rule.subject && !includesCI(mail.subject, rule.subject)) return false
+  if (rule.excludeFrom && includesCI(fromHaystack, rule.excludeFrom)) return false
+  if (rule.excludeSubject && includesCI(mail.subject, rule.excludeSubject)) return false
+  return true
 }
 
 // 카테고리는 저장되는 배정이 아니라 매번 새로 계산되는 값이라, 새 메일/기존 메일 구분 없이 매 조회마다 적용한다.

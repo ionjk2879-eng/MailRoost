@@ -22,19 +22,38 @@ rules.get("/rules", async (c) => {
   return c.json({ rules: org.rules })
 })
 
+// 이름을 직접 안 지었을 때 조건들로부터 그럴듯한 기본 이름을 만든다.
+function defaultRuleName(from: string, subject: string, excludeFrom: string, excludeSubject: string): string {
+  const parts: string[] = []
+  if (from) parts.push(`발신자 · ${from}`)
+  if (subject) parts.push(`제목 · ${subject}`)
+  if (excludeFrom) parts.push(`발신자 제외 · ${excludeFrom}`)
+  if (excludeSubject) parts.push(`제목 제외 · ${excludeSubject}`)
+  return parts.join(", ") || "새 규칙"
+}
+
 rules.post("/rules", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
 
   const body = await c.req
-    .json<{ name?: string; field?: string; keyword?: string; targetFolderId?: string | null; category?: string | null }>()
+    .json<{
+      name?: string
+      from?: string
+      subject?: string
+      excludeFrom?: string
+      excludeSubject?: string
+      targetFolderId?: string | null
+      category?: string | null
+    }>()
     .catch(() => null)
-  const field = body?.field
-  const keyword = body?.keyword?.trim()
+  const from = body?.from?.trim() ?? ""
+  const subject = body?.subject?.trim() ?? ""
+  const excludeFrom = body?.excludeFrom?.trim() ?? ""
+  const excludeSubject = body?.excludeSubject?.trim() ?? ""
   const targetFolderId = body?.targetFolderId ?? null
   const category = (body?.category ?? null) as MailCategory | null
-  if (field !== "from" && field !== "subject") return c.json({ error: "잘못된 조건입니다." }, 400)
-  if (!keyword) return c.json({ error: "키워드를 입력해주세요." }, 400)
+  if (!from && !subject) return c.json({ error: "발신자 또는 제목 포함 조건을 하나 이상 입력해주세요." }, 400)
   if (!targetFolderId && !category) return c.json({ error: "이동할 분류 메일함이나 카테고리를 선택해주세요." }, 400)
   if (category && !VALID_CATEGORIES.includes(category)) return c.json({ error: "잘못된 카테고리입니다." }, 400)
 
@@ -42,9 +61,11 @@ rules.post("/rules", async (c) => {
   const result = await mutateMailOrg<CreateRuleResult>(c.env, sessionId, session, {
     type: "createRule",
     id: crypto.randomUUID(),
-    name: body?.name?.trim() || `${field === "from" ? "발신자" : "제목"} · ${keyword}`,
-    field,
-    keyword,
+    name: body?.name?.trim() || defaultRuleName(from, subject, excludeFrom, excludeSubject),
+    from,
+    subject,
+    excludeFrom,
+    excludeSubject,
     targetFolderId,
     category,
     createdAt: Date.now(),
@@ -61,8 +82,10 @@ rules.patch("/rules/:id", async (c) => {
   const body = await c.req
     .json<{
       name?: string
-      field?: string
-      keyword?: string
+      from?: string
+      subject?: string
+      excludeFrom?: string
+      excludeSubject?: string
       targetFolderId?: string | null
       category?: string | null
       enabled?: boolean
@@ -74,8 +97,10 @@ rules.patch("/rules/:id", async (c) => {
     type: "updateRule",
     ruleId,
     name: body?.name,
-    field: body?.field,
-    keyword: body?.keyword,
+    from: body?.from,
+    subject: body?.subject,
+    excludeFrom: body?.excludeFrom,
+    excludeSubject: body?.excludeSubject,
     targetFolderId: body?.targetFolderId,
     category: body?.category,
     enabled: body?.enabled,
@@ -113,6 +138,13 @@ rules.post("/rules/:id/apply", async (c) => {
   const accountIds = Object.keys(accountMap)
   const accountPatch: Record<string, GmailTokenPatch> = {}
 
+  // 서버 검색(Gmail from:/subject: 연산자, IMAP 단일 기준 SEARCH)으로 후보를 좁힌 뒤 matchRule로
+  // (from/subject/excludeFrom/excludeSubject 전부) 정확히 걸러낸다. from이 있으면 from으로,
+  // 없으면(제목 조건만 있는 규칙) subject로 검색한다 — 조건이 전부 AND라 이 검색으로 진짜 매치를
+  // 놓치는 경우는 없다(참인 매치는 반드시 이 검색에도 걸린다).
+  const searchField: "from" | "subject" = rule.from ? "from" : "subject"
+  const searchKeyword = searchField === "from" ? rule.from : rule.subject
+
   const perAccountMatches = await Promise.all(
     accountIds.map(async (accountId): Promise<Mail[]> => {
       const record = accountMap[accountId]
@@ -123,18 +155,15 @@ rules.post("/rules/:id/apply", async (c) => {
           if (fresh.accessToken !== record.accessToken) {
             accountPatch[accountId] = gmailTokenPatchOf(fresh)
           }
-          // Gmail은 from:/subject: 연산자로 그 필드만 정확히 검색할 수 있다.
-          const op = rule.field === "from" ? "from" : "subject"
-          const mails = await gmailSearchMails(fresh.accessToken, accountId, `${op}:"${rule.keyword}"`, RULE_APPLY_SEARCH_LIMIT)
+          const mails = await gmailSearchMails(fresh.accessToken, accountId, `${searchField}:"${searchKeyword}"`, RULE_APPLY_SEARCH_LIMIT)
           return mails.filter((mail) => matchRule(rule, mail))
         }
-        // 규칙의 field(from/subject)를 넘겨 단일 기준 IMAP SEARCH를 쓴다.
-        // 삼중 OR+TEXT 구조는 네이버 등 일부 서버에서 결과가 비어있는 문제가 있다.
+        // 삼중 OR+TEXT 구조는 네이버 등 일부 서버에서 결과가 비어있는 문제가 있어 단일 기준으로 검색한다.
         if (record.provider === "naver") {
-          const mails = await naverSearchInbox(record.email, record.appPassword, accountId, rule.keyword, RULE_APPLY_SEARCH_LIMIT, rule.field)
+          const mails = await naverSearchInbox(record.email, record.appPassword, accountId, searchKeyword, RULE_APPLY_SEARCH_LIMIT, searchField)
           return mails.filter((mail) => matchRule(rule, mail))
         }
-        const mails = await searchImapMails(accountId, record, rule.keyword, RULE_APPLY_SEARCH_LIMIT, rule.field)
+        const mails = await searchImapMails(accountId, record, searchKeyword, RULE_APPLY_SEARCH_LIMIT, searchField)
         return mails.filter((mail) => matchRule(rule, mail))
       } catch (err) {
         console.error(`[rules-apply] account ${accountId} failed, skipping:`, err)

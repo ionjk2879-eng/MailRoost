@@ -22,8 +22,10 @@ function makeMail(overrides: Partial<Mail> = {}): Mail {
 function makeRule(overrides: Partial<AutoClassifyRule> = {}): AutoClassifyRule {
   return {
     id: "rule-1",
-    field: "from",
-    keyword: "alice",
+    from: "",
+    subject: "",
+    excludeFrom: "",
+    excludeSubject: "",
     targetFolderId: null,
     category: null,
     enabled: true,
@@ -33,42 +35,71 @@ function makeRule(overrides: Partial<AutoClassifyRule> = {}): AutoClassifyRule {
 }
 
 describe("matchRule", () => {
-  it("matches case-insensitively on the from field (fromName + fromEmail)", () => {
-    const rule = makeRule({ field: "from", keyword: "ALICE" })
+  it("matches case-insensitively on from (fromName + fromEmail)", () => {
+    const rule = makeRule({ from: "ALICE" })
     const mail = makeMail({ fromName: "Alice", fromEmail: "alice@example.com" })
     expect(matchRule(rule, mail)).toBe(true)
   })
 
-  it("matches on fromEmail even when keyword isn't in fromName", () => {
-    const rule = makeRule({ field: "from", keyword: "example.com" })
+  it("matches on fromEmail even when the keyword isn't in fromName", () => {
+    const rule = makeRule({ from: "example.com" })
     const mail = makeMail({ fromName: "Alice", fromEmail: "alice@example.com" })
     expect(matchRule(rule, mail)).toBe(true)
   })
 
-  it("matches case-insensitively on the subject field", () => {
-    const rule = makeRule({ field: "subject", keyword: "NEWSLETTER" })
+  it("matches case-insensitively on subject", () => {
+    const rule = makeRule({ subject: "NEWSLETTER" })
     const mail = makeMail({ subject: "Weekly newsletter" })
     expect(matchRule(rule, mail)).toBe(true)
   })
 
-  it("returns false when the keyword isn't present in the target field", () => {
-    const rule = makeRule({ field: "subject", keyword: "invoice" })
+  it("returns false when subject doesn't contain the keyword", () => {
+    const rule = makeRule({ subject: "invoice" })
     const mail = makeMail({ subject: "Weekly newsletter" })
     expect(matchRule(rule, mail)).toBe(false)
   })
 
-  it("does not match a from-field keyword against the subject", () => {
-    const rule = makeRule({ field: "from", keyword: "newsletter" })
+  it("does not match a from condition against the subject", () => {
+    const rule = makeRule({ from: "newsletter" })
     const mail = makeMail({ subject: "Weekly newsletter", fromName: "Alice", fromEmail: "alice@example.com" })
     expect(matchRule(rule, mail)).toBe(false)
+  })
+
+  it("combines from and subject with AND — both must match", () => {
+    const rule = makeRule({ from: "alice", subject: "invoice" })
+    const matching = makeMail({ fromName: "Alice", fromEmail: "alice@example.com", subject: "Your invoice" })
+    const onlyFromMatches = makeMail({ fromName: "Alice", fromEmail: "alice@example.com", subject: "Weekly newsletter" })
+    expect(matchRule(rule, matching)).toBe(true)
+    expect(matchRule(rule, onlyFromMatches)).toBe(false)
+  })
+
+  it("excludeFrom rejects a mail that would otherwise match", () => {
+    const rule = makeRule({ subject: "newsletter", excludeFrom: "spam.example" })
+    const fromSpam = makeMail({ fromEmail: "x@spam.example", subject: "Weekly newsletter" })
+    const fromElsewhere = makeMail({ fromEmail: "x@good.example", subject: "Weekly newsletter" })
+    expect(matchRule(rule, fromSpam)).toBe(false)
+    expect(matchRule(rule, fromElsewhere)).toBe(true)
+  })
+
+  it("excludeSubject rejects a mail that would otherwise match", () => {
+    const rule = makeRule({ from: "alice", excludeSubject: "unsubscribe" })
+    const unsub = makeMail({ fromEmail: "alice@example.com", subject: "Please unsubscribe" })
+    const normal = makeMail({ fromEmail: "alice@example.com", subject: "Hello" })
+    expect(matchRule(rule, unsub)).toBe(false)
+    expect(matchRule(rule, normal)).toBe(true)
+  })
+
+  it("a rule with no conditions at all matches everything (defensive — routes validate this can't be created)", () => {
+    const rule = makeRule()
+    expect(matchRule(rule, makeMail())).toBe(true)
   })
 })
 
 describe("applyCategoryRules", () => {
   it("returns the category of the first matching enabled rule (priority = array order)", () => {
     const rules: AutoClassifyRule[] = [
-      makeRule({ id: "r1", field: "from", keyword: "alice", category: "social", enabled: true }),
-      makeRule({ id: "r2", field: "from", keyword: "alice", category: "promotions", enabled: true }),
+      makeRule({ id: "r1", from: "alice", category: "social", enabled: true }),
+      makeRule({ id: "r2", from: "alice", category: "promotions", enabled: true }),
     ]
     const mail = makeMail({ fromName: "Alice", fromEmail: "alice@example.com" })
     expect(applyCategoryRules(rules, mail)).toBe("social")
@@ -76,8 +107,8 @@ describe("applyCategoryRules", () => {
 
   it("skips a rule with enabled: false", () => {
     const rules: AutoClassifyRule[] = [
-      makeRule({ id: "r1", field: "from", keyword: "alice", category: "social", enabled: false }),
-      makeRule({ id: "r2", field: "from", keyword: "alice", category: "promotions", enabled: true }),
+      makeRule({ id: "r1", from: "alice", category: "social", enabled: false }),
+      makeRule({ id: "r2", from: "alice", category: "promotions", enabled: true }),
     ]
     const mail = makeMail({ fromName: "Alice", fromEmail: "alice@example.com" })
     expect(applyCategoryRules(rules, mail)).toBe("promotions")
@@ -85,8 +116,8 @@ describe("applyCategoryRules", () => {
 
   it("skips a rule without a category even if it matches", () => {
     const rules: AutoClassifyRule[] = [
-      makeRule({ id: "r1", field: "from", keyword: "alice", category: null, targetFolderId: "folder-1", enabled: true }),
-      makeRule({ id: "r2", field: "from", keyword: "alice", category: "updates", enabled: true }),
+      makeRule({ id: "r1", from: "alice", category: null, targetFolderId: "folder-1", enabled: true }),
+      makeRule({ id: "r2", from: "alice", category: "updates", enabled: true }),
     ]
     const mail = makeMail({ fromName: "Alice", fromEmail: "alice@example.com" })
     expect(applyCategoryRules(rules, mail)).toBe("updates")
@@ -94,7 +125,7 @@ describe("applyCategoryRules", () => {
 
   it("falls back to the mail's original category when nothing matches", () => {
     const rules: AutoClassifyRule[] = [
-      makeRule({ id: "r1", field: "from", keyword: "bob", category: "social", enabled: true }),
+      makeRule({ id: "r1", from: "bob", category: "social", enabled: true }),
     ]
     const mail = makeMail({ fromName: "Alice", fromEmail: "alice@example.com", category: "forums" })
     expect(applyCategoryRules(rules, mail)).toBe("forums")

@@ -15,8 +15,10 @@ function makeRule(overrides: Partial<AutoClassifyRule> = {}): AutoClassifyRule {
   return {
     id: "rule-1",
     name: "Rule 1",
-    field: "from",
-    keyword: "alice",
+    from: "alice",
+    subject: "",
+    excludeFrom: "",
+    excludeSubject: "",
     targetFolderId: "folder-1",
     category: null,
     enabled: true,
@@ -90,8 +92,10 @@ describe("rules", () => {
       type: "createRule",
       id: "r1",
       name: "R1",
-      field: "from",
-      keyword: "alice",
+      from: "alice",
+      subject: "",
+      excludeFrom: "",
+      excludeSubject: "",
       targetFolderId: "f1",
       category: null,
       createdAt: 1,
@@ -106,8 +110,10 @@ describe("rules", () => {
       type: "createRule",
       id: "r1",
       name: "R1",
-      field: "from",
-      keyword: "alice",
+      from: "alice",
+      subject: "",
+      excludeFrom: "",
+      excludeSubject: "",
       targetFolderId: "missing",
       category: null,
       createdAt: 1,
@@ -116,21 +122,48 @@ describe("rules", () => {
     expect(org.rules).toHaveLength(0)
   })
 
+  it("createRule fails when from and subject are both empty", () => {
+    const org = makeOrg({ folders: [makeFolder({ id: "f1" })] })
+    const result = applyMailOrgOp(org, {
+      type: "createRule",
+      id: "r1",
+      name: "R1",
+      from: "  ",
+      subject: "",
+      excludeFrom: "",
+      excludeSubject: "",
+      targetFolderId: "f1",
+      category: null,
+      createdAt: 1,
+    }) as { ok: true } | { ok: false; error: string }
+    expect(result.ok).toBe(false)
+    expect(org.rules).toHaveLength(0)
+  })
+
   it("updateRule updates only the provided fields", () => {
-    const org = makeOrg({ folders: [makeFolder({ id: "f1" })], rules: [makeRule({ id: "r1", keyword: "alice" })] })
-    const result = applyMailOrgOp(org, { type: "updateRule", ruleId: "r1", keyword: "bob" }) as
+    const org = makeOrg({ folders: [makeFolder({ id: "f1" })], rules: [makeRule({ id: "r1", from: "alice" })] })
+    const result = applyMailOrgOp(org, { type: "updateRule", ruleId: "r1", from: "bob" }) as
       | { ok: true; rule: AutoClassifyRule }
       | { ok: false }
     expect(result.ok).toBe(true)
     if (result.ok) {
-      expect(result.rule.keyword).toBe("bob")
-      expect(result.rule.field).toBe("from")
+      expect(result.rule.from).toBe("bob")
+      expect(result.rule.subject).toBe("")
     }
+  })
+
+  it("updateRule rejects clearing both from and subject", () => {
+    const org = makeOrg({ rules: [makeRule({ id: "r1", from: "alice", subject: "" })] })
+    const result = applyMailOrgOp(org, { type: "updateRule", ruleId: "r1", from: "" }) as
+      | { ok: true }
+      | { ok: false; status: number; error: string }
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(400)
   })
 
   it("updateRule returns 404 for an unknown rule", () => {
     const org = makeOrg()
-    const result = applyMailOrgOp(org, { type: "updateRule", ruleId: "missing", keyword: "bob" }) as
+    const result = applyMailOrgOp(org, { type: "updateRule", ruleId: "missing", from: "bob" }) as
       | { ok: true }
       | { ok: false; status: number; error: string }
     expect(result.ok).toBe(false)
@@ -266,7 +299,7 @@ describe("classifyMails", () => {
   it("classifies a new mail against an enabled rule and marks it classified", () => {
     const org = makeOrg({
       folders: [makeFolder({ id: "f1" })],
-      rules: [makeRule({ targetFolderId: "f1", enabled: true, field: "from", keyword: "alice" })],
+      rules: [makeRule({ targetFolderId: "f1", enabled: true, from: "alice" })],
     })
     const result = applyMailOrgOp(org, {
       type: "classifyMails",

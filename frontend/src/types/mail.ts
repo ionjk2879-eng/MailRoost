@@ -21,11 +21,14 @@ export interface MailFolder {
 // 보관함은 사용자 정의 분류와 동일한 배정 메커니즘을 쓰는 예약된 가상 폴더 ID
 export const ARCHIVE_FOLDER_ID = "archive"
 
+// 조건은 전부 AND. 빈 문자열("")이면 그 조건을 따지지 않는다 — from/subject 중 최소 하나는 있어야 함.
 export interface AutoClassifyRule {
   id: string
   name?: string
-  field: "from" | "subject"
-  keyword: string
+  from: string
+  subject: string
+  excludeFrom: string
+  excludeSubject: string
   targetFolderId: string | null
   category: MailCategory | null
   enabled: boolean

@@ -1,4 +1,4 @@
-import type { Env, MailOrgState, StoredSession } from "../types"
+import type { AutoClassifyRule, Env, MailOrgState, StoredSession } from "../types"
 import { applyMailOrgOp, type MailOrgOp } from "./mailOrgOps"
 import { getMailOrgStub } from "./mailOrgStore"
 import { writeSession } from "./session"
@@ -48,10 +48,38 @@ export function emptyMailOrgState(): MailOrgState {
 // 별도 archived 맵으로 분리되어 있다. 예전 형식으로 저장된 값도 새 형식으로 옮겨준다.
 type LegacyAssignments = Record<string, string | string[]>
 
+// 이 기능이 추가되기 전에는 규칙 조건이 field("from"|"subject") + keyword 하나였다. 지금은
+// from/subject/excludeFrom/excludeSubject 네 개의 AND 조건으로 확장됐다 — 예전 형식으로 저장된
+// 규칙도 새 형식으로 옮겨준다.
+type LegacyRule = Omit<AutoClassifyRule, "from" | "subject" | "excludeFrom" | "excludeSubject"> & {
+  field?: "from" | "subject"
+  keyword?: string
+  from?: string
+  subject?: string
+  excludeFrom?: string
+  excludeSubject?: string
+}
+
+function normalizeRule(raw: LegacyRule): AutoClassifyRule {
+  return {
+    id: raw.id,
+    name: raw.name,
+    from: raw.from ?? (raw.field === "from" ? raw.keyword ?? "" : ""),
+    subject: raw.subject ?? (raw.field === "subject" ? raw.keyword ?? "" : ""),
+    excludeFrom: raw.excludeFrom ?? "",
+    excludeSubject: raw.excludeSubject ?? "",
+    targetFolderId: raw.targetFolderId,
+    category: raw.category,
+    enabled: raw.enabled,
+    createdAt: raw.createdAt,
+  }
+}
+
 export function normalizeMailOrgState(
-  state: Partial<Omit<MailOrgState, "assignments" | "archived">> & {
+  state: Partial<Omit<MailOrgState, "assignments" | "archived" | "rules">> & {
     assignments?: LegacyAssignments
     archived?: Record<string, true>
+    rules?: LegacyRule[]
   },
 ): MailOrgState {
   const assignments: Record<string, string[]> = {}
@@ -73,7 +101,7 @@ export function normalizeMailOrgState(
     folders: state.folders ?? [],
     assignments,
     archived,
-    rules: state.rules ?? [],
+    rules: (state.rules ?? []).map(normalizeRule),
     classified: state.classified ?? {},
     accountOrder: state.accountOrder ?? [],
     signatures: state.signatures ?? {},
