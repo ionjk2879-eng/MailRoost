@@ -551,6 +551,18 @@ export async function getMailDetail(accessToken: string, accountId: string, mess
   return mail
 }
 
+// .eml 내보내기용 — format=raw는 원본 RFC822 메시지를 base64url로 통째로 준다.
+export async function getRawMessage(accessToken: string, messageId: string): Promise<Uint8Array | null> {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages/${encodeURIComponent(messageId)}?format=raw`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`Gmail 원본 메일 조회 실패: ${res.status}`)
+  const json = (await res.json()) as { raw?: string }
+  if (!json.raw) return null
+  return decodeBase64UrlToBytes(json.raw)
+}
+
 export async function getAttachment(
   accessToken: string,
   messageId: string,

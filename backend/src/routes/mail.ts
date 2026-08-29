@@ -4,6 +4,7 @@ import {
   batchModifyMessages as gmailBatchModify,
   ensureFreshToken,
   getMailDetail,
+  getRawMessage,
   listInboxMails,
   markAsRead as gmailMarkAsRead,
   markAsUnread as gmailMarkAsUnread,
@@ -18,6 +19,7 @@ import {
   daumDeleteMail,
   daumDeleteMailBulk,
   daumGetMailDetail,
+  daumGetRawMessage,
   daumMarkAsRead,
   daumMarkAsReadBulk,
   daumMarkAllInboxUnreadAsRead,
@@ -27,6 +29,7 @@ import {
   imapDeleteMail,
   imapDeleteMailBulk,
   imapGetMailDetail,
+  imapGetRawMessage,
   imapMarkAsRead,
   imapMarkAllInboxUnreadAsRead,
   imapMarkAsReadBulk,
@@ -36,6 +39,7 @@ import {
   naverDeleteMail,
   naverDeleteMailBulk,
   naverGetMailDetail,
+  naverGetRawMessage,
   naverListInbox,
   naverMarkAsRead,
   naverMarkAsReadBulk,
@@ -598,6 +602,53 @@ mail.get("/mail/:id/attachment/:attachmentId", async (c) => {
     headers: {
       "Content-Type": result.mimeType || fallbackMimeType,
       "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(result.filename || fallbackFilename)}`,
+      "Cache-Control": "private, max-age=3600",
+    },
+  })
+})
+
+// 파일명에 못 쓰는 문자만 걷어낸다 — 메일 제목을 그대로 파일명으로 쓰기 위함.
+function sanitizeFilename(name: string): string {
+  const cleaned = name.replace(/[\\/:*?"<>|]/g, "_").trim()
+  return cleaned.slice(0, 100) || "mail"
+}
+
+mail.get("/mail/:id/eml", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  const accountId = c.req.query("accountId")
+  const mailId = c.req.param("id")
+  if (!sessionId || !accountId) return c.json({ error: "bad request" }, 400)
+
+  const filename = `${sanitizeFilename(c.req.query("subject") || "mail")}.eml`
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const record = accountMap[accountId]
+  if (!record) return c.json({ error: "not found" }, 404)
+
+  let bytes: Uint8Array | null
+  if (record.provider === "naver") {
+    bytes = await naverGetRawMessage(record.email, record.appPassword, mailId)
+  } else if (record.provider === "daum") {
+    bytes = await daumGetRawMessage(record.email, record.password, mailId)
+  } else if (record.provider === "imap") {
+    bytes = await imapGetRawMessage({ host: record.host, port: record.port, email: record.email, password: record.password }, mailId)
+  } else {
+    const fresh = await ensureFreshToken(c.env, record)
+    if (fresh.accessToken !== record.accessToken) {
+      await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+        [accountId]: gmailTokenPatchOf(fresh),
+      })
+    }
+    bytes = await getRawMessage(fresh.accessToken, mailId)
+  }
+
+  if (!bytes) return c.json({ error: "메일을 찾을 수 없습니다." }, 404)
+
+  return new Response(new Blob([bytes]), {
+    headers: {
+      "Content-Type": "message/rfc822",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
       "Cache-Control": "private, max-age=3600",
     },
   })

@@ -367,6 +367,11 @@ export function inlineAttachmentUrl(mailId: string, accountId: string, attachmen
   return `${attachmentDownloadUrl(mailId, accountId, attachment)}&inline=1`
 }
 
+export function emlDownloadUrl(mailId: string, accountId: string, subject: string): string {
+  const params = new URLSearchParams({ accountId, subject })
+  return `/api/mail/${encodeURIComponent(mailId)}/eml?${params}`
+}
+
 export async function fetchCurrentUser(): Promise<{ id: string; email: string } | null> {
   const res = await fetch("/api/me")
   if (!res.ok) return null

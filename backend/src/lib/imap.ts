@@ -534,6 +534,13 @@ async function imapFetchRawByUid(
   })
 }
 
+// .eml 내보내기용 — imapFetchRawByUid가 이미 상세조회에서 원본 RFC822 텍스트를 받아오므로 그대로 재사용한다.
+export async function imapGetRawMessage(config: ImapConfig, uid: string): Promise<Uint8Array | null> {
+  const fetched = await imapFetchRawByUid(config, uid)
+  if (!fetched) return null
+  return new TextEncoder().encode(fetched.raw)
+}
+
 export async function imapGetMailDetail(config: ImapConfig, accountId: string, uid: string): Promise<Mail> {
   const fetched = await imapFetchRawByUid(config, uid)
   if (!fetched) throw new Error("메일을 찾을 수 없습니다.")
@@ -697,6 +704,10 @@ export async function naverGetMailDetail(
   return imapGetMailDetail(naverConfig(email, appPassword), accountId, uid)
 }
 
+export async function naverGetRawMessage(email: string, appPassword: string, uid: string): Promise<Uint8Array | null> {
+  return imapGetRawMessage(naverConfig(email, appPassword), uid)
+}
+
 export async function naverMarkAsReadBulk(email: string, appPassword: string, uids: string[], read: boolean): Promise<void> {
   return imapMarkAsReadBulk(naverConfig(email, appPassword), uids, read)
 }
@@ -798,6 +809,10 @@ export async function daumGetMailDetail(
   uid: string,
 ): Promise<Mail> {
   return imapGetMailDetail(daumConfig(email, password), accountId, uid)
+}
+
+export async function daumGetRawMessage(email: string, password: string, uid: string): Promise<Uint8Array | null> {
+  return imapGetRawMessage(daumConfig(email, password), uid)
 }
 
 export async function daumMarkAsReadBulk(email: string, password: string, uids: string[], read: boolean): Promise<void> {

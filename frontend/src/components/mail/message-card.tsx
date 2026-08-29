@@ -1,11 +1,11 @@
-import { Archive, Check, Clock, Download, Eye, Folder, FolderInput, Forward, Inbox, MailOpen, Paperclip, Reply, ReplyAll, Star, Trash2, VolumeX } from "lucide-react"
+import { Archive, Check, Clock, Download, Eye, FileDown, Folder, FolderInput, Forward, Inbox, MailOpen, Paperclip, Reply, ReplyAll, Star, Trash2, VolumeX } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ProviderIcon } from "@/components/mail/provider-icon"
 import { SenderIcon } from "@/components/mail/sender-icon"
 import { AttachmentPreview, isPreviewableAttachment } from "@/components/mail/attachment-preview"
-import { attachmentDownloadUrl, inlineAttachmentUrl } from "@/lib/api"
+import { attachmentDownloadUrl, emlDownloadUrl, inlineAttachmentUrl } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Account, Mail, MailAttachment, MailFolder } from "@/types/mail"
@@ -211,6 +211,16 @@ export function MessageCard({
                 <Archive className="size-4" />
               </Button>
             )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              title="원본 메일 저장 (.eml)"
+              render={<a href={emlDownloadUrl(mail.id, mail.accountId, mail.subject)} download />}
+              nativeButton={false}
+            >
+              <FileDown className="size-4" />
+            </Button>
             {(onMove || onToggleFolder) && (
               <div ref={moveRef} className="relative">
                 <Button variant="ghost" size="icon" className="size-8" title="분류 메일함으로 이동" onClick={() => setMoveOpen((v) => !v)}>
