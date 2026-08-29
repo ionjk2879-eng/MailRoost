@@ -544,6 +544,10 @@ export async function imapGetRawMessage(config: ImapConfig, uid: string): Promis
 // 첨부함 화면용 — "첨부파일 있음" 검색이 표준 IMAP에 없으므로, 최근 메일 범위의 원본 전체를
 // 한 번의 연결로 가져온 뒤 이미 있는 listMimeAttachments로 첨부파일을 추출한다. 이 함수가 정확한
 // 크기까지 계산해주므로 별도 근사치 로직이 필요 없다.
+// 한 번에 원본 전체를 여러 통 받아오면(최대 100통) Workers 메모리 한도를 넘길 수 있어서,
+// 20통씩 나눠 받아 처리한다 — 같은 연결 안에서 FETCH만 여러 번 호출.
+const ATTACHMENT_SCAN_CHUNK_SIZE = 20
+
 export async function imapListAttachments(config: ImapConfig, accountId: string, maxResults = 100): Promise<AttachmentListItem[]> {
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
@@ -557,38 +561,41 @@ export async function imapListAttachments(config: ImapConfig, accountId: string,
     if (exists === 0) return []
     const start = Math.max(1, exists - maxResults + 1)
 
-    const fetchResult = await client.command(`FETCH ${start}:${exists} (UID INTERNALDATE BODY.PEEK[])`)
-    if (!fetchResult.ok) return []
-
     const results: AttachmentListItem[] = []
-    for (const line of fetchResult.lines) {
-      if (!/^\*\s+\d+\s+FETCH/i.test(line)) continue
-      const parsed = parseFetchLine(line)
-      if (!parsed || parsed.uid === undefined || !parsed.literalText) continue
+    for (let chunkStart = start; chunkStart <= exists; chunkStart += ATTACHMENT_SCAN_CHUNK_SIZE) {
+      const chunkEnd = Math.min(chunkStart + ATTACHMENT_SCAN_CHUNK_SIZE - 1, exists)
+      const fetchResult = await client.command(`FETCH ${chunkStart}:${chunkEnd} (UID INTERNALDATE BODY.PEEK[])`)
+      if (!fetchResult.ok) continue
 
-      const attachments = listMimeAttachments(parsed.literalText)
-      if (attachments.length === 0) continue
+      for (const line of fetchResult.lines) {
+        if (!/^\*\s+\d+\s+FETCH/i.test(line)) continue
+        const parsed = parseFetchLine(line)
+        if (!parsed || parsed.uid === undefined || !parsed.literalText) continue
 
-      const idx = parsed.literalText.search(/\n\n/)
-      const headerBlock = idx === -1 ? parsed.literalText : parsed.literalText.slice(0, idx)
-      const headers = parseHeaderBlock(headerBlock)
-      const { name: fromName, email: fromEmail } = parseFromHeader(headers["from"] ?? "")
-      const subject = decodeRfc2047(headers["subject"] ?? "") || "(제목 없음)"
-      const receivedAt = parseInternalDate(parsed.internalDate)
+        const attachments = listMimeAttachments(parsed.literalText)
+        if (attachments.length === 0) continue
 
-      for (const att of attachments) {
-        results.push({
-          accountId,
-          mailId: String(parsed.uid),
-          attachmentId: att.id,
-          filename: att.filename,
-          mimeType: att.mimeType,
-          size: att.size,
-          fromName,
-          fromEmail,
-          subject,
-          receivedAt,
-        })
+        const idx = parsed.literalText.search(/\n\n/)
+        const headerBlock = idx === -1 ? parsed.literalText : parsed.literalText.slice(0, idx)
+        const headers = parseHeaderBlock(headerBlock)
+        const { name: fromName, email: fromEmail } = parseFromHeader(headers["from"] ?? "")
+        const subject = decodeRfc2047(headers["subject"] ?? "") || "(제목 없음)"
+        const receivedAt = parseInternalDate(parsed.internalDate)
+
+        for (const att of attachments) {
+          results.push({
+            accountId,
+            mailId: String(parsed.uid),
+            attachmentId: att.id,
+            filename: att.filename,
+            mimeType: att.mimeType,
+            size: att.size,
+            fromName,
+            fromEmail,
+            subject,
+            receivedAt,
+          })
+        }
       }
     }
     return results
