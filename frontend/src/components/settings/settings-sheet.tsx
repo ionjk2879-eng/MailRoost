@@ -1,5 +1,5 @@
-import { Bell, BellOff, LockKeyhole, Mail, Moon, Plus, Sun, SunMoon, Trash2, Volume2, VolumeX } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { Bell, BellOff, Download, LockKeyhole, Mail, Moon, Plus, Sun, SunMoon, Trash2, Upload, Volume2, VolumeX } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ConnectDaumDialog } from "@/components/mail/connect-daum-dialog"
@@ -7,7 +7,7 @@ import { ConnectImapDialog } from "@/components/mail/connect-imap-dialog"
 import { ConnectNaverDialog } from "@/components/mail/connect-naver-dialog"
 import { ProviderIcon } from "@/components/mail/provider-icon"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { deleteAccount, gmailLoginUrl } from "@/lib/api"
+import { deleteAccount, exportMailOrgBackup, gmailLoginUrl, importMailOrgBackup } from "@/lib/api"
 import type { Account } from "@/types/mail"
 import {
   type NotificationSound,
@@ -27,6 +27,7 @@ interface SettingsSheetProps {
   accounts: Account[]
   onAccountConnected: () => void
   onAccountDeleted: (accountId: string) => void
+  onBackupImported: () => void
 }
 
 const SOUND_OPTIONS: { value: NotificationSound; label: string; description: string }[] = [
@@ -41,7 +42,7 @@ const THEME_OPTIONS: { value: Theme; label: string; icon: React.ReactNode }[] = 
   { value: "system", label: "시스템", icon: <SunMoon className="size-3.5" /> },
 ]
 
-export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onAccountDeleted }: SettingsSheetProps) {
+export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onAccountDeleted, onBackupImported }: SettingsSheetProps) {
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushLoading, setPushLoading] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
@@ -51,6 +52,10 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
   const [pendingDelete, setPendingDelete] = useState<Account | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [pendingImport, setPendingImport] = useState<unknown>(null)
+  const [isImporting, setIsImporting] = useState(false)
+  const [backupError, setBackupError] = useState<string | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
   const connectedAccounts = accounts.filter((account) => account.id.includes(":"))
 
   useEffect(() => {
@@ -105,6 +110,47 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
     }
     onAccountDeleted(pendingDelete.id)
     setPendingDelete(null)
+  }
+
+  const handleExportBackup = async () => {
+    setBackupError(null)
+    const result = await exportMailOrgBackup()
+    if (!result.ok) {
+      setBackupError(result.error)
+      return
+    }
+    const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `mailroost-backup-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleImportFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    setBackupError(null)
+    try {
+      setPendingImport(JSON.parse(await file.text()))
+    } catch {
+      setBackupError("올바른 백업 파일(JSON)이 아닙니다.")
+    }
+  }
+
+  const handleConfirmImport = async () => {
+    setIsImporting(true)
+    const result = await importMailOrgBackup(pendingImport)
+    setIsImporting(false)
+    if (!result.ok) {
+      setBackupError(result.error ?? "백업 가져오기에 실패했습니다.")
+      setPendingImport(null)
+      return
+    }
+    setPendingImport(null)
+    onBackupImported()
   }
 
   return (
@@ -261,6 +307,27 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
               ))}
             </div>
           </section>
+
+          <div className="border-t" />
+          {/* 백업 */}
+          <section className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-sm font-medium">백업</h3>
+              <p className="text-muted-foreground text-xs">분류 메일함, 자동분류 규칙, 스누즈, 뮤트, 저장된 필터를 내보내거나 가져옵니다.</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportBackup}>
+                <Download className="size-3.5" />
+                내보내기
+              </Button>
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => importInputRef.current?.click()}>
+                <Upload className="size-3.5" />
+                가져오기
+              </Button>
+              <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleImportFileSelected} />
+            </div>
+            {backupError && <p className="text-destructive text-xs">{backupError}</p>}
+          </section>
         </div>
       </SheetContent>
 
@@ -274,6 +341,19 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
           <DialogFooter>
             <DialogClose render={<Button variant="outline" disabled={isDeleting} />}>취소</DialogClose>
             <Button variant="destructive" onClick={handleDeleteAccount} disabled={isDeleting}>{isDeleting ? "해제 중..." : "연결 해제"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pendingImport !== null} onOpenChange={(value) => { if (!value) setPendingImport(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>백업 가져오기</DialogTitle>
+            <DialogDescription>지금 저장된 분류 메일함/규칙/스누즈/뮤트/저장된 필터를 백업 파일 내용으로 덮어씁니다. 되돌릴 수 없습니다.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" disabled={isImporting} />}>취소</DialogClose>
+            <Button variant="destructive" onClick={handleConfirmImport} disabled={isImporting}>{isImporting ? "가져오는 중..." : "덮어쓰기"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -139,6 +139,26 @@ export async function reorderFolders(order: string[]): Promise<{ ok: boolean; er
   return { ok: true }
 }
 
+// 백업 파일 내용은 프런트가 구조를 알 필요 없이 그대로 내려받거나 업로드만 하면 되므로 unknown으로 둔다.
+export async function exportMailOrgBackup(): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> {
+  const res = await fetch("/api/backup/export")
+  if (!res.ok) return { ok: false, error: "백업 내보내기에 실패했습니다." }
+  return { ok: true, data: await res.json() }
+}
+
+export async function importMailOrgBackup(backup: unknown): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("/api/backup/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(backup),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "백업 가져오기에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
 export async function fetchRules(): Promise<AutoClassifyRule[]> {
   const res = await fetch("/api/rules")
   if (!res.ok) return []

@@ -1,5 +1,5 @@
 import type { AutoClassifyRule, MailCategory, MailFolder, MailOrgState, SavedFilter } from "../types"
-import { ARCHIVE_FOLDER_ID, applyOrder, assignmentKey, folderIdsOf, isArchived, toggleFolderAssignment } from "./mailOrg"
+import { ARCHIVE_FOLDER_ID, applyOrder, assignmentKey, folderIdsOf, isArchived, normalizeMailOrgState, toggleFolderAssignment } from "./mailOrg"
 import { applyCategoryRules, matchRule } from "./rules"
 
 export const VALID_CATEGORIES: MailCategory[] = ["primary", "social", "promotions", "updates", "forums"]
@@ -57,6 +57,7 @@ export type MailOrgOp =
   | { type: "pruneExpiredSnoozes"; now: number }
   | { type: "muteSender"; email: string }
   | { type: "unmuteSender"; email: string }
+  | { type: "replaceState"; state: Partial<MailOrgState> }
 
 // applyMailOrgOp 결과 타입 모음. applyMailOrgOp 자체는 unknown을 반환하므로(각 case의 반환 타입이
 // 서로 다른 큰 switch라 제네릭으로 정확히 좁히기 번거로움), 호출부(mutateMailOrg<T>(...))에서
@@ -321,6 +322,23 @@ export function applyMailOrgOp(org: MailOrgState, op: MailOrgOp): unknown {
     case "unmuteSender": {
       org.muted = (org.muted ?? []).filter((e) => e !== op.email)
       return undefined
+    }
+
+    // 백업 가져오기 — 덮어쓰기. org는 호출부(DO/게스트 세션)가 들고 있는 참조라 재할당이 아니라
+    // 필드별로 옮겨 담아야 mutateMailOrg가 저장하는 값에 반영된다.
+    case "replaceState": {
+      const next = normalizeMailOrgState(op.state)
+      org.folders = next.folders
+      org.assignments = next.assignments
+      org.archived = next.archived
+      org.rules = next.rules
+      org.classified = next.classified
+      org.accountOrder = next.accountOrder
+      org.signatures = next.signatures
+      org.snoozed = next.snoozed
+      org.muted = next.muted
+      org.savedFilters = next.savedFilters
+      return next
     }
   }
 }

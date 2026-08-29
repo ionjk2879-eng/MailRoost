@@ -377,3 +377,33 @@ describe("createSavedFilter / deleteSavedFilter", () => {
     expect(org.savedFilters).toHaveLength(0)
   })
 })
+
+describe("replaceState", () => {
+  it("overwrites every field with the imported state", () => {
+    const org = makeOrg({
+      folders: [makeFolder({ id: "old" })],
+      muted: ["old@example.com"],
+    })
+    const incoming = makeOrg({
+      folders: [makeFolder({ id: "new", name: "New" })],
+      rules: [makeRule({ id: "new-rule" })],
+      muted: ["new@example.com"],
+    })
+
+    applyMailOrgOp(org, { type: "replaceState", state: incoming })
+
+    expect(org.folders.map((f) => f.id)).toEqual(["new"])
+    expect(org.rules.map((r) => r.id)).toEqual(["new-rule"])
+    expect(org.muted).toEqual(["new@example.com"])
+  })
+
+  it("fills missing fields with defaults instead of throwing", () => {
+    const org = makeOrg({ folders: [makeFolder()] })
+
+    applyMailOrgOp(org, { type: "replaceState", state: {} })
+
+    expect(org.folders).toEqual([])
+    expect(org.rules).toEqual([])
+    expect(org.muted).toEqual([])
+  })
+})

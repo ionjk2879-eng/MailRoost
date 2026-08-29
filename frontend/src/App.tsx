@@ -1246,6 +1246,7 @@ function App() {
         accounts={accounts}
         onAccountConnected={workspace.loadAccountsAndMails}
         onAccountDeleted={handleDeleteAccount}
+        onBackupImported={() => { void mailOrg.loadInitialData(); void workspace.loadAccountsAndMails() }}
       />
     </SidebarProvider>
   )
