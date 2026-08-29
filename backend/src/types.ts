@@ -70,6 +70,11 @@ export interface Mail {
   // 배정된 사용자 정의 분류 메일함 id 목록 (메일 하나가 여러 개에 동시에 속할 수 있다). 보관함은 포함되지
   // 않는다 — 보관 여부는 별도 관리된다. /mail 목록 조회에서만 채워진다.
   folderIds?: string[]
+  // 스레드 그룹핑용 — Gmail은 threadId만, IMAP(네이버/다음/범용)은 messageId/references/inReplyTo만 채워진다.
+  threadId?: string
+  messageId?: string
+  references?: string[]
+  inReplyTo?: string
 }
 
 export interface GmailAccountRecord {

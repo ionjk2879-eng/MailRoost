@@ -161,8 +161,9 @@ interface GmailMessagePart {
   parts?: GmailMessagePart[]
 }
 
-interface GmailMessage {
+export interface GmailMessage {
   id: string
+  threadId?: string
   snippet?: string
   internalDate?: string
   labelIds?: string[]
@@ -189,7 +190,7 @@ function deriveCategory(labelIds: string[]): MailCategory {
   return "primary"
 }
 
-function mapMessageToMail(msg: GmailMessage, accountId: string): Mail {
+export function mapMessageToMail(msg: GmailMessage, accountId: string): Mail {
   const headers = msg.payload?.headers
   const { name: fromName, email: fromEmail } = parseFromHeader(getHeader(headers, "From"))
   const labelIds = msg.labelIds ?? []
@@ -205,6 +206,7 @@ function mapMessageToMail(msg: GmailMessage, accountId: string): Mail {
     receivedAt: msg.internalDate ? new Date(Number(msg.internalDate)).toISOString() : new Date().toISOString(),
     isRead: !labelIds.includes("UNREAD"),
     isStarred: labelIds.includes("STARRED"),
+    threadId: msg.threadId,
   }
 }
 
