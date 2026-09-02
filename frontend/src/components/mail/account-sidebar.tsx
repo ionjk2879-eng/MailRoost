@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Paperclip, Pencil, Plus, Settings, Sparkles, Star, StickyNote, Trash2, VolumeX } from "lucide-react"
+import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Paperclip, Pencil, Plus, Settings, Sparkles, Star, StickyNote, Trash2 } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -101,9 +101,8 @@ interface AccountSidebarProps {
   isMemoView: boolean
   isDraftsView: boolean
   draftCount: number
-  isSnoozeView: boolean
+  isSnoozeMuteView: boolean
   snoozeCount: number
-  isMutedView: boolean
   folders: MailFolder[]
   selectedFolderId: string | null
   isFolderView: boolean
@@ -116,8 +115,7 @@ interface AccountSidebarProps {
   onGoStarred: () => void
   onGoMemo: () => void
   onGoDrafts: () => void
-  onGoSnooze: () => void
-  onGoMuted: () => void
+  onGoSnoozeMute: () => void
   onSelectFolder: (folderId: string) => void
   onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
   onRenameFolder: (folderId: string, name: string, color: string) => Promise<{ ok: boolean; error?: string }>
@@ -143,9 +141,8 @@ export function AccountSidebar({
   isMemoView,
   isDraftsView,
   draftCount,
-  isSnoozeView,
+  isSnoozeMuteView,
   snoozeCount,
-  isMutedView,
   folders,
   selectedFolderId,
   isFolderView,
@@ -158,8 +155,7 @@ export function AccountSidebar({
   onGoStarred,
   onGoMemo,
   onGoDrafts,
-  onGoSnooze,
-  onGoMuted,
+  onGoSnoozeMute,
   onSelectFolder,
   onCreateFolder,
   onRenameFolder,
@@ -274,14 +270,14 @@ export function AccountSidebar({
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  isActive={isSnoozeView}
+                  isActive={isSnoozeMuteView}
                   onClick={() => {
-                    onGoSnooze()
+                    onGoSnoozeMute()
                     closeOnMobile()
                   }}
                 >
                   <AlarmClock />
-                  <span>스누즈</span>
+                  <span>스누즈 / 뮤트</span>
                 </SidebarMenuButton>
                 {snoozeCount > 0 && <SidebarMenuBadge>{snoozeCount}</SidebarMenuBadge>}
               </SidebarMenuItem>
@@ -333,18 +329,6 @@ export function AccountSidebar({
                   <span>임시보관함</span>
                 </SidebarMenuButton>
                 {draftCount > 0 && <SidebarMenuBadge>{draftCount}</SidebarMenuBadge>}
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={isMutedView}
-                  onClick={() => {
-                    onGoMuted()
-                    closeOnMobile()
-                  }}
-                >
-                  <VolumeX />
-                  <span>뮤트</span>
-                </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem className="mt-2 border-t pt-2">
                 <SidebarMenuButton

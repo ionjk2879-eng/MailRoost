@@ -989,9 +989,8 @@ function App() {
         isMemoView={view === "memo"}
         isDraftsView={view === "drafts"}
         draftCount={mailOrg.drafts.length}
-        isSnoozeView={view === "snoozed"}
+        isSnoozeMuteView={view === "snoozed" || view === "muted"}
         snoozeCount={Object.values(mailOrg.snoozed).filter((until) => until > Date.now()).length}
-        isMutedView={view === "muted"}
         folders={mailOrg.folders}
         selectedFolderId={selectedFolderId}
         isFolderView={view === "folder"}
@@ -1004,8 +1003,7 @@ function App() {
         onGoStarred={goToStarred}
         onGoMemo={goToMemo}
         onGoDrafts={goToDrafts}
-        onGoSnooze={goToSnooze}
-        onGoMuted={goToMuted}
+        onGoSnoozeMute={goToSnooze}
         onSelectFolder={goToFolder}
         onCreateFolder={mailOrg.handleCreateFolder}
         onRenameFolder={mailOrg.handleRenameFolder}
