@@ -110,13 +110,16 @@ a{color:#2563eb;text-decoration:underline;cursor:pointer}
 }
 
 function LinkifiedText({ text }: { text: string }) {
-  const urlPattern = /(https?:\/\/[^\s]+|mailto:[^\s]+|www\.[^\s]+)/gi
+  // 긴 URL은 원본 메일에서 76~78자 기준으로 줄바꿈(\n)이 껴서 하드랩되어 오는 경우가 많다.
+  // 그 안에서 매칭이 끊기지 않도록, 공백 없이 바로 이어지는 단일 줄바꿈은 URL의 일부로 허용한다
+  // (빈 줄이 낀 문단 구분(\n\n)까지 삼키진 않는다).
+  const urlPattern = /(https?:\/\/(?:[^\s]|\r?\n(?!\r?\n))+|mailto:[^\s]+|www\.(?:[^\s]|\r?\n(?!\r?\n))+)/gi
   return <p className="max-w-3xl text-[15px] leading-7 whitespace-pre-wrap">
     {text.split(urlPattern).map((part, index) => {
       if (!/^(https?:\/\/|mailto:|www\.)/i.test(part)) return part
       const trailing = part.match(/[),.!?;:]+$/)?.[0] ?? ""
       const rawUrl = trailing ? part.slice(0, -trailing.length) : part
-      const href = rawUrl.startsWith("www.") ? `https://${rawUrl}` : rawUrl
+      const href = (rawUrl.startsWith("www.") ? `https://${rawUrl}` : rawUrl).replace(/\r?\n/g, "")
       return <span key={`${part}-${index}`}><a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline underline-offset-2 hover:text-blue-800">{rawUrl}</a>{trailing}</span>
     })}
   </p>
