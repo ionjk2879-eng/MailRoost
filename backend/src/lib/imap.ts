@@ -1,7 +1,7 @@
 import { connect } from "cloudflare:sockets"
-import type { Mail } from "../types"
+import type { AttachmentListItem, Mail } from "../types"
 import { decodeRfc2047, embedInlineMimeImages, extractMimeAttachment, listMimeAttachments, parseAddressList, parseFromHeader, parseHeaderBlock, parseMimeMessage, sanitizeHtml, stripHtml } from "./mime"
-import { mapFetchLinesToMails, parseFetchLine, parseInternalDate } from "./imap-parse"
+import { mapFetchLinesToAttachments, mapFetchLinesToMails, parseFetchLine, parseInternalDate } from "./imap-parse"
 import { retryAsync } from "./retry"
 
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
@@ -541,6 +541,42 @@ export async function imapGetRawMessage(config: ImapConfig, uid: string): Promis
   return new TextEncoder().encode(fetched.raw)
 }
 
+// 첨부함 화면용 — "첨부파일 있음" 검색이 표준 IMAP에 없으므로, 최근 메일 범위의 원본 전체를
+// 한 번의 연결로 가져온 뒤 이미 있는 listMimeAttachments로 첨부파일을 추출한다. 이 함수가 정확한
+// 크기까지 계산해주므로 별도 근사치 로직이 필요 없다.
+// 한 번에 원본 전체를 여러 통 받아오면(최대 100통) Workers 메모리 한도를 넘길 수 있어서,
+// 10통씩 나눠 받아 처리한다 — 같은 연결 안에서 FETCH만 여러 번 호출.
+// (첨부파일이 큰 메일이 몰려 있으면 20통도 128MB 한도에 근접할 수 있어 10통으로 줄였다.)
+const ATTACHMENT_SCAN_CHUNK_SIZE = 10
+
+export async function imapListAttachments(config: ImapConfig, accountId: string, maxResults = 100): Promise<AttachmentListItem[]> {
+  return withImap(config, async (client) => {
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${accountId}).`)
+
+    let exists = 0
+    for (const line of selectResult.lines) {
+      const match = line.match(/^\*\s+(\d+)\s+EXISTS/i)
+      if (match) exists = Number(match[1])
+    }
+    if (exists === 0) return []
+    const start = Math.max(1, exists - maxResults + 1)
+
+    const results: AttachmentListItem[] = []
+    for (let chunkStart = start; chunkStart <= exists; chunkStart += ATTACHMENT_SCAN_CHUNK_SIZE) {
+      const chunkEnd = Math.min(chunkStart + ATTACHMENT_SCAN_CHUNK_SIZE - 1, exists)
+      const fetchResult = await client.command(`FETCH ${chunkStart}:${chunkEnd} (UID INTERNALDATE BODY.PEEK[])`)
+      if (!fetchResult.ok) {
+        console.error(`[attachments] FETCH ${chunkStart}:${chunkEnd} failed for ${accountId}: ${fetchResult.statusLine}`)
+        continue
+      }
+
+      results.push(...mapFetchLinesToAttachments(fetchResult.lines, accountId))
+    }
+    return results
+  })
+}
+
 export async function imapGetMailDetail(config: ImapConfig, accountId: string, uid: string): Promise<Mail> {
   const fetched = await imapFetchRawByUid(config, uid)
   if (!fetched) throw new Error("메일을 찾을 수 없습니다.")
@@ -704,6 +740,10 @@ export async function naverGetMailDetail(
   return imapGetMailDetail(naverConfig(email, appPassword), accountId, uid)
 }
 
+export async function naverListAttachments(email: string, appPassword: string, accountId: string, maxResults = 100): Promise<AttachmentListItem[]> {
+  return imapListAttachments(naverConfig(email, appPassword), accountId, maxResults)
+}
+
 export async function naverGetRawMessage(email: string, appPassword: string, uid: string): Promise<Uint8Array | null> {
   return imapGetRawMessage(naverConfig(email, appPassword), uid)
 }
@@ -809,6 +849,10 @@ export async function daumGetMailDetail(
   uid: string,
 ): Promise<Mail> {
   return imapGetMailDetail(daumConfig(email, password), accountId, uid)
+}
+
+export async function daumListAttachments(email: string, password: string, accountId: string, maxResults = 100): Promise<AttachmentListItem[]> {
+  return imapListAttachments(daumConfig(email, password), accountId, maxResults)
 }
 
 export async function daumGetRawMessage(email: string, password: string, uid: string): Promise<Uint8Array | null> {

@@ -65,6 +65,19 @@ export interface MailAttachment {
   contentId?: string
 }
 
+export interface AttachmentListItem {
+  accountId: string
+  mailId: string
+  attachmentId: string
+  filename: string
+  mimeType: string
+  size: number
+  fromName: string
+  fromEmail: string
+  subject: string
+  receivedAt: string
+}
+
 export interface Mail {
   id: string
   accountId: string
