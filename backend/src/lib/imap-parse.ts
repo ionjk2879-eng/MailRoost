@@ -1,5 +1,5 @@
-import type { Mail } from "../types"
-import { decodeRfc2047, parseFromHeader, parseHeaderBlock } from "./mime"
+import type { AttachmentListItem, Mail } from "../types"
+import { decodeRfc2047, listMimeAttachments, parseFromHeader, parseHeaderBlock } from "./mime"
 
 export interface ParsedFetchLine {
   uid?: number
@@ -92,4 +92,41 @@ export function mapFetchLinesToMails(lines: string[], accountId: string): Mail[]
     })
   }
   return mails
+}
+
+// 첨부함용 — FETCH 응답 줄(원본 RFC822 전체 포함)에서 첨부파일 목록 항목을 뽑아낸다.
+// 소켓을 전혀 건드리지 않는 순수 함수라 imap.ts가 아니라 여기(단위 테스트 가능한 파일)에 둔다.
+export function mapFetchLinesToAttachments(lines: string[], accountId: string): AttachmentListItem[] {
+  const results: AttachmentListItem[] = []
+  for (const line of lines) {
+    if (!/^\*\s+\d+\s+FETCH/i.test(line)) continue
+    const parsed = parseFetchLine(line)
+    if (!parsed || parsed.uid === undefined || !parsed.literalText) continue
+
+    const attachments = listMimeAttachments(parsed.literalText)
+    if (attachments.length === 0) continue
+
+    const idx = parsed.literalText.search(/\n\n/)
+    const headerBlock = idx === -1 ? parsed.literalText : parsed.literalText.slice(0, idx)
+    const headers = parseHeaderBlock(headerBlock)
+    const { name: fromName, email: fromEmail } = parseFromHeader(headers["from"] ?? "")
+    const subject = decodeRfc2047(headers["subject"] ?? "") || "(제목 없음)"
+    const receivedAt = parseInternalDate(parsed.internalDate)
+
+    for (const att of attachments) {
+      results.push({
+        accountId,
+        mailId: String(parsed.uid),
+        attachmentId: att.id,
+        filename: att.filename,
+        mimeType: att.mimeType,
+        size: att.size,
+        fromName,
+        fromEmail,
+        subject,
+        receivedAt,
+      })
+    }
+  }
+  return results
 }

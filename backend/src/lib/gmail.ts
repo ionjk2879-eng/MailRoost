@@ -1,4 +1,4 @@
-import type { Env, GmailAccountRecord, Mail, MailAttachment, MailCategory } from "../types"
+import type { AttachmentListItem, Env, GmailAccountRecord, Mail, MailAttachment, MailCategory } from "../types"
 import { buildMimeMessage, decodeBase64ToBytes, decodeRfc2047, parseAddressList, parseFromHeader, sanitizeHtml, stripHtml } from "./mime"
 import type { OutgoingAttachment } from "./mime"
 import { fetchWithRetry } from "./httpRetry"
@@ -215,12 +215,12 @@ export function mapMessageToMail(msg: GmailMessage, accountId: string): Mail {
 // 쉽게 넘어버려서 (계정이 여러 개거나 페이지가 크면) 전체 요청이 그냥 500으로 죽는다.
 const GMAIL_BATCH_CHUNK_SIZE = 90 // Gmail batch API 자체 한도(100)에 여유를 두고 나눈다
 
-async function batchGetMessages(accessToken: string, ids: string[]): Promise<GmailMessage[]> {
+async function batchGetMessages(accessToken: string, ids: string[], format: "metadata" | "full" = "metadata"): Promise<GmailMessage[]> {
   if (ids.length === 0) return []
   if (ids.length > GMAIL_BATCH_CHUNK_SIZE) {
     const chunks: string[][] = []
     for (let i = 0; i < ids.length; i += GMAIL_BATCH_CHUNK_SIZE) chunks.push(ids.slice(i, i + GMAIL_BATCH_CHUNK_SIZE))
-    const results = await Promise.all(chunks.map((chunk) => batchGetMessages(accessToken, chunk)))
+    const results = await Promise.all(chunks.map((chunk) => batchGetMessages(accessToken, chunk, format)))
     return results.flat()
   }
 
@@ -228,7 +228,10 @@ async function batchGetMessages(accessToken: string, ids: string[]): Promise<Gma
   const body =
     ids
       .map((id, i) => {
-        const path = `/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`
+        const path =
+          format === "full"
+            ? `/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`
+            : `/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`
         return `--${boundary}\r\nContent-Type: application/http\r\nContent-ID: <item${i}>\r\n\r\nGET ${path}\r\n\r\n`
       })
       .join("") + `--${boundary}--`
@@ -561,6 +564,45 @@ export async function getRawMessage(accessToken: string, messageId: string): Pro
   const json = (await res.json()) as { raw?: string }
   if (!json.raw) return null
   return decodeBase64UrlToBytes(json.raw)
+}
+
+// 첨부함 화면용 — has:attachment 검색으로 후보를 서버에서 미리 좁힌 뒤, format=full로 배치 조회해서
+// 첨부파일 메타데이터(파일명/크기/타입)를 뽑는다. Gmail은 format=full에서도 첨부파일의 실제
+// 바이트는 안 주고 size/filename/mimeType/attachmentId만 주므로 추가 디코딩이 필요 없다.
+export async function listAttachmentsForAccount(accessToken: string, accountId: string, maxResults = 100): Promise<AttachmentListItem[]> {
+  const params = new URLSearchParams({ maxResults: String(maxResults), q: "has:attachment" })
+  const listRes = await fetchWithRetry(`${GMAIL_API_BASE}/messages?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!listRes.ok) throw new Error(`Gmail 첨부파일 검색 실패: ${listRes.status}`)
+  const listJson = (await listRes.json()) as { messages?: { id: string }[] }
+  const ids = listJson.messages?.map((m) => m.id) ?? []
+  if (ids.length === 0) return []
+
+  const messages = await batchGetMessages(accessToken, ids, "full")
+
+  const results: AttachmentListItem[] = []
+  for (const msg of messages) {
+    const attachments: MailAttachment[] = []
+    collectAttachments(msg.payload, attachments)
+    if (attachments.length === 0) continue
+    const mail = mapMessageToMail(msg, accountId)
+    for (const att of attachments) {
+      results.push({
+        accountId,
+        mailId: msg.id,
+        attachmentId: att.id,
+        filename: att.filename,
+        mimeType: att.mimeType,
+        size: att.size,
+        fromName: mail.fromName,
+        fromEmail: mail.fromEmail,
+        subject: mail.subject,
+        receivedAt: mail.receivedAt,
+      })
+    }
+  }
+  return results
 }
 
 export async function getAttachment(
