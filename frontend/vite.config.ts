@@ -38,6 +38,12 @@ export default defineConfig({
         importScripts: ['/sw-push-handler.js'],
         runtimeCaching: [
           {
+            // 첨부함은 캐시된 스냅샷이 아니라 매번 실제 메일함을 다시 훑어야 하는 화면이라
+            // (삭제한 메일의 첨부파일이 캐시 때문에 계속 남아 보이는 문제 방지) 캐싱에서 제외한다.
+            urlPattern: /^\/api\/attachments/i,
+            handler: 'NetworkOnly',
+          },
+          {
             urlPattern: /^\/api\/.*/i,
             handler: 'NetworkFirst',
             options: {
