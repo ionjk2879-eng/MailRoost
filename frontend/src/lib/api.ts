@@ -359,11 +359,11 @@ export async function fetchMailDetail(id: string, accountId: string): Promise<Ma
   return res.json()
 }
 
-export async function fetchAttachments(): Promise<AttachmentListItem[]> {
+export async function fetchAttachments(): Promise<{ attachments: AttachmentListItem[]; failedAccountIds: string[] }> {
   const res = await fetch("/api/attachments")
-  if (!res.ok) return []
-  const data = (await res.json()) as { attachments: AttachmentListItem[] }
-  return data.attachments
+  if (!res.ok) return { attachments: [], failedAccountIds: [] }
+  const data = (await res.json()) as { attachments: AttachmentListItem[]; failedAccountIds: string[] }
+  return data
 }
 
 // Gmail 첨부는 filename/mimeType이 서버 응답에 없어 상세보기에서 이미 받아둔 값을 쿼리로 실어보낸다.

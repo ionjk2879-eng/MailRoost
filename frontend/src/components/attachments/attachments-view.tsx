@@ -37,15 +37,25 @@ export function AttachmentsView({ accounts }: AttachmentsViewProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [query, setQuery] = useState("")
   const [accountFilter, setAccountFilter] = useState<string>("all")
+  const [failedAccountIds, setFailedAccountIds] = useState<string[]>([])
+  const [loadError, setLoadError] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     setIsLoading(true)
-    fetchAttachments().then((result) => {
-      if (!cancelled) setItems(result)
-    }).finally(() => {
-      if (!cancelled) setIsLoading(false)
-    })
+    setLoadError(false)
+    fetchAttachments()
+      .then((result) => {
+        if (cancelled) return
+        setItems(result.attachments)
+        setFailedAccountIds(result.failedAccountIds)
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError(true)
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
     return () => { cancelled = true }
   }, [])
 
@@ -86,6 +96,18 @@ export function AttachmentsView({ accounts }: AttachmentsViewProps) {
             ))}
           </select>
         </div>
+        {loadError && (
+          <p className="text-destructive px-1 text-xs">첨부파일을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</p>
+        )}
+        {!loadError && failedAccountIds.length > 0 && (
+          <p className="text-muted-foreground px-1 text-xs">
+            {failedAccountIds
+              .map((id) => accounts.find((a) => a.id === id))
+              .filter((a): a is NonNullable<typeof a> => a != null)
+              .map((a) => accountLabel(a))
+              .join(", ") || `${failedAccountIds.length}개 계정`}에서 첨부파일을 불러오지 못했습니다.
+          </p>
+        )}
       </div>
 
       <ScrollArea className="min-h-0 flex-1">

@@ -1,7 +1,7 @@
 import { connect } from "cloudflare:sockets"
 import type { AttachmentListItem, Mail } from "../types"
 import { decodeRfc2047, embedInlineMimeImages, extractMimeAttachment, listMimeAttachments, parseAddressList, parseFromHeader, parseHeaderBlock, parseMimeMessage, sanitizeHtml, stripHtml } from "./mime"
-import { mapFetchLinesToMails, parseFetchLine, parseInternalDate } from "./imap-parse"
+import { mapFetchLinesToAttachments, mapFetchLinesToMails, parseFetchLine, parseInternalDate } from "./imap-parse"
 import { retryAsync } from "./retry"
 
 function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
@@ -545,13 +545,14 @@ export async function imapGetRawMessage(config: ImapConfig, uid: string): Promis
 // 한 번의 연결로 가져온 뒤 이미 있는 listMimeAttachments로 첨부파일을 추출한다. 이 함수가 정확한
 // 크기까지 계산해주므로 별도 근사치 로직이 필요 없다.
 // 한 번에 원본 전체를 여러 통 받아오면(최대 100통) Workers 메모리 한도를 넘길 수 있어서,
-// 20통씩 나눠 받아 처리한다 — 같은 연결 안에서 FETCH만 여러 번 호출.
-const ATTACHMENT_SCAN_CHUNK_SIZE = 20
+// 10통씩 나눠 받아 처리한다 — 같은 연결 안에서 FETCH만 여러 번 호출.
+// (첨부파일이 큰 메일이 몰려 있으면 20통도 128MB 한도에 근접할 수 있어 10통으로 줄였다.)
+const ATTACHMENT_SCAN_CHUNK_SIZE = 10
 
 export async function imapListAttachments(config: ImapConfig, accountId: string, maxResults = 100): Promise<AttachmentListItem[]> {
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) return []
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${accountId}).`)
 
     let exists = 0
     for (const line of selectResult.lines) {
@@ -565,38 +566,12 @@ export async function imapListAttachments(config: ImapConfig, accountId: string,
     for (let chunkStart = start; chunkStart <= exists; chunkStart += ATTACHMENT_SCAN_CHUNK_SIZE) {
       const chunkEnd = Math.min(chunkStart + ATTACHMENT_SCAN_CHUNK_SIZE - 1, exists)
       const fetchResult = await client.command(`FETCH ${chunkStart}:${chunkEnd} (UID INTERNALDATE BODY.PEEK[])`)
-      if (!fetchResult.ok) continue
-
-      for (const line of fetchResult.lines) {
-        if (!/^\*\s+\d+\s+FETCH/i.test(line)) continue
-        const parsed = parseFetchLine(line)
-        if (!parsed || parsed.uid === undefined || !parsed.literalText) continue
-
-        const attachments = listMimeAttachments(parsed.literalText)
-        if (attachments.length === 0) continue
-
-        const idx = parsed.literalText.search(/\n\n/)
-        const headerBlock = idx === -1 ? parsed.literalText : parsed.literalText.slice(0, idx)
-        const headers = parseHeaderBlock(headerBlock)
-        const { name: fromName, email: fromEmail } = parseFromHeader(headers["from"] ?? "")
-        const subject = decodeRfc2047(headers["subject"] ?? "") || "(제목 없음)"
-        const receivedAt = parseInternalDate(parsed.internalDate)
-
-        for (const att of attachments) {
-          results.push({
-            accountId,
-            mailId: String(parsed.uid),
-            attachmentId: att.id,
-            filename: att.filename,
-            mimeType: att.mimeType,
-            size: att.size,
-            fromName,
-            fromEmail,
-            subject,
-            receivedAt,
-          })
-        }
+      if (!fetchResult.ok) {
+        console.error(`[attachments] FETCH ${chunkStart}:${chunkEnd} failed for ${accountId}: ${fetchResult.statusLine}`)
+        continue
       }
+
+      results.push(...mapFetchLinesToAttachments(fetchResult.lines, accountId))
     }
     return results
   })
