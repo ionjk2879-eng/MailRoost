@@ -171,7 +171,7 @@ export function MessageCard({
       <div className="flex shrink-0 flex-col gap-4 border-b bg-background px-7 py-5">
         <div className="flex min-w-0 flex-col gap-1.5">
           <h2 className="text-xl font-semibold leading-snug tracking-tight break-words">{mail.subject}</h2>
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex flex-nowrap items-center gap-1 overflow-x-auto">
             {onReply && (
               <Button variant="ghost" size="icon" className="size-8" title="답장" onClick={() => onReply(mail)}>
                 <Reply className="size-4" />
