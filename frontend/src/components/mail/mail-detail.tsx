@@ -65,7 +65,7 @@ function MailDetailBody({
           <BackButton onBack={onBack} />
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {thread.map((mail) => {
           const expanded = expandedIds.has(mail.id)
           if (!expanded) {
@@ -74,7 +74,7 @@ function MailDetailBody({
                 key={mail.id}
                 type="button"
                 onClick={() => toggle(mail.id)}
-                className="hover:bg-muted/40 flex w-full items-center gap-3 border-b px-7 py-3 text-left transition-colors"
+                className="hover:bg-muted/40 flex w-full shrink-0 items-center gap-3 border-b px-7 py-3 text-left transition-colors"
               >
                 <span className="min-w-0 flex-1 truncate text-sm">
                   <span className="font-medium">{mail.fromName}</span>{" "}
@@ -87,7 +87,7 @@ function MailDetailBody({
             )
           }
           return (
-            <div key={mail.id} className="border-b last:border-b-0">
+            <div key={mail.id} className="flex min-h-[400px] flex-1 flex-col border-b last:border-b-0">
               <MessageCard mail={mail} isMuted={mutedSet?.has(mail.fromEmail)} {...rest} />
             </div>
           )
