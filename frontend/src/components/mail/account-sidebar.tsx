@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Pencil, Plus, Settings, Sparkles, Star, StickyNote, Trash2, VolumeX } from "lucide-react"
+import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Paperclip, Pencil, Plus, Settings, Sparkles, Star, StickyNote, Trash2, VolumeX } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -97,6 +97,7 @@ interface AccountSidebarProps {
   isCleanupView: boolean
   isTrashView: boolean
   isArchiveView: boolean
+  isAttachmentsView: boolean
   isMemoView: boolean
   isDraftsView: boolean
   draftCount: number
@@ -111,6 +112,7 @@ interface AccountSidebarProps {
   onGoCleanup: () => void
   onGoTrash: () => void
   onGoArchive: () => void
+  onGoAttachments: () => void
   onGoStarred: () => void
   onGoMemo: () => void
   onGoDrafts: () => void
@@ -137,6 +139,7 @@ export function AccountSidebar({
   isCleanupView,
   isTrashView,
   isArchiveView,
+  isAttachmentsView,
   isMemoView,
   isDraftsView,
   draftCount,
@@ -151,6 +154,7 @@ export function AccountSidebar({
   onGoCleanup,
   onGoTrash,
   onGoArchive,
+  onGoAttachments,
   onGoStarred,
   onGoMemo,
   onGoDrafts,
@@ -303,6 +307,18 @@ export function AccountSidebar({
                 >
                   <Archive />
                   <span>보관함</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isAttachmentsView}
+                  onClick={() => {
+                    onGoAttachments()
+                    closeOnMobile()
+                  }}
+                >
+                  <Paperclip />
+                  <span>첨부함</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

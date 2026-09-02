@@ -8,6 +8,7 @@ import { MailDetail } from "@/components/mail/mail-detail"
 import { MailList } from "@/components/mail/mail-list"
 import { MailFilterMenu } from "@/components/mail/mail-filter-menu"
 import { CleanupView, SHORTCUTS } from "@/components/cleanup/cleanup-view"
+import { AttachmentsView } from "@/components/attachments/attachments-view"
 import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
 import { DraftsView } from "@/components/drafts/drafts-view"
@@ -400,6 +401,14 @@ function App() {
 
   const goToDrafts = () => {
     setView("drafts")
+    workspace.setSelectedMailId(null)
+    workspace.setFocusedMailId(null)
+    workspace.setCheckedMailIds(new Set())
+    setComposeState(null)
+  }
+
+  const goToAttachments = () => {
+    setView("attachments")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -976,6 +985,7 @@ function App() {
         isCleanupView={view === "cleanup"}
         isTrashView={view === "trash"}
         isArchiveView={view === "archive"}
+        isAttachmentsView={view === "attachments"}
         isMemoView={view === "memo"}
         isDraftsView={view === "drafts"}
         draftCount={mailOrg.drafts.length}
@@ -990,6 +1000,7 @@ function App() {
         onGoCleanup={goToCleanup}
         onGoTrash={goToTrash}
         onGoArchive={goToArchive}
+        onGoAttachments={goToAttachments}
         onGoStarred={goToStarred}
         onGoMemo={goToMemo}
         onGoDrafts={goToDrafts}
@@ -1017,6 +1028,8 @@ function App() {
                   ? "휴지통"
                   : view === "archive"
                     ? "보관함"
+                    : view === "attachments"
+                      ? "첨부함"
                     : view === "starred"
                       ? "중요 메일"
                     : view === "memo"
@@ -1136,6 +1149,8 @@ function App() {
               onRestoreSelected={workspace.handleRestoreFromTrash}
             />
           </div>
+        ) : view === "attachments" ? (
+          <AttachmentsView accounts={accounts} />
         ) : view === "memo" ? (
           <MemoView
             memos={mailOrg.memos}
