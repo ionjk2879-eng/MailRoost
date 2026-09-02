@@ -1,4 +1,4 @@
-import type { Account, AppNotification, AutoClassifyRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"
+import type { Account, AppNotification, AttachmentListItem, AutoClassifyRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -357,6 +357,13 @@ export async function fetchMailDetail(id: string, accountId: string): Promise<Ma
   const res = await fetch(`/api/mail/${encodeURIComponent(id)}?accountId=${encodeURIComponent(accountId)}`)
   if (!res.ok) return null
   return res.json()
+}
+
+export async function fetchAttachments(): Promise<AttachmentListItem[]> {
+  const res = await fetch("/api/attachments")
+  if (!res.ok) return []
+  const data = (await res.json()) as { attachments: AttachmentListItem[] }
+  return data.attachments
 }
 
 // Gmail 첨부는 filename/mimeType이 서버 응답에 없어 상세보기에서 이미 받아둔 값을 쿼리로 실어보낸다.
