@@ -43,6 +43,10 @@ function displayNameFromEmail(email?: string): string {
   return email ? email.split("@")[0] : "사용자"
 }
 
+function formatToday(): string {
+  return new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "long" })
+}
+
 export function HomeView({
   accounts,
   mails,
@@ -100,8 +104,9 @@ export function HomeView({
           <div className="relative z-10 flex min-h-[245px] max-w-xl flex-col justify-center px-6 py-8 sm:min-h-[285px] sm:px-10">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-orange-500">Your smart mailbox</p>
             <h1 className="text-3xl font-bold tracking-[-0.04em] text-zinc-950 sm:text-4xl">
-              안녕하세요, {name}님! <span aria-hidden="true">👋</span>
+              안녕하세요, {name}님!
             </h1>
+            <p className="mt-1 text-xs text-zinc-500">{formatToday()}</p>
             <p className="mt-3 text-sm text-zinc-600 sm:text-base">여러 계정의 메일을 한 곳에서 깔끔하게 관리하세요.</p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Button onClick={() => onSelectAccount(null)} className="h-11 gap-2 rounded-xl bg-orange-500 px-5 shadow-lg shadow-orange-500/20 hover:bg-orange-600">
