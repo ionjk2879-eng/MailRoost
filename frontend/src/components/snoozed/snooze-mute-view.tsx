@@ -191,10 +191,7 @@ export function SnoozeMuteView({
                 </div>
                 <div className="mt-auto flex items-start justify-center gap-3 px-6 py-9 text-sm text-muted-foreground">
                   <VolumeX className="mt-0.5 size-6 shrink-0 opacity-60" />
-                  <div>
-                    <p>뮤트한 발신자의 메일은 새 메일 알림에서 제외됩니다.</p>
-                    <button type="button" className="mt-3 text-primary hover:underline">뮤트 관리에 대해 알아보기</button>
-                  </div>
+                  <p>뮤트한 발신자의 메일은 새 메일 알림에서 제외됩니다.</p>
                 </div>
               </div>
             </ScrollArea>
