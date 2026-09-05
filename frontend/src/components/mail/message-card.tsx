@@ -1,7 +1,8 @@
 import { Archive, Check, Clock, Download, Eye, FileDown, Folder, FolderInput, Forward, Inbox, MailOpen, MoreHorizontal, Paperclip, Reply, ReplyAll, Star, StickyNote, Trash2, VolumeX } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { ProviderIcon } from "@/components/mail/provider-icon"
 import { SenderIcon } from "@/components/mail/sender-icon"
 import { AttachmentPreview, isPreviewableAttachment } from "@/components/mail/attachment-preview"
@@ -148,40 +149,7 @@ export function MessageCard({
   onSaveAsMemo,
   readOnly,
 }: MessageCardProps) {
-  const [moveOpen, setMoveOpen] = useState(false)
-  const moveRef = useRef<HTMLDivElement>(null)
-  const [snoozeOpen, setSnoozeOpen] = useState(false)
-  const snoozeRef = useRef<HTMLDivElement>(null)
-  const [moreOpen, setMoreOpen] = useState(false)
-  const moreRef = useRef<HTMLDivElement>(null)
   const [previewAttachment, setPreviewAttachment] = useState<MailAttachment | null>(null)
-
-  useEffect(() => {
-    if (!moveOpen) return
-    const handler = (e: MouseEvent) => {
-      if (moveRef.current && !moveRef.current.contains(e.target as Node)) setMoveOpen(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [moveOpen])
-
-  useEffect(() => {
-    if (!snoozeOpen) return
-    const handler = (e: MouseEvent) => {
-      if (snoozeRef.current && !snoozeRef.current.contains(e.target as Node)) setSnoozeOpen(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [snoozeOpen])
-
-  useEffect(() => {
-    if (!moreOpen) return
-    const handler = (e: MouseEvent) => {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [moreOpen])
 
   const account = accounts.find((a) => a.id === mail.accountId)
 
@@ -233,122 +201,85 @@ export function MessageCard({
               </Button>
             )}
             {(onMove || onToggleFolder) && (
-              <div ref={moveRef} className="relative">
-                <Button variant="ghost" size="icon" className="size-8" title="분류 메일함으로 이동" onClick={() => setMoveOpen((v) => !v)}>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" title="분류 메일함으로 이동" />}>
                   <FolderInput className="size-4" />
-                </Button>
-                {moveOpen && (
-                  <div className="bg-background absolute top-full right-0 z-20 mt-1 min-w-[160px] rounded-md border shadow-md">
-                    {currentFolderId === ARCHIVE_FOLDER_ID && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onMove?.(mail.id, mail.accountId, null)
-                            setMoveOpen(false)
-                          }}
-                          className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
-                        >
-                          <Inbox className="text-muted-foreground size-3.5" />
-                          보관함에서 꺼내기
-                        </button>
-                        <div className="my-1 border-t" />
-                      </>
-                    )}
-                    {(folders ?? []).map((folder) => {
-                      const checked = mail.folderIds?.includes(folder.id) ?? false
-                      return (
-                        <button
-                          key={folder.id}
-                          type="button"
-                          onClick={() => onToggleFolder?.(mail.id, mail.accountId, folder.id, !checked)}
-                          className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
-                        >
-                          <span className="border-input flex size-3.5 shrink-0 items-center justify-center rounded-sm border">
-                            {checked && <Check className="size-2.5" />}
-                          </span>
-                          <Folder className="size-3.5 shrink-0" style={{ color: folder.color, fill: folder.color, fillOpacity: 0.25 }} />
-                          <span className="truncate">{folder.name}</span>
-                        </button>
-                      )
-                    })}
-                    {(!folders || folders.length === 0) && currentFolderId !== ARCHIVE_FOLDER_ID && (
-                      <p className="text-muted-foreground px-3 py-1.5 text-xs">분류 메일함이 없습니다.</p>
-                    )}
-                  </div>
-                )}
-              </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="min-w-[160px]">
+                  {currentFolderId === ARCHIVE_FOLDER_ID && (
+                    <>
+                      <DropdownMenuItem onClick={() => onMove?.(mail.id, mail.accountId, null)}>
+                        <Inbox className="text-muted-foreground size-3.5" />
+                        보관함에서 꺼내기
+                      </DropdownMenuItem>
+                      <div className="my-1 border-t" />
+                    </>
+                  )}
+                  {(folders ?? []).map((folder) => {
+                    const checked = mail.folderIds?.includes(folder.id) ?? false
+                    return (
+                      <DropdownMenuItem
+                        key={folder.id}
+                        closeOnClick={false}
+                        onClick={() => onToggleFolder?.(mail.id, mail.accountId, folder.id, !checked)}
+                      >
+                        <span className="border-input flex size-3.5 shrink-0 items-center justify-center rounded-sm border">
+                          {checked && <Check className="size-2.5" />}
+                        </span>
+                        <Folder className="size-3.5 shrink-0" style={{ color: folder.color, fill: folder.color, fillOpacity: 0.25 }} />
+                        <span className="truncate">{folder.name}</span>
+                      </DropdownMenuItem>
+                    )
+                  })}
+                  {(!folders || folders.length === 0) && currentFolderId !== ARCHIVE_FOLDER_ID && (
+                    <p className="text-muted-foreground px-3 py-1.5 text-xs">분류 메일함이 없습니다.</p>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
             {onSnooze && (
-              <div ref={snoozeRef} className="relative">
-                <Button variant="ghost" size="icon" className="size-8" title="스누즈" onClick={() => setSnoozeOpen((v) => !v)}>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" title="스누즈" />}>
                   <Clock className="size-4" />
-                </Button>
-                {snoozeOpen && (
-                  <div className="bg-background absolute top-full right-0 z-20 mt-1 min-w-[160px] rounded-md border shadow-md">
-                    <p className="text-muted-foreground px-3 pt-2 pb-1 text-xs">나중에 다시 보기</p>
-                    {getSnoozeOptions().map((opt) => (
-                      <button
-                        key={opt.label}
-                        type="button"
-                        onClick={() => {
-                          onSnooze(mail.id, mail.accountId, opt.until)
-                          setSnoozeOpen(false)
-                        }}
-                        className="hover:bg-accent flex w-full flex-col items-start px-3 py-1.5 text-left"
-                      >
-                        <span className="text-sm">{opt.label}</span>
-                        <span className="text-muted-foreground text-xs">{opt.subtitle}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="min-w-[160px]">
+                  <p className="text-muted-foreground px-3 pt-2 pb-1 text-xs">나중에 다시 보기</p>
+                  {getSnoozeOptions().map((opt) => (
+                    <DropdownMenuItem
+                      key={opt.label}
+                      onClick={() => onSnooze(mail.id, mail.accountId, opt.until)}
+                      className="flex-col items-start"
+                    >
+                      <span className="text-sm">{opt.label}</span>
+                      <span className="text-muted-foreground text-xs">{opt.subtitle}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
-            <div ref={moreRef} className="relative">
-              <Button variant="ghost" size="icon" className="size-8" title="더보기" onClick={() => setMoreOpen((v) => !v)}>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" title="더보기" />}>
                 <MoreHorizontal className="size-4" />
-              </Button>
-              {moreOpen && (
-                <div className="bg-background absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-md border py-1 shadow-md">
-                  {onMute && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onMute(mail.fromEmail)
-                        setMoreOpen(false)
-                      }}
-                      className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
-                    >
-                      <VolumeX className={cn("size-3.5", isMuted && "text-primary")} />
-                      {isMuted ? "뮤트 해제" : "이 발신자 뮤트"}
-                    </button>
-                  )}
-                  <a
-                    href={emlDownloadUrl(mail.id, mail.accountId, mail.subject)}
-                    download
-                    onClick={() => setMoreOpen(false)}
-                    className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
-                  >
-                    <FileDown className="size-3.5" />
-                    원본 메일 저장 (.eml)
-                  </a>
-                  {onSaveAsMemo && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSaveAsMemo(mail)
-                        setMoreOpen(false)
-                      }}
-                      className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
-                    >
-                      <StickyNote className="size-3.5" />
-                      메모로 저장
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {onMute && (
+                  <DropdownMenuItem onClick={() => onMute(mail.fromEmail)}>
+                    <VolumeX className={cn("size-3.5", isMuted && "text-primary")} />
+                    {isMuted ? "뮤트 해제" : "이 발신자 뮤트"}
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem render={<a href={emlDownloadUrl(mail.id, mail.accountId, mail.subject)} download />}>
+                  <FileDown className="size-3.5" />
+                  원본 메일 저장 (.eml)
+                </DropdownMenuItem>
+                {onSaveAsMemo && (
+                  <DropdownMenuItem onClick={() => onSaveAsMemo(mail)}>
+                    <StickyNote className="size-3.5" />
+                    메모로 저장
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <div className="mx-1 h-5 w-px shrink-0 bg-border" />
             <Button variant="ghost" size="icon" className="hover:text-destructive size-8" title="삭제" onClick={() => onDelete?.(mail.id, mail.accountId)}>
               <Trash2 className="size-4" />
