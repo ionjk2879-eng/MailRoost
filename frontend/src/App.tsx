@@ -456,6 +456,13 @@ function App() {
     goToMemo()
   }
 
+  // Esc와 동일한 동작 — HTML 메일 본문은 iframe sandbox 때문에 포커스가 안에 있으면 Esc가
+  // 부모로 전달되지 않으므로, 항상 클릭으로 닫을 수 있는 버튼에서도 같은 동작을 쓴다.
+  const handleCloseMail = () => {
+    workspace.setSelectedMailId(null)
+    workspace.setFocusedMailId(null)
+  }
+
   const goToTrash = () => {
     setView("trash")
     workspace.setSelectedMailId(null)
@@ -928,6 +935,7 @@ function App() {
       onSnooze={handleSnooze}
       onMute={mailOrg.handleMuteSender}
       onSaveAsMemo={handleSaveAsMemo}
+      onClose={handleCloseMail}
       mutedSet={mailOrg.mutedSet}
     />
   )
@@ -1001,6 +1009,7 @@ function App() {
       onMove={workspace.handleMoveMailFromFolder}
       onToggleFolder={workspace.handleToggleMailFolder}
       onSaveAsMemo={handleSaveAsMemo}
+      onClose={handleCloseMail}
       mutedSet={mailOrg.mutedSet}
     />
   )

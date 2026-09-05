@@ -24,6 +24,7 @@ interface MailDetailProps {
   onSnooze?: (mailId: string, accountId: string, until: number) => void
   onMute?: (fromEmail: string) => void
   onSaveAsMemo?: (mail: Mail) => void
+  onClose?: () => void
   mutedSet?: Set<string>
 }
 

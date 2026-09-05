@@ -1,4 +1,4 @@
-import { Archive, Check, Clock, Download, Eye, FileDown, Folder, FolderInput, Forward, Inbox, MailOpen, MoreHorizontal, Paperclip, Reply, ReplyAll, Star, StickyNote, Trash2, VolumeX } from "lucide-react"
+import { Archive, Check, Clock, Download, Eye, FileDown, Folder, FolderInput, Forward, Inbox, MailOpen, MoreHorizontal, Paperclip, Reply, ReplyAll, Star, StickyNote, Trash2, VolumeX, X } from "lucide-react"
 import { useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -31,6 +31,10 @@ export interface MessageCardProps {
   onSaveAsMemo?: (mail: Mail) => void
   // 참고용 사이드 패널 등에서 툴바(답장/보관/삭제 등) 없이 본문만 보여줄 때.
   readOnly?: boolean
+  // HTML 메일 본문은 스크립트가 막힌 iframe 안에서 렌더링되는데, 그 안으로 포커스가 들어가면
+  // Esc를 포함한 키보드 이벤트가 부모 페이지로 전달되지 않는다(iframe sandbox의 구조적 제약).
+  // 그래서 항상 클릭으로 닫을 수 있는 버튼을 따로 둔다.
+  onClose?: () => void
 }
 
 function getSnoozeOptions(): Array<{ label: string; subtitle: string; until: number }> {
@@ -148,6 +152,7 @@ export function MessageCard({
   isMuted,
   onSaveAsMemo,
   readOnly,
+  onClose,
 }: MessageCardProps) {
   const [previewAttachment, setPreviewAttachment] = useState<MailAttachment | null>(null)
 
@@ -156,9 +161,18 @@ export function MessageCard({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-col gap-4 border-b bg-background px-7 py-5">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <h2 className="text-xl font-semibold leading-snug tracking-tight break-words">{mail.subject}</h2>
-          {!readOnly && <div className="flex flex-nowrap items-center gap-1 overflow-x-auto">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <h2 className="text-xl font-semibold leading-snug tracking-tight break-words">{mail.subject}</h2>
+          </div>
+          {!readOnly && onClose && (
+            <Button variant="ghost" size="icon" className="size-8 shrink-0" title="닫기 (Esc)" onClick={onClose}>
+              <X className="size-4" />
+            </Button>
+          )}
+        </div>
+        {!readOnly && (
+          <div className="flex flex-nowrap items-center gap-1 overflow-x-auto">
             {onReply && (
               <Button variant="ghost" size="icon" className="size-8" title="답장" onClick={() => onReply(mail)}>
                 <Reply className="size-4" />
@@ -284,8 +298,8 @@ export function MessageCard({
             <Button variant="ghost" size="icon" className="hover:text-destructive size-8" title="삭제" onClick={() => onDelete?.(mail.id, mail.accountId)}>
               <Trash2 className="size-4" />
             </Button>
-          </div>}
-        </div>
+          </div>
+        )}
         <div className="flex min-w-0 items-center gap-3 border-t pt-4">
           <SenderIcon email={mail.fromEmail} senderName={mail.fromName} className="size-9" />
           <div className="flex min-w-0 flex-1 flex-col text-sm">
