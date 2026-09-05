@@ -252,6 +252,7 @@ export function AccountSidebar({
             <ChevronDown className={cn("size-3.5 transition-transform", !mailMenuOpen && "-rotate-90")} />
           </button>
           {mailMenuOpen && <SidebarGroupContent>
+            <p className="text-muted-foreground/70 px-2 pt-1 pb-1 text-[10px] font-medium tracking-wide uppercase">받은편지함</p>
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
@@ -305,6 +306,7 @@ export function AccountSidebar({
                   <span>보관함</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <p className="text-muted-foreground/70 mt-2 border-t px-2 pt-2 pb-1 text-[10px] font-medium tracking-wide uppercase">도구</p>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isAttachmentsView}
@@ -330,7 +332,8 @@ export function AccountSidebar({
                 </SidebarMenuButton>
                 {draftCount > 0 && <SidebarMenuBadge>{draftCount}</SidebarMenuBadge>}
               </SidebarMenuItem>
-              <SidebarMenuItem className="mt-2 border-t pt-2">
+              <p className="text-muted-foreground/70 mt-2 border-t px-2 pt-2 pb-1 text-[10px] font-medium tracking-wide uppercase">관리</p>
+              <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={isCleanupView}
                   onClick={() => {
