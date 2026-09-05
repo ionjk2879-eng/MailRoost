@@ -1,6 +1,7 @@
 import { ArrowUpRight, Check, Palette, Pin, PinOff, Plus, Search, StickyNote, X } from "lucide-react"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import type { MemoPatch } from "@/lib/api"
 import type { MemoItem } from "@/types/mail"
 
@@ -43,12 +44,16 @@ const SAVE_DEBOUNCE_MS = 500
 function MemoCard({
   memo,
   autoFocus,
+  checked,
+  onToggleCheck,
   onUpdateMemo,
   onDelete,
   onJumpToMail,
 }: {
   memo: MemoItem
   autoFocus: boolean
+  checked: boolean
+  onToggleCheck: (id: string) => void
   onUpdateMemo: (id: string, patch: MemoPatch) => void
   onDelete: (id: string) => void
   onJumpToMail: (mailId: string, accountId: string) => void
@@ -94,7 +99,15 @@ function MemoCard({
     timerRef.current = window.setTimeout(() => onUpdateMemo(memo.id, patch), SAVE_DEBOUNCE_MS)
   }
 
+  const isProtected = !!memo.pinned || !!memo.linkedMail
+  const deleteTitle = memo.pinned
+    ? "고정을 해제하면 삭제할 수 있습니다"
+    : memo.linkedMail
+      ? "연결된 메일을 먼저 해제하면 삭제할 수 있습니다"
+      : "메모 삭제"
+
   const handleDelete = () => {
+    if (isProtected) return
     const hasContent = title.trim().length > 0 || content.trim().length > 0
     if (hasContent && !window.confirm("이 메모를 삭제할까요? 되돌릴 수 없습니다.")) return
     onDelete(memo.id)
@@ -103,6 +116,17 @@ function MemoCard({
   return (
     <div className={`group relative mb-4 flex min-h-40 flex-col rounded-lg border p-3 shadow-sm break-inside-avoid ${cardTint(memo.color)}`}>
       <div className="mb-1 flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onToggleCheck(memo.id)}
+          aria-label={checked ? "선택 해제" : "선택"}
+          className={cn(
+            "border-input flex size-4 items-center justify-center rounded-sm border transition-opacity",
+            checked ? "bg-primary border-primary opacity-100" : "bg-background opacity-0 group-hover:opacity-100",
+          )}
+        >
+          {checked && <Check className="text-primary-foreground size-2.5" />}
+        </button>
         <div ref={colorRef} className="relative">
           <button
             type="button"
@@ -142,8 +166,13 @@ function MemoCard({
         <button
           type="button"
           aria-label="메모 삭제"
+          title={deleteTitle}
+          disabled={isProtected}
           onClick={handleDelete}
-          className="text-muted-foreground hover:text-destructive ml-auto rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+          className={cn(
+            "ml-auto rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
+            isProtected ? "text-muted-foreground/40 cursor-not-allowed" : "text-muted-foreground hover:text-destructive",
+          )}
         >
           <X className="size-3.5" />
         </button>
@@ -171,17 +200,28 @@ function MemoCard({
         className="placeholder:text-muted-foreground min-h-[3.5rem] shrink-0 resize-none overflow-hidden bg-transparent text-sm leading-relaxed outline-none"
       />
       {memo.linkedMail && (
-        <button
-          type="button"
-          onClick={() => onJumpToMail(memo.linkedMail!.mailId, memo.linkedMail!.accountId)}
-          className="border-input hover:bg-accent mt-2 flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-left text-xs"
-        >
-          <span className="min-w-0 flex-1 truncate">
-            <span className="font-medium">{memo.linkedMail.fromName}</span>{" "}
-            <span className="text-muted-foreground">{memo.linkedMail.subject}</span>
-          </span>
-          <ArrowUpRight className="text-muted-foreground size-3 shrink-0" />
-        </button>
+        <div className="border-input mt-2 flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs">
+          <button
+            type="button"
+            onClick={() => onJumpToMail(memo.linkedMail!.mailId, memo.linkedMail!.accountId)}
+            className="hover:bg-accent flex min-w-0 flex-1 items-center gap-1.5 rounded text-left"
+          >
+            <span className="min-w-0 flex-1 truncate">
+              <span className="font-medium">{memo.linkedMail.fromName}</span>{" "}
+              <span className="text-muted-foreground">{memo.linkedMail.subject}</span>
+            </span>
+            <ArrowUpRight className="text-muted-foreground size-3 shrink-0" />
+          </button>
+          <button
+            type="button"
+            aria-label="메일 연결 해제"
+            title="메일 연결 해제"
+            onClick={() => onUpdateMemo(memo.id, { linkedMail: null })}
+            className="text-muted-foreground hover:text-destructive shrink-0 rounded p-0.5"
+          >
+            <X className="size-3" />
+          </button>
+        </div>
       )}
       <p className="text-muted-foreground mt-2 shrink-0 text-xs">수정됨 {formatRelativeTime(updatedAt)}</p>
     </div>
@@ -192,12 +232,39 @@ export function MemoView({ memos, onCreate, onUpdateMemo, onDelete, onJumpToMail
   const [focusId, setFocusId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [query, setQuery] = useState("")
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
 
   const handleCreate = async () => {
     setIsCreating(true)
     const id = await onCreate()
     setIsCreating(false)
     setFocusId(id)
+  }
+
+  const toggleCheck = (id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleBulkDelete = () => {
+    const targets = memos.filter((m) => checkedIds.has(m.id))
+    const deletable = targets.filter((m) => !m.pinned && !m.linkedMail)
+    const skipped = targets.length - deletable.length
+    if (deletable.length === 0) {
+      window.alert("선택한 메모가 모두 고정되었거나 메일에 연결되어 있어 삭제할 수 없습니다.")
+      return
+    }
+    const message =
+      skipped > 0
+        ? `메모 ${deletable.length}개를 삭제합니다. 고정되었거나 메일에 연결된 ${skipped}개는 건너뜁니다. 계속할까요?`
+        : `메모 ${deletable.length}개를 삭제할까요? 되돌릴 수 없습니다.`
+    if (!window.confirm(message)) return
+    for (const m of deletable) onDelete(m.id)
+    setCheckedIds(new Set())
   }
 
   const q = query.trim().toLowerCase()
@@ -229,6 +296,19 @@ export function MemoView({ memos, onCreate, onUpdateMemo, onDelete, onJumpToMail
           </Button>
         </div>
       </div>
+      {checkedIds.size > 0 && (
+        <div className="bg-muted/40 mb-4 flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+          <span>{checkedIds.size}개 선택됨</span>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCheckedIds(new Set())}>
+              선택 해제
+            </Button>
+            <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+              삭제
+            </Button>
+          </div>
+        </div>
+      )}
       {memos.length === 0 ? (
         <div className="text-muted-foreground flex flex-col items-center gap-2 py-16 text-sm">
           <StickyNote className="size-8" />
@@ -243,6 +323,8 @@ export function MemoView({ memos, onCreate, onUpdateMemo, onDelete, onJumpToMail
               key={memo.id}
               memo={memo}
               autoFocus={memo.id === focusId}
+              checked={checkedIds.has(memo.id)}
+              onToggleCheck={toggleCheck}
               onUpdateMemo={onUpdateMemo}
               onDelete={onDelete}
               onJumpToMail={onJumpToMail}
