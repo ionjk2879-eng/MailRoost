@@ -1,5 +1,5 @@
 import { ArrowUpRight, Check, Palette, Pin, PinOff, Plus, Search, StickyNote, X } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import type { MemoPatch } from "@/lib/api"
 import type { MemoItem } from "@/types/mail"
@@ -65,6 +65,14 @@ function MemoCard({
     if (autoFocus) textareaRef.current?.focus()
   }, [autoFocus])
 
+  // textarea가 고정 높이를 채우지 못하고 내용에 맞춰 자라도록 — scrollHeight 기준으로 직접 조정.
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = "auto"
+    el.style.height = `${el.scrollHeight}px`
+  }, [content])
+
   useEffect(() => {
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current)
@@ -86,8 +94,14 @@ function MemoCard({
     timerRef.current = window.setTimeout(() => onUpdateMemo(memo.id, patch), SAVE_DEBOUNCE_MS)
   }
 
+  const handleDelete = () => {
+    const hasContent = title.trim().length > 0 || content.trim().length > 0
+    if (hasContent && !window.confirm("이 메모를 삭제할까요? 되돌릴 수 없습니다.")) return
+    onDelete(memo.id)
+  }
+
   return (
-    <div className={`group relative flex aspect-[4/5] min-h-64 flex-col rounded-lg border p-3 shadow-sm ${cardTint(memo.color)}`}>
+    <div className={`group relative mb-4 flex min-h-40 flex-col rounded-lg border p-3 shadow-sm break-inside-avoid ${cardTint(memo.color)}`}>
       <div className="mb-1 flex shrink-0 items-center gap-1">
         <div ref={colorRef} className="relative">
           <button
@@ -128,21 +142,23 @@ function MemoCard({
         <button
           type="button"
           aria-label="메모 삭제"
-          onClick={() => onDelete(memo.id)}
+          onClick={handleDelete}
           className="text-muted-foreground hover:text-destructive ml-auto rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
         >
           <X className="size-3.5" />
         </button>
       </div>
-      <input
-        value={title}
-        onChange={(e) => {
-          setTitle(e.target.value)
-          scheduleSave({ title: e.target.value })
-        }}
-        placeholder="제목 없음"
-        className="placeholder:text-muted-foreground mb-1 shrink-0 bg-transparent text-sm font-semibold outline-none"
-      />
+      <div className="border-border/60 mb-1.5 shrink-0 border-b pb-1.5">
+        <input
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value)
+            scheduleSave({ title: e.target.value })
+          }}
+          placeholder="제목 없음"
+          className="placeholder:text-muted-foreground/50 text-foreground w-full bg-transparent text-[15px] font-semibold outline-none"
+        />
+      </div>
       <textarea
         ref={textareaRef}
         value={content}
@@ -151,7 +167,8 @@ function MemoCard({
           scheduleSave({ content: e.target.value })
         }}
         placeholder="메모를 입력하세요..."
-        className="placeholder:text-muted-foreground min-h-0 flex-1 resize-none bg-transparent text-sm outline-none"
+        rows={1}
+        className="placeholder:text-muted-foreground min-h-[3.5rem] shrink-0 resize-none overflow-hidden bg-transparent text-sm leading-relaxed outline-none"
       />
       {memo.linkedMail && (
         <button
@@ -220,7 +237,7 @@ export function MemoView({ memos, onCreate, onUpdateMemo, onDelete, onJumpToMail
       ) : sorted.length === 0 ? (
         <p className="text-muted-foreground py-16 text-center text-sm">"{query}"와 일치하는 메모가 없습니다.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="columns-1 gap-4 sm:columns-2 lg:columns-3 xl:columns-4">
           {sorted.map((memo) => (
             <MemoCard
               key={memo.id}
