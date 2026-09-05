@@ -1,5 +1,5 @@
 import { Archive, Check, Clock, Download, Eye, FileDown, Folder, FolderInput, Forward, Inbox, MailOpen, MoreHorizontal, Paperclip, Reply, ReplyAll, Star, StickyNote, Trash2, VolumeX, X } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -31,9 +31,7 @@ export interface MessageCardProps {
   onSaveAsMemo?: (mail: Mail) => void
   // 참고용 사이드 패널 등에서 툴바(답장/보관/삭제 등) 없이 본문만 보여줄 때.
   readOnly?: boolean
-  // HTML 메일 본문은 스크립트가 막힌 iframe 안에서 렌더링되는데, 그 안으로 포커스가 들어가면
-  // Esc를 포함한 키보드 이벤트가 부모 페이지로 전달되지 않는다(iframe sandbox의 구조적 제약).
-  // 그래서 항상 클릭으로 닫을 수 있는 버튼을 따로 둔다.
+  // 마우스로 닫고 싶을 때를 위한 보조 버튼. 키보드 Esc는 아래 iframe 포커스 반환 로직으로 처리된다.
   onClose?: () => void
 }
 
@@ -155,11 +153,28 @@ export function MessageCard({
   onClose,
 }: MessageCardProps) {
   const [previewAttachment, setPreviewAttachment] = useState<MailAttachment | null>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
+
+  // HTML 메일 본문은 스크립트가 막힌 iframe 안에서 렌더링되는데, 그 안을 클릭해서 포커스가
+  // 들어가면 Esc를 포함한 키보드 이벤트가 부모 페이지로 전달되지 않는다(별개의 브라우징 컨텍스트라
+  // 부모 window의 keydown 리스너에 아예 안 잡힘). iframe 엘리먼트 자체는 포커스가 들어왔는지를
+  // 부모에서도 감지할 수 있으므로, 클릭/링크/드래그 선택은 그대로 두고 포커스만 즉시 카드
+  // 컨테이너로 돌려보내 Esc 등 단축키가 계속 부모에서 먹히게 한다.
+  useEffect(() => {
+    const iframe = iframeRef.current
+    if (!iframe) return
+    const handleIframeFocus = () => {
+      requestAnimationFrame(() => cardRef.current?.focus())
+    }
+    iframe.addEventListener("focus", handleIframeFocus)
+    return () => iframe.removeEventListener("focus", handleIframeFocus)
+  }, [mail.id])
 
   const account = accounts.find((a) => a.id === mail.accountId)
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={cardRef} tabIndex={-1} className="flex h-full min-h-0 flex-col outline-none">
       <div className="flex shrink-0 flex-col gap-4 border-b bg-background px-7 py-5">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -358,6 +373,7 @@ export function MessageCard({
       <div className="min-h-0 flex-1 overflow-hidden">
         {mail.bodyHtml ? (
           <iframe
+            ref={iframeRef}
             key={mail.id}
             title={mail.subject}
             srcDoc={buildIframeDoc(mail)}
