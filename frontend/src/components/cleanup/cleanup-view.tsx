@@ -47,6 +47,7 @@ export const SHORTCUTS = [
   { keys: "R", desc: "답장" },
   { keys: "S", desc: "별표 토글" },
   { keys: "U", desc: "읽지않음으로 표시" },
+  { keys: "P", desc: "참고용 패널에 열기" },
   { keys: "Esc", desc: "메일 닫기 / 선택 해제" },
   { keys: "Ctrl + /", desc: "단축키 도움말" },
 ]

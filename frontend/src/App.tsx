@@ -1,4 +1,4 @@
-import { Filter, Loader2, Pencil, RefreshCw, Search, X } from "lucide-react"
+import { Filter, Keyboard, Loader2, Pencil, RefreshCw, Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { GroupImperativeHandle, Layout } from "react-resizable-panels"
 import { AccountSidebar } from "@/components/mail/account-sidebar"
@@ -769,6 +769,8 @@ function App() {
         workspace.handleToggleStar(relevant.id, relevant.accountId, !relevant.isStarred)
       } else if ((e.key === "u" || e.key === "U") && relevant.isRead) {
         workspace.handleMarkAsUnread(relevant.id, relevant.accountId)
+      } else if (e.key === "p" || e.key === "P") {
+        setReferenceMail({ mailId: relevant.id, accountId: relevant.accountId })
       }
     }
 
@@ -1118,6 +1120,15 @@ function App() {
               메일 쓰기
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            title="단축키 보기 (Ctrl+/)"
+            onClick={() => setShortcutsHelpOpen(true)}
+          >
+            <Keyboard className="size-4" />
+          </Button>
           <NotificationBell
             notifications={mailOrg.notifications}
             onMarkRead={mailOrg.handleMarkNotificationRead}
