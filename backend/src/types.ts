@@ -178,10 +178,23 @@ export interface SavedFilter {
   createdAt: number
 }
 
+// 메모에 연결된 메일 — 나중에 원본 메일이 지워지거나 이동해도 제목/발신자는 그대로 보이도록
+// 생성 시점 값을 그대로 복제해서 저장한다(깨진 링크여도 정보는 남는다).
+export interface MemoLinkedMail {
+  accountId: string
+  mailId: string
+  subject: string
+  fromName: string
+}
+
 // 사이트 자체 메모 (앱 내부 전용 — 메일 서버와 무관)
 export interface MemoItem {
   id: string
+  title?: string
   content: string
+  color?: string
+  pinned?: boolean
+  linkedMail?: MemoLinkedMail
   createdAt: number
   updatedAt: number
 }

@@ -1,4 +1,4 @@
-import type { Account, AppNotification, AttachmentListItem, AutoClassifyRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"
+import type { Account, AppNotification, AttachmentListItem, AutoClassifyRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, MemoLinkedMail, QuickReply, SavedFilter } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -541,22 +541,33 @@ export async function fetchMemos(): Promise<MemoItem[]> {
   return data.memos
 }
 
-export async function createMemo(content: string): Promise<{ ok: true; memo: MemoItem } | { ok: false; error: string }> {
+export async function createMemo(
+  content: string,
+  init?: { title?: string; linkedMail?: MemoLinkedMail },
+): Promise<{ ok: true; memo: MemoItem } | { ok: false; error: string }> {
   const res = await fetch("/api/memos", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, ...init }),
   })
   const data = (await res.json().catch(() => ({}))) as { memo?: MemoItem; error?: string }
   if (!res.ok || !data.memo) return { ok: false, error: data.error ?? "메모 생성에 실패했습니다." }
   return { ok: true, memo: data.memo }
 }
 
-export async function updateMemo(id: string, content: string): Promise<{ ok: boolean; error?: string }> {
+export interface MemoPatch {
+  content?: string
+  title?: string
+  color?: string | null
+  pinned?: boolean
+  linkedMail?: MemoLinkedMail | null
+}
+
+export async function updateMemo(id: string, patch: MemoPatch): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch(`/api/memos/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
+    body: JSON.stringify(patch),
   })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }

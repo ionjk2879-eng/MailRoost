@@ -50,9 +50,20 @@ export interface SavedFilter {
   createdAt: number
 }
 
+export interface MemoLinkedMail {
+  accountId: string
+  mailId: string
+  subject: string
+  fromName: string
+}
+
 export interface MemoItem {
   id: string
+  title?: string
   content: string
+  color?: string
+  pinned?: boolean
+  linkedMail?: MemoLinkedMail
   createdAt: number
   updatedAt: number
 }

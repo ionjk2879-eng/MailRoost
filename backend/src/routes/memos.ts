@@ -1,5 +1,5 @@
 import { Hono } from "hono"
-import type { Env, MemoItem, StoredSession } from "../types"
+import type { Env, MemoItem, MemoLinkedMail, StoredSession } from "../types"
 import { readRawCookie } from "../lib/cookies"
 import { getUserMemos, saveUserMemos } from "../lib/memo"
 import { readSession, SESSION_COOKIE, writeSession } from "../lib/session"
@@ -56,13 +56,20 @@ memos.post("/memos", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
 
-  const body = await c.req.json<{ content?: string }>().catch(() => null)
+  const body = await c.req.json<{ content?: string; title?: string; linkedMail?: MemoLinkedMail }>().catch(() => null)
   const content = body?.content ?? ""
 
   const session = await readSession(c.env, sessionId)
 
   const now = Date.now()
-  const memo: MemoItem = { id: crypto.randomUUID(), content, createdAt: now, updatedAt: now }
+  const memo: MemoItem = {
+    id: crypto.randomUUID(),
+    title: body?.title,
+    content,
+    linkedMail: body?.linkedMail,
+    createdAt: now,
+    updatedAt: now,
+  }
   await mutateMemos(c.env, sessionId, session, (items) => [memo, ...items])
   return c.json({ memo })
 })
@@ -72,15 +79,27 @@ memos.patch("/memos/:id", async (c) => {
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
 
   const memoId = c.req.param("id")
-  const body = await c.req.json<{ content?: string }>().catch(() => null)
-  if (body?.content === undefined) return c.json({ error: "bad request" }, 400)
+  const body = await c.req
+    .json<{
+      content?: string
+      title?: string
+      color?: string | null
+      pinned?: boolean
+      linkedMail?: MemoLinkedMail | null
+    }>()
+    .catch(() => null)
+  if (!body || Object.keys(body).length === 0) return c.json({ error: "bad request" }, 400)
   const session = await readSession(c.env, sessionId)
 
   let updated: MemoItem | null = null
   await mutateMemos(c.env, sessionId, session, (items) => {
     const memo = items.find((m) => m.id === memoId)
     if (!memo) return items
-    memo.content = body.content!
+    if (body.content !== undefined) memo.content = body.content
+    if (body.title !== undefined) memo.title = body.title
+    if (body.color !== undefined) memo.color = body.color ?? undefined
+    if (body.pinned !== undefined) memo.pinned = body.pinned
+    if ("linkedMail" in body) memo.linkedMail = body.linkedMail ?? undefined
     memo.updatedAt = Date.now()
     updated = memo
     return items

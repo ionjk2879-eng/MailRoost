@@ -4,6 +4,7 @@ import {
   createContact,
   createFolder as apiCreateFolder,
   createMemo,
+  type MemoPatch,
   createQuickReply,
   createRule as apiCreateRule,
   type RuleConditions,
@@ -40,7 +41,7 @@ import {
   updateQuickReply,
   updateRule as apiUpdateRule,
 } from "@/lib/api"
-import type { AppNotification, AutoClassifyRule, Contact, Draft, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"
+import type { AppNotification, AutoClassifyRule, Contact, Draft, MailCategory, MailFolder, MemoItem, MemoLinkedMail, QuickReply, SavedFilter } from "@/types/mail"
 
 interface UseMailOrgParams {
   currentUser: { id: string; email: string } | null
@@ -232,8 +233,8 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
   }
 
   // 메모
-  const handleCreateMemo = async (): Promise<string | null> => {
-    const result = await createMemo("")
+  const handleCreateMemo = async (init?: { title?: string; linkedMail?: MemoLinkedMail }): Promise<string | null> => {
+    const result = await createMemo("", init)
     if (!result.ok) {
       showError(result.error ?? "메모 생성에 실패했습니다.")
       return null
@@ -242,10 +243,21 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
     return result.memo.id
   }
 
-  const handleUpdateMemoContent = (id: string, content: string) => {
+  const handleUpdateMemo = (id: string, patch: MemoPatch) => {
     const now = Date.now()
-    setMemos((prev) => prev.map((m) => (m.id === id ? { ...m, content, updatedAt: now } : m)))
-    updateMemo(id, content)
+    setMemos((prev) =>
+      prev.map((m) => {
+        if (m.id !== id) return m
+        const next: MemoItem = { ...m, updatedAt: now }
+        if (patch.content !== undefined) next.content = patch.content
+        if (patch.title !== undefined) next.title = patch.title
+        if (patch.color !== undefined) next.color = patch.color ?? undefined
+        if (patch.pinned !== undefined) next.pinned = patch.pinned
+        if ("linkedMail" in patch) next.linkedMail = patch.linkedMail ?? undefined
+        return next
+      }),
+    )
+    updateMemo(id, patch)
   }
 
   const handleDeleteMemo = async (id: string) => {
@@ -398,7 +410,7 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
     handleUnsnooze,
     handleSnooze,
     handleCreateMemo,
-    handleUpdateMemoContent,
+    handleUpdateMemo,
     handleDeleteMemo,
     handleCreateQuickReply,
     handleUpdateQuickReply,

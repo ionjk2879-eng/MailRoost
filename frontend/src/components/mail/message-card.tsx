@@ -1,4 +1,4 @@
-import { Archive, Check, Clock, Download, Eye, FileDown, Folder, FolderInput, Forward, Inbox, MailOpen, MoreHorizontal, Paperclip, Reply, ReplyAll, Star, Trash2, VolumeX } from "lucide-react"
+import { Archive, Check, Clock, Download, Eye, FileDown, Folder, FolderInput, Forward, Inbox, MailOpen, MoreHorizontal, Paperclip, Reply, ReplyAll, Star, StickyNote, Trash2, VolumeX } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -27,6 +27,7 @@ export interface MessageCardProps {
   onSnooze?: (mailId: string, accountId: string, until: number) => void
   onMute?: (fromEmail: string) => void
   isMuted?: boolean
+  onSaveAsMemo?: (mail: Mail) => void
   // 참고용 사이드 패널 등에서 툴바(답장/보관/삭제 등) 없이 본문만 보여줄 때.
   readOnly?: boolean
 }
@@ -144,6 +145,7 @@ export function MessageCard({
   onSnooze,
   onMute,
   isMuted,
+  onSaveAsMemo,
   readOnly,
 }: MessageCardProps) {
   const [moveOpen, setMoveOpen] = useState(false)
@@ -331,6 +333,19 @@ export function MessageCard({
                     <FileDown className="size-3.5" />
                     원본 메일 저장 (.eml)
                   </a>
+                  {onSaveAsMemo && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSaveAsMemo(mail)
+                        setMoreOpen(false)
+                      }}
+                      className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
+                    >
+                      <StickyNote className="size-3.5" />
+                      메모로 저장
+                    </button>
+                  )}
                 </div>
               )}
             </div>

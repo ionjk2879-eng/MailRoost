@@ -448,6 +448,14 @@ function App() {
     workspace.setSelectedMailId(mailId)
   }
 
+  const handleSaveAsMemo = async (mail: Mail) => {
+    await mailOrg.handleCreateMemo({
+      title: mail.subject,
+      linkedMail: { accountId: mail.accountId, mailId: mail.id, subject: mail.subject, fromName: mail.fromName },
+    })
+    goToMemo()
+  }
+
   const goToTrash = () => {
     setView("trash")
     workspace.setSelectedMailId(null)
@@ -911,6 +919,7 @@ function App() {
       onToggleFolder={workspace.handleToggleMailFolder}
       onSnooze={handleSnooze}
       onMute={mailOrg.handleMuteSender}
+      onSaveAsMemo={handleSaveAsMemo}
       mutedSet={mailOrg.mutedSet}
     />
   )
@@ -983,6 +992,7 @@ function App() {
       currentFolderId={selectedFolderId ?? undefined}
       onMove={workspace.handleMoveMailFromFolder}
       onToggleFolder={workspace.handleToggleMailFolder}
+      onSaveAsMemo={handleSaveAsMemo}
       mutedSet={mailOrg.mutedSet}
     />
   )
@@ -1195,8 +1205,9 @@ function App() {
           <MemoView
             memos={mailOrg.memos}
             onCreate={mailOrg.handleCreateMemo}
-            onUpdateContent={mailOrg.handleUpdateMemoContent}
+            onUpdateMemo={mailOrg.handleUpdateMemo}
             onDelete={mailOrg.handleDeleteMemo}
+            onJumpToMail={handleSnoozedMailSelect}
           />
         ) : view === "drafts" ? (
           composeState ? (

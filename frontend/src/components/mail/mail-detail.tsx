@@ -23,6 +23,7 @@ interface MailDetailProps {
   onToggleFolder?: (mailId: string, accountId: string, folderId: string, assign: boolean) => void
   onSnooze?: (mailId: string, accountId: string, until: number) => void
   onMute?: (fromEmail: string) => void
+  onSaveAsMemo?: (mail: Mail) => void
   mutedSet?: Set<string>
 }
 
