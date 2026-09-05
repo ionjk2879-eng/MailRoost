@@ -710,7 +710,12 @@ function App() {
       const next = activeList[nextIndex]
       if (next) {
         workspace.setFocusedMailId(next.id)
-        document.getElementById(`mail-row-${next.id}`)?.scrollIntoView({ block: "nearest" })
+        const row = document.getElementById(`mail-row-${next.id}`)
+        row?.scrollIntoView({ block: "nearest" })
+        // 실제 DOM 포커스도 같이 옮겨야 한다 — 링 표시만 움직이고 포커스가 예전에 클릭했던
+        // 행의 버튼에 그대로 남아있으면, Enter를 눌렀을 때 그 버튼에 브라우저 기본 클릭이
+        // 같이 발동해서 방금 연 메일을 도로 덮어써버린다.
+        row?.focus({ preventScroll: true })
       }
     }
 
@@ -752,6 +757,7 @@ function App() {
         return
       }
       if (e.key === "Enter") {
+        e.preventDefault()
         const target = workspace.focusedMailId ? activeList.find((m) => m.id === workspace.focusedMailId) : activeList[0]
         if (target) handleSelectMail(target.id)
         return
