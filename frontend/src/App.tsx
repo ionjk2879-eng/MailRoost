@@ -1183,6 +1183,7 @@ function App() {
             onGoToTrash={goToTrash}
             onGoToStarred={goToStarred}
             onOpenSettings={() => setSettingsOpen(true)}
+            onOpenShortcuts={() => setShortcutsHelpOpen(true)}
           />
         ) : view === "cleanup" ? (
           <div className="min-h-0 flex-1 overflow-hidden">

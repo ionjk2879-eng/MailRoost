@@ -132,6 +132,9 @@ export function MailDetail({ thread, isLoadingBody, onBack, mutedSet, ...rest }:
                 </svg>
                 <span className="text-sm font-medium sm:text-base">왼쪽에서 메일을 선택해보세요!</span>
               </div>
+              <p className="text-muted-foreground mt-4 text-xs">
+                <kbd className="bg-muted rounded px-1.5 py-0.5 font-mono">Ctrl</kbd> + <kbd className="bg-muted rounded px-1.5 py-0.5 font-mono">/</kbd> 를 눌러보세요 — 단축키로 더 빠르게 쓸 수 있어요
+              </p>
             </div>
           </div>
         </div>

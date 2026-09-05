@@ -4,6 +4,7 @@ import {
   BellRing,
   Clock3,
   Inbox,
+  Keyboard,
   Mail as MailIcon,
   NotebookPen,
   Paperclip,
@@ -37,6 +38,7 @@ interface HomeViewProps {
   onGoToTrash: () => void
   onGoToStarred: () => void
   onOpenSettings: () => void
+  onOpenShortcuts: () => void
 }
 
 function displayNameFromEmail(email?: string): string {
@@ -64,6 +66,7 @@ export function HomeView({
   onGoToTrash,
   onGoToStarred,
   onOpenSettings,
+  onOpenShortcuts,
 }: HomeViewProps) {
   const totalUnread = Object.values(unreadCountByAccount).reduce((sum, n) => sum + n, 0)
   const starredCount = mails.filter((mail) => mail.isStarred).length
@@ -89,6 +92,7 @@ export function HomeView({
     { label: "첨부함", desc: "첨부파일만 모아보기", icon: Paperclip, onClick: onGoToAttachments },
     { label: "메모", desc: "나만의 노트", icon: StickyNote, onClick: onGoToMemo },
     { label: "임시보관함", desc: "작성 중인 메일 확인", icon: Archive, onClick: onGoToDrafts },
+    { label: "단축키 보기", desc: "키보드로 더 빠르게", icon: Keyboard, onClick: onOpenShortcuts },
   ]
 
   return (
