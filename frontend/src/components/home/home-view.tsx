@@ -26,6 +26,7 @@ interface HomeViewProps {
   unreadCountByAccount: Record<string, number>
   snoozedCount: number
   trashCount: number
+  failedAccountIds: string[]
   currentUserEmail?: string
   onSelectAccount: (accountId: string | null) => void
   onCompose?: () => void
@@ -48,6 +49,7 @@ export function HomeView({
   unreadCountByAccount,
   snoozedCount,
   trashCount,
+  failedAccountIds,
   currentUserEmail,
   onSelectAccount,
   onCompose,
@@ -114,6 +116,32 @@ export function HomeView({
           </div>
         </section>
 
+        <section className="rounded-2xl border bg-white p-5 shadow-sm dark:bg-card">
+          <div className="mb-4 flex items-center justify-between">
+            <div><h2 className="font-semibold">연결된 계정</h2><p className="mt-1 text-xs text-muted-foreground">{accounts.length}개의 계정이 연결되어 있습니다.</p></div>
+            <Button variant="outline" size="sm" className="gap-2 rounded-lg" onClick={onOpenSettings}><Settings className="size-3.5" /> 계정 관리</Button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {accounts.map((account) => {
+              const unread = unreadCountByAccount[account.id] ?? 0
+              const displayText = account.provider === "imap" ? account.label : account.email
+              const isDown = failedAccountIds.includes(account.id)
+              return (
+                <button key={account.id} type="button" onClick={() => onSelectAccount(account.id)} className="flex min-w-0 items-center gap-3 rounded-xl border bg-background/60 p-3 text-left transition hover:border-orange-200 hover:bg-orange-50/50">
+                  <ProviderIcon provider={account.provider} label={account.provider === "imap" ? account.label : undefined} />
+                  <span className="min-w-0 flex-1 truncate text-xs font-medium">{displayText}</span>
+                  {isDown ? (
+                    <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:bg-amber-500/15">응답 없음</span>
+                  ) : (
+                    <span className="text-xs tabular-nums text-muted-foreground">{unread}</span>
+                  )}
+                </button>
+              )
+            })}
+            {accounts.length === 0 && <p className="text-sm text-muted-foreground">설정에서 첫 메일 계정을 연결해 보세요.</p>}
+          </div>
+        </section>
+
         <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           {stats.map((stat) => (
             <button key={stat.label} type="button" onClick={stat.onClick} className="group flex items-center gap-4 rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md dark:bg-card">
@@ -125,27 +153,6 @@ export function HomeView({
               </span>
             </button>
           ))}
-        </section>
-
-        <section className="rounded-2xl border bg-white p-5 shadow-sm dark:bg-card">
-          <div className="mb-4 flex items-center justify-between">
-            <div><h2 className="font-semibold">연결된 계정</h2><p className="mt-1 text-xs text-muted-foreground">{accounts.length}개의 계정이 연결되어 있습니다.</p></div>
-            <Button variant="outline" size="sm" className="gap-2 rounded-lg" onClick={onOpenSettings}><Settings className="size-3.5" /> 계정 관리</Button>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {accounts.map((account) => {
-              const unread = unreadCountByAccount[account.id] ?? 0
-              const displayText = account.provider === "imap" ? account.label : account.email
-              return (
-                <button key={account.id} type="button" onClick={() => onSelectAccount(account.id)} className="flex min-w-0 items-center gap-3 rounded-xl border bg-background/60 p-3 text-left transition hover:border-orange-200 hover:bg-orange-50/50">
-                  <ProviderIcon provider={account.provider} label={account.provider === "imap" ? account.label : undefined} />
-                  <span className="min-w-0 flex-1 truncate text-xs font-medium">{displayText}</span>
-                  <span className="text-xs tabular-nums text-muted-foreground">{unread}</span>
-                </button>
-              )
-            })}
-            {accounts.length === 0 && <p className="text-sm text-muted-foreground">설정에서 첫 메일 계정을 연결해 보세요.</p>}
-          </div>
         </section>
 
         <div className="grid gap-4 lg:grid-cols-[.9fr_1.45fr_.8fr]">

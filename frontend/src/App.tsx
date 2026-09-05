@@ -1096,6 +1096,7 @@ function App() {
             unreadCountByAccount={unreadCountByAccount}
             snoozedCount={Object.values(mailOrg.snoozed).filter((until) => until > Date.now()).length}
             trashCount={workspace.trashMails.length}
+            failedAccountIds={workspace.failedAccountIds}
             currentUserEmail={currentUser?.email}
             onSelectAccount={goToInbox}
             onCompose={sendableAccounts.length > 0 ? handleOpenCompose : undefined}
