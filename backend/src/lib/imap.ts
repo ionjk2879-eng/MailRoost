@@ -331,7 +331,7 @@ export async function imapListInbox(
 ): Promise<{ mails: Mail[]; hasMore: boolean }> {
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
     return fetchMailPageFromSelected(client, selectResult, accountId, maxResults, offset)
   })
 }
@@ -347,7 +347,7 @@ export async function imapSearchInbox(
 ): Promise<Mail[]> {
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
 
     const quoted = quoteImap(query)
     // 규칙 적용처럼 검색 필드가 정해진 경우엔 단일 기준(FROM/SUBJECT)으로 검색한다.
@@ -401,7 +401,7 @@ export async function imapFetchByUids(config: ImapConfig, accountId: string, uid
   assertValidUids(uids)
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
     const fetchResult = await client.command(
       `UID FETCH ${uids.join(",")} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT MESSAGE-ID REFERENCES IN-REPLY-TO)])`,
     )
@@ -413,9 +413,9 @@ export async function imapMarkAsRead(config: ImapConfig, uid: string): Promise<v
   assertValidUid(uid)
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
     const storeResult = await client.command(`UID STORE ${uid} +FLAGS (\\Seen)`)
-    if (!storeResult.ok) throw new Error("읽음 처리에 실패했습니다.")
+    if (!storeResult.ok) throw new Error(`읽음 처리에 실패했습니다 (${storeResult.statusLine}).`)
   })
 }
 
@@ -424,9 +424,9 @@ export async function imapToggleStar(config: ImapConfig, uid: string, starred: b
   const flag = starred ? "+FLAGS" : "-FLAGS"
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
     const storeResult = await client.command(`UID STORE ${uid} ${flag} (\\Flagged)`)
-    if (!storeResult.ok) throw new Error("별표 처리에 실패했습니다.")
+    if (!storeResult.ok) throw new Error(`별표 처리에 실패했습니다 (${storeResult.statusLine}).`)
   })
 }
 
@@ -434,9 +434,9 @@ export async function imapMarkAsUnread(config: ImapConfig, uid: string): Promise
   assertValidUid(uid)
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
     const storeResult = await client.command(`UID STORE ${uid} -FLAGS (\\Seen)`)
-    if (!storeResult.ok) throw new Error("읽지않음 처리에 실패했습니다.")
+    if (!storeResult.ok) throw new Error(`읽지않음 처리에 실패했습니다 (${storeResult.statusLine}).`)
   })
 }
 
@@ -445,17 +445,17 @@ export async function imapDeleteMail(config: ImapConfig, uid: string): Promise<v
   assertValidUid(uid)
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
 
     const trash = await imapFindTrashMailbox(client)
     if (trash) {
       const copyResult = await client.command(`UID COPY ${uid} ${quoteImap(trash)}`)
-      if (!copyResult.ok) throw new Error("메일을 휴지통으로 이동하지 못했습니다.")
+      if (!copyResult.ok) throw new Error(`메일을 휴지통으로 이동하지 못했습니다 (${copyResult.statusLine}).`)
     }
     const storeResult = await client.command(`UID STORE ${uid} +FLAGS (\\Deleted)`)
-    if (!storeResult.ok) throw new Error("메일 삭제에 실패했습니다.")
+    if (!storeResult.ok) throw new Error(`메일 삭제에 실패했습니다 (${storeResult.statusLine}).`)
     const expungeResult = await client.command("EXPUNGE")
-    if (!expungeResult.ok) throw new Error("메일 삭제에 실패했습니다.")
+    if (!expungeResult.ok) throw new Error(`메일 삭제에 실패했습니다 (${expungeResult.statusLine}).`)
   })
 }
 
@@ -467,11 +467,11 @@ export async function imapPermanentDeleteBulk(config: ImapConfig, uids: string[]
     const trash = await imapFindTrashMailbox(client)
     if (!trash) throw new Error("휴지통 폴더를 찾을 수 없습니다.")
     const selectResult = await client.command(`SELECT ${quoteImap(trash)}`)
-    if (!selectResult.ok) throw new Error("휴지통을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`휴지통을 열 수 없습니다 (${selectResult.statusLine}).`)
     const storeResult = await client.command(`UID STORE ${uids.join(",")} +FLAGS (\\Deleted)`)
-    if (!storeResult.ok) throw new Error("메일 영구 삭제에 실패했습니다.")
+    if (!storeResult.ok) throw new Error(`메일 영구 삭제에 실패했습니다 (${storeResult.statusLine}).`)
     const expungeResult = await client.command("EXPUNGE")
-    if (!expungeResult.ok) throw new Error("메일 영구 삭제에 실패했습니다.")
+    if (!expungeResult.ok) throw new Error(`메일 영구 삭제에 실패했습니다 (${expungeResult.statusLine}).`)
   })
 }
 
@@ -483,13 +483,13 @@ export async function imapRestoreFromTrashBulk(config: ImapConfig, uids: string[
     const trash = await imapFindTrashMailbox(client)
     if (!trash) throw new Error("휴지통 폴더를 찾을 수 없습니다.")
     const selectResult = await client.command(`SELECT ${quoteImap(trash)}`)
-    if (!selectResult.ok) throw new Error("휴지통을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`휴지통을 열 수 없습니다 (${selectResult.statusLine}).`)
     const copyResult = await client.command(`UID COPY ${uids.join(",")} INBOX`)
-    if (!copyResult.ok) throw new Error("받은편지함으로 복구하지 못했습니다.")
+    if (!copyResult.ok) throw new Error(`받은편지함으로 복구하지 못했습니다 (${copyResult.statusLine}).`)
     const storeResult = await client.command(`UID STORE ${uids.join(",")} +FLAGS (\\Deleted)`)
-    if (!storeResult.ok) throw new Error("휴지통에서 제거하지 못했습니다.")
+    if (!storeResult.ok) throw new Error(`휴지통에서 제거하지 못했습니다 (${storeResult.statusLine}).`)
     const expungeResult = await client.command("EXPUNGE")
-    if (!expungeResult.ok) throw new Error("휴지통에서 제거하지 못했습니다.")
+    if (!expungeResult.ok) throw new Error(`휴지통에서 제거하지 못했습니다 (${expungeResult.statusLine}).`)
   })
 }
 
@@ -509,9 +509,9 @@ export async function imapEmptyTrash(config: ImapConfig): Promise<void> {
     if (exists === 0) return
 
     const storeResult = await client.command(`STORE 1:${exists} +FLAGS (\\Deleted)`)
-    if (!storeResult.ok) throw new Error("휴지통 비우기에 실패했습니다.")
+    if (!storeResult.ok) throw new Error(`휴지통 비우기에 실패했습니다 (${storeResult.statusLine}).`)
     const expungeResult = await client.command("EXPUNGE")
-    if (!expungeResult.ok) throw new Error("휴지통 비우기에 실패했습니다.")
+    if (!expungeResult.ok) throw new Error(`휴지통 비우기에 실패했습니다 (${expungeResult.statusLine}).`)
   })
 }
 
@@ -524,7 +524,7 @@ async function imapFetchRawByUid(
   assertValidUid(uid)
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
 
     const fetchResult = await client.command(`UID FETCH ${uid} (UID FLAGS INTERNALDATE BODY.PEEK[])`)
     const line = fetchResult.lines.find((l) => /^\*\s+\d+\s+FETCH/i.test(l))
@@ -552,7 +552,7 @@ const ATTACHMENT_SCAN_CHUNK_SIZE = 10
 export async function imapListAttachments(config: ImapConfig, accountId: string, maxResults = 100): Promise<AttachmentListItem[]> {
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${accountId}).`)
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${accountId}): ${selectResult.statusLine}`)
 
     let exists = 0
     for (const line of selectResult.lines) {
@@ -636,9 +636,9 @@ export async function imapMarkAsReadBulk(config: ImapConfig, uids: string[], rea
   const flag = read ? "+FLAGS" : "-FLAGS"
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
     const storeResult = await client.command(`UID STORE ${uids.join(",")} ${flag} (\\Seen)`)
-    if (!storeResult.ok) throw new Error("읽음 처리에 실패했습니다.")
+    if (!storeResult.ok) throw new Error(`읽음 처리에 실패했습니다 (${storeResult.statusLine}).`)
   })
 }
 
@@ -662,9 +662,9 @@ export async function imapToggleStarBulk(config: ImapConfig, uids: string[], sta
   const flag = starred ? "+FLAGS" : "-FLAGS"
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
     const storeResult = await client.command(`UID STORE ${uids.join(",")} ${flag} (\\Flagged)`)
-    if (!storeResult.ok) throw new Error("별표 처리에 실패했습니다.")
+    if (!storeResult.ok) throw new Error(`별표 처리에 실패했습니다 (${storeResult.statusLine}).`)
   })
 }
 
@@ -674,17 +674,17 @@ export async function imapDeleteMailBulk(config: ImapConfig, uids: string[]): Pr
   assertValidUids(uids)
   await withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
-    if (!selectResult.ok) throw new Error("받은편지함을 열 수 없습니다.")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
 
     const trash = await imapFindTrashMailbox(client)
     if (trash) {
       const copyResult = await client.command(`UID COPY ${uids.join(",")} ${quoteImap(trash)}`)
-      if (!copyResult.ok) throw new Error("메일을 휴지통으로 이동하지 못했습니다.")
+      if (!copyResult.ok) throw new Error(`메일을 휴지통으로 이동하지 못했습니다 (${copyResult.statusLine}).`)
     }
     const storeResult = await client.command(`UID STORE ${uids.join(",")} +FLAGS (\\Deleted)`)
-    if (!storeResult.ok) throw new Error("메일 삭제에 실패했습니다.")
+    if (!storeResult.ok) throw new Error(`메일 삭제에 실패했습니다 (${storeResult.statusLine}).`)
     const expungeResult = await client.command("EXPUNGE")
-    if (!expungeResult.ok) throw new Error("메일 삭제에 실패했습니다.")
+    if (!expungeResult.ok) throw new Error(`메일 삭제에 실패했습니다 (${expungeResult.statusLine}).`)
   })
 }
 
