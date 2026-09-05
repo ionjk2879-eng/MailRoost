@@ -1,4 +1,4 @@
-import { Archive, Check, Clock, Download, Eye, FileDown, Folder, FolderInput, Forward, Inbox, MailOpen, Paperclip, Reply, ReplyAll, Star, Trash2, VolumeX } from "lucide-react"
+import { Archive, Check, Clock, Download, Eye, FileDown, Folder, FolderInput, Forward, Inbox, MailOpen, MoreHorizontal, Paperclip, Reply, ReplyAll, Star, Trash2, VolumeX } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -147,6 +147,8 @@ export function MessageCard({
   const moveRef = useRef<HTMLDivElement>(null)
   const [snoozeOpen, setSnoozeOpen] = useState(false)
   const snoozeRef = useRef<HTMLDivElement>(null)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const moreRef = useRef<HTMLDivElement>(null)
   const [previewAttachment, setPreviewAttachment] = useState<MailAttachment | null>(null)
 
   useEffect(() => {
@@ -166,6 +168,15 @@ export function MessageCard({
     document.addEventListener("mousedown", handler)
     return () => document.removeEventListener("mousedown", handler)
   }, [snoozeOpen])
+
+  useEffect(() => {
+    if (!moreOpen) return
+    const handler = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [moreOpen])
 
   const account = accounts.find((a) => a.id === mail.accountId)
 
@@ -190,6 +201,7 @@ export function MessageCard({
                 <Forward className="size-4" />
               </Button>
             )}
+            <div className="mx-1 h-5 w-px shrink-0 bg-border" />
             <Button
               variant="ghost"
               size="icon"
@@ -209,21 +221,12 @@ export function MessageCard({
             >
               <Star className={mail.isStarred ? "size-4 fill-amber-400 text-amber-400" : "size-4 text-muted-foreground"} />
             </button>
+            <div className="mx-1 h-5 w-px shrink-0 bg-border" />
             {onArchive && (
               <Button variant="ghost" size="icon" className="size-8" title="보관" onClick={() => onArchive(mail.id, mail.accountId)}>
                 <Archive className="size-4" />
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              title="원본 메일 저장 (.eml)"
-              render={<a href={emlDownloadUrl(mail.id, mail.accountId, mail.subject)} download />}
-              nativeButton={false}
-            >
-              <FileDown className="size-4" />
-            </Button>
             {(onMove || onToggleFolder) && (
               <div ref={moveRef} className="relative">
                 <Button variant="ghost" size="icon" className="size-8" title="분류 메일함으로 이동" onClick={() => setMoveOpen((v) => !v)}>
@@ -297,17 +300,38 @@ export function MessageCard({
                 )}
               </div>
             )}
-            {onMute && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn("size-8", isMuted && "text-primary")}
-                title={isMuted ? "뮤트 해제" : "이 발신자 뮤트"}
-                onClick={() => onMute(mail.fromEmail)}
-              >
-                <VolumeX className="size-4" />
+            <div ref={moreRef} className="relative">
+              <Button variant="ghost" size="icon" className="size-8" title="더보기" onClick={() => setMoreOpen((v) => !v)}>
+                <MoreHorizontal className="size-4" />
               </Button>
-            )}
+              {moreOpen && (
+                <div className="bg-background absolute top-full right-0 z-20 mt-1 min-w-[180px] rounded-md border py-1 shadow-md">
+                  {onMute && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onMute(mail.fromEmail)
+                        setMoreOpen(false)
+                      }}
+                      className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
+                    >
+                      <VolumeX className={cn("size-3.5", isMuted && "text-primary")} />
+                      {isMuted ? "뮤트 해제" : "이 발신자 뮤트"}
+                    </button>
+                  )}
+                  <a
+                    href={emlDownloadUrl(mail.id, mail.accountId, mail.subject)}
+                    download
+                    onClick={() => setMoreOpen(false)}
+                    className="hover:bg-accent flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm"
+                  >
+                    <FileDown className="size-3.5" />
+                    원본 메일 저장 (.eml)
+                  </a>
+                </div>
+              )}
+            </div>
+            <div className="mx-1 h-5 w-px shrink-0 bg-border" />
             <Button variant="ghost" size="icon" className="hover:text-destructive size-8" title="삭제" onClick={() => onDelete?.(mail.id, mail.accountId)}>
               <Trash2 className="size-4" />
             </Button>
