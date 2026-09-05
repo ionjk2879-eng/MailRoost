@@ -1102,6 +1102,7 @@ function App() {
             onGoToCleanup={goToCleanup}
             onGoToMemo={goToMemo}
             onGoToDrafts={goToDrafts}
+            onGoToAttachments={goToAttachments}
             onGoToTrash={goToTrash}
             onGoToStarred={goToStarred}
             onOpenSettings={() => setSettingsOpen(true)}

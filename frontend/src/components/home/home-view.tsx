@@ -6,12 +6,13 @@ import {
   Inbox,
   Mail as MailIcon,
   NotebookPen,
+  Paperclip,
   Pencil,
   Settings,
   Sparkles,
   Star,
+  StickyNote,
   Trash2,
-  WandSparkles,
 } from "lucide-react"
 import type { ComponentType } from "react"
 import { Button } from "@/components/ui/button"
@@ -31,6 +32,7 @@ interface HomeViewProps {
   onGoToCleanup: () => void
   onGoToMemo: () => void
   onGoToDrafts: () => void
+  onGoToAttachments: () => void
   onGoToTrash: () => void
   onGoToStarred: () => void
   onOpenSettings: () => void
@@ -52,6 +54,7 @@ export function HomeView({
   onGoToCleanup,
   onGoToMemo,
   onGoToDrafts,
+  onGoToAttachments,
   onGoToTrash,
   onGoToStarred,
   onOpenSettings,
@@ -77,8 +80,8 @@ export function HomeView({
 
   const shortcuts: { label: string; desc: string; icon: ComponentType<{ className?: string }>; onClick: () => void }[] = [
     { label: "스마트 분류", desc: "자동 분류 및 라벨링", icon: Sparkles, onClick: onGoToCleanup },
-    { label: "중복 메일 정리", desc: "한 번에 깔끔하게", icon: MailIcon, onClick: onGoToCleanup },
-    { label: "AI 요약", desc: "긴 메일 핵심만 보기", icon: WandSparkles, onClick: onGoToMemo },
+    { label: "첨부함", desc: "첨부파일만 모아보기", icon: Paperclip, onClick: onGoToAttachments },
+    { label: "메모", desc: "나만의 노트", icon: StickyNote, onClick: onGoToMemo },
     { label: "임시보관함", desc: "작성 중인 메일 확인", icon: Archive, onClick: onGoToDrafts },
   ]
 
