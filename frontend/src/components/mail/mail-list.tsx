@@ -1,4 +1,4 @@
-import { Archive, Check, ChevronDown, Folder, FolderInput, Inbox, Loader2, MailOpen, Minus, Star, Trash2, X } from "lucide-react"
+import { Archive, Check, ChevronDown, Folder, FolderInput, Inbox, Loader2, MailOpen, Minus, PanelRightOpen, Star, Trash2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { SenderIcon } from "@/components/mail/sender-icon"
@@ -37,6 +37,8 @@ interface MailListProps {
   onLoadMore?: () => void
   // 답장 체인을 하나의 대화로 묶어서 보여줄지. 검색 결과 화면에서는 false로 넘어온다.
   groupThreads?: boolean
+  // 참고용 사이드 패널에 이 메일을 띄운다 (데스크톱 전용, 제공되지 않으면 버튼 자체를 숨김).
+  onOpenReference?: (mailId: string, accountId: string) => void
 }
 
 function formatTime(iso: string): string {
@@ -83,6 +85,7 @@ export function MailList({
   hasMore,
   onLoadMore,
   groupThreads = true,
+  onOpenReference,
 }: MailListProps) {
   const groups = groupThreads ? groupIntoThreads(mails) : mails.map((mail) => [mail])
   const [filterOpen, setFilterOpen] = useState(false)
@@ -385,6 +388,20 @@ export function MailList({
                   <span className={cn("min-w-0 flex-1 truncate text-[13px]", !mail.isRead && "font-semibold")}>
                     {mail.subject}
                   </span>
+                  {onOpenReference && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onOpenReference(mail.id, mail.accountId)
+                      }}
+                      className="hidden shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-40 hover:!opacity-70 lg:inline-flex"
+                      aria-label="참고용으로 열기"
+                      title="참고용으로 열기"
+                    >
+                      <PanelRightOpen className="text-muted-foreground size-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => {

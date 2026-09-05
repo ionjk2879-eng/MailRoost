@@ -27,6 +27,8 @@ export interface MessageCardProps {
   onSnooze?: (mailId: string, accountId: string, until: number) => void
   onMute?: (fromEmail: string) => void
   isMuted?: boolean
+  // 참고용 사이드 패널 등에서 툴바(답장/보관/삭제 등) 없이 본문만 보여줄 때.
+  readOnly?: boolean
 }
 
 function getSnoozeOptions(): Array<{ label: string; subtitle: string; until: number }> {
@@ -142,6 +144,7 @@ export function MessageCard({
   onSnooze,
   onMute,
   isMuted,
+  readOnly,
 }: MessageCardProps) {
   const [moveOpen, setMoveOpen] = useState(false)
   const moveRef = useRef<HTMLDivElement>(null)
@@ -185,7 +188,7 @@ export function MessageCard({
       <div className="flex shrink-0 flex-col gap-4 border-b bg-background px-7 py-5">
         <div className="flex min-w-0 flex-col gap-1.5">
           <h2 className="text-xl font-semibold leading-snug tracking-tight break-words">{mail.subject}</h2>
-          <div className="flex flex-nowrap items-center gap-1 overflow-x-auto">
+          {!readOnly && <div className="flex flex-nowrap items-center gap-1 overflow-x-auto">
             {onReply && (
               <Button variant="ghost" size="icon" className="size-8" title="답장" onClick={() => onReply(mail)}>
                 <Reply className="size-4" />
@@ -335,7 +338,7 @@ export function MessageCard({
             <Button variant="ghost" size="icon" className="hover:text-destructive size-8" title="삭제" onClick={() => onDelete?.(mail.id, mail.accountId)}>
               <Trash2 className="size-4" />
             </Button>
-          </div>
+          </div>}
         </div>
         <div className="flex min-w-0 items-center gap-3 border-t pt-4">
           <SenderIcon email={mail.fromEmail} senderName={mail.fromName} className="size-9" />

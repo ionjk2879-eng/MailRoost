@@ -5,6 +5,7 @@ import { AccountSidebar } from "@/components/mail/account-sidebar"
 import { CategoryTabs } from "@/components/mail/category-tabs"
 import { COMPOSE_SUPPORTED, ComposeView } from "@/components/mail/compose-view"
 import { MailDetail } from "@/components/mail/mail-detail"
+import { MessageCard } from "@/components/mail/message-card"
 import { MailList } from "@/components/mail/mail-list"
 import { MailFilterMenu } from "@/components/mail/mail-filter-menu"
 import { CleanupView, SHORTCUTS } from "@/components/cleanup/cleanup-view"
@@ -105,6 +106,8 @@ function App() {
     forwardedAttachments?: ForwardedAttachmentRef[]
     draftId?: string
   } | null>(null)
+  // 참고용 사이드 패널 — 비교/참고 목적으로 다른 메일 하나를 읽기 전용으로 옆에 띄운다. 한 번에 1개만.
+  const [referenceMail, setReferenceMail] = useState<{ mailId: string; accountId: string } | null>(null)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(() => initialHistoryStateRef.current?.accountId ?? null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
@@ -309,6 +312,15 @@ function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedThread, workspace.mailDetails])
+
+  useEffect(() => {
+    if (!referenceMail) return
+    if (workspace.mailDetails[referenceMail.mailId]) return
+    fetchMailDetail(referenceMail.mailId, referenceMail.accountId).then((detail) => {
+      if (detail) workspace.setMailDetail(detail)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [referenceMail, workspace.mailDetails])
 
   const isLoadingDetail =
     selectedThread !== null &&
@@ -852,6 +864,7 @@ function App() {
           isLoadingMore={workspace.isLoadingMore}
           onLoadMore={workspace.handleLoadMore}
           groupThreads={!workspace.searchQuery}
+          onOpenReference={(mailId, accountId) => setReferenceMail({ mailId, accountId })}
         />
       </div>
     </div>
@@ -922,6 +935,7 @@ function App() {
       folders={mailOrg.folders}
       currentFolderId={selectedFolderId ?? undefined}
       onBulkMove={workspace.handleBulkMoveFromFolder}
+      onOpenReference={(mailId, accountId) => setReferenceMail({ mailId, accountId })}
     />
   )
 
@@ -971,6 +985,32 @@ function App() {
       onToggleFolder={workspace.handleToggleMailFolder}
       mutedSet={mailOrg.mutedSet}
     />
+  )
+
+  const referenceMailDetail = referenceMail ? workspace.mailDetails[referenceMail.mailId] : null
+  const referencePane = referenceMail && (
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      <div className="flex h-11 shrink-0 items-center justify-between border-b px-3">
+        <span className="text-muted-foreground text-xs font-medium">참고용</span>
+        <button
+          type="button"
+          onClick={() => setReferenceMail(null)}
+          aria-label="참고용 패널 닫기"
+          className="text-muted-foreground hover:text-foreground rounded p-1"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {referenceMailDetail ? (
+          <MessageCard mail={referenceMailDetail} accounts={accounts} readOnly />
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 className="text-muted-foreground size-5 animate-spin" />
+          </div>
+        )}
+      </div>
+    </div>
   )
 
   return (
@@ -1199,6 +1239,14 @@ function App() {
               <ResizablePanel id="detail-panel" defaultSize="55" minSize="35" className="overflow-hidden">
                 {folderDetailPane}
               </ResizablePanel>
+              {referencePane && (
+                <>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel id="reference-panel" defaultSize="30" minSize="20" maxSize="45" className="overflow-hidden border-l">
+                    {referencePane}
+                  </ResizablePanel>
+                </>
+              )}
             </ResizablePanelGroup>
           )
         ) : isMobile ? (
@@ -1214,6 +1262,14 @@ function App() {
             <ResizablePanel id="detail-panel" defaultSize="60" minSize="42" className="overflow-hidden bg-background">
               {mailDetailPane}
             </ResizablePanel>
+            {referencePane && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel id="reference-panel" defaultSize="30" minSize="20" maxSize="45" className="overflow-hidden border-l bg-background">
+                  {referencePane}
+                </ResizablePanel>
+              </>
+            )}
           </ResizablePanelGroup>
         )}
       </SidebarInset>
