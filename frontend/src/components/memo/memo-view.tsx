@@ -271,9 +271,11 @@ export function MemoView({ memos, onCreate, onUpdateMemo, onDelete, onJumpToMail
   const filtered = q
     ? memos.filter((m) => (m.title ?? "").toLowerCase().includes(q) || m.content.toLowerCase().includes(q))
     : memos
+  // 수정 시각으로 정렬하면 타이핑 중에도 카드가 계속 앞으로 튀어서 편집을 방해한다 —
+  // 생성 시각(고정 편집으로는 안 바뀜)을 기준으로 고정해, 편집 중에도 위치가 유지되게 한다.
   const sorted = [...filtered].sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
-    return b.updatedAt - a.updatedAt
+    return b.createdAt - a.createdAt
   })
 
   return (
