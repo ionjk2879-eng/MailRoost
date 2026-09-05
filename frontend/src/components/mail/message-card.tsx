@@ -261,7 +261,7 @@ export function MessageCard({
               <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" title="더보기" />}>
                 <MoreHorizontal className="size-4" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent>
+              <DropdownMenuContent side="right" align="start">
                 {onMute && (
                   <DropdownMenuItem onClick={() => onMute(mail.fromEmail)}>
                     <VolumeX className={cn("size-3.5", isMuted && "text-primary")} />
