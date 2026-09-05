@@ -87,7 +87,7 @@ function MemoCard({
   }
 
   return (
-    <div className={`group relative flex h-72 flex-col rounded-lg border p-3 shadow-sm ${cardTint(memo.color)}`}>
+    <div className={`group relative flex aspect-[4/5] min-h-64 flex-col rounded-lg border p-3 shadow-sm ${cardTint(memo.color)}`}>
       <div className="mb-1 flex shrink-0 items-center gap-1">
         <div ref={colorRef} className="relative">
           <button
