@@ -125,7 +125,6 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
       if (generation !== loadGenerationRef.current) return
       setRealAccounts(accounts)
       setFailedAccountIds(failed ?? [])
-      const failedSet = new Set(failed ?? [])
       const freshMails = filterOutDeleted(mails)
 
       // 새 메일 감지: 이전에 알고 있던 키에 없는 메일이 왔을 때 소리 + 푸시
@@ -143,14 +142,24 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
       }
       knownMailKeysRef.current = freshKeys
 
+      // fetchMails()는 항상 1페이지치만 돌려주므로, 여기서 prev를 통째로 freshMails로
+      // 바꿔치기하면 "더 불러오기"로 쌓아온 2페이지 이후 메일들이 폴링 주기(20초)마다
+      // 사라진다 — 사라진 메일은 체크박스 선택/일괄삭제 대상에서도 조용히 빠지고, 그 뒤
+      // "더 불러오기"를 다시 누르면 (지워진 적이 없으니) 도로 나타나 마치 삭제가 "취소"된
+      // 것처럼 보인다. 그래서 겹치는 부분만 최신 값으로 교체하고 나머지는 유지한다.
       setRealMails((prev) => {
-        if (failedSet.size === 0) return freshMails
-        // 실패한 계정의 기존 메일은 그대로 유지하고 성공한 계정 메일만 교체
-        const kept = prev.filter((m) => failedSet.has(m.accountId))
         const freshIds = new Set(freshMails.map((m) => `${m.accountId}:${m.id}`))
-        return [...freshMails, ...kept.filter((m) => !freshIds.has(`${m.accountId}:${m.id}`))]
+        const kept = prev.filter((m) => {
+          const key = `${m.accountId}:${m.id}`
+          if (freshIds.has(key)) return false // 아래 freshMails 쪽 최신 값으로 대체됨
+          if (deletedKeysRef.current.has(key)) return false // 삭제 확정된 메일은 되살리지 않음
+          return true // 실패 계정이거나, 이전에 "더 불러오기"로 로드된 이후 페이지 메일
+        })
+        return [...freshMails, ...kept]
       })
-      setNextCursor(cursor)
+      // nextCursor는 항상 "1페이지 다음"을 가리키므로, 이미 그보다 더 진행된 적이 있어도
+      // 여기서 되돌리지 않는다 — 되돌리면 "더 불러오기"가 이미 본 페이지를 다시 밟는다.
+      setNextCursor((prev) => prev ?? cursor)
       } catch (error) {
         // 실패 응답을 빈 목록으로 덮어쓰지 않고 다음 폴링 때 복구한다.
         console.error("[mail-workspace] 계정/메일 새로고침 실패:", error)
@@ -283,13 +292,23 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     })
     setSelectedMailId((prev) => (prev && deletedIds.has(prev) ? null : prev))
 
+    // 계정 하나당 UID를 한꺼번에 너무 많이 보내면 일부 IMAP 서버가 명령 길이 제한에 걸리거나,
+    // 유효하지 않은 UID를 조용히 건너뛰고도 전체 응답을 OK로 돌려줘서 일부만 삭제되고도 성공한
+    // 것처럼 보일 수 있다 — "전체 선택" 기능처럼 대상이 아주 많을 수 있으니 나눠서 보낸다.
+    const DELETE_CHUNK = 200
     const groups = groupIdsByAccount(targets)
     const outcomes = await Promise.all(
-      [...groups.entries()].map(async ([accountId, ids]) => ({
-        accountId,
-        ids,
-        result: await bulkDeleteMails(accountId, ids),
-      })),
+      [...groups.entries()].map(async ([accountId, ids]) => {
+        for (let i = 0; i < ids.length; i += DELETE_CHUNK) {
+          const chunk = ids.slice(i, i + DELETE_CHUNK)
+          const result = await bulkDeleteMails(accountId, chunk)
+          // 실패하면 이후 청크는 시도조차 안 했으므로, 그 실패한 청크 + 아직 안 보낸 나머지를
+          // 전부 "되돌릴 대상"으로 묶어서 반환한다 (안 그러면 시도 안 한 것들이 낙관적으로
+          // 지워진 화면 상태 그대로 남아 실제로는 안 지워졌는데 지워진 것처럼 보인다).
+          if (!result.ok) return { accountId, ids: ids.slice(i), result }
+        }
+        return { accountId, ids: [] as string[], result: { ok: true } as { ok: boolean; error?: string } }
+      }),
     )
 
     const failed = outcomes.filter((o) => !o.result.ok)
