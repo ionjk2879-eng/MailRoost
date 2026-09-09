@@ -1,4 +1,4 @@
-import { Archive, Check, ChevronDown, Folder, FolderInput, Inbox, Loader2, MailOpen, Minus, PanelRightOpen, Star, Trash2, X } from "lucide-react"
+import { Archive, Check, ChevronDown, Folder, FolderInput, Inbox, Loader2, MailOpen, Minus, PanelRightOpen, Star, StarOff, Trash2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { SenderIcon } from "@/components/mail/sender-icon"
@@ -30,6 +30,8 @@ interface MailListProps {
   onActivateFilterSelectAll?: (filter: FilterSelectAllFilter) => void
   onBulkMarkRead: () => void
   onBulkMarkUnread: () => void
+  onBulkStar: () => void
+  onBulkUnstar: () => void
   onBulkDelete: () => void
   isBulkLoading?: boolean
   // 보관 / 분류 이동
@@ -94,6 +96,8 @@ export function MailList({
   onActivateFilterSelectAll,
   onBulkMarkRead,
   onBulkMarkUnread,
+  onBulkStar,
+  onBulkUnstar,
   onBulkDelete,
   isBulkLoading,
   onBulkArchive,
@@ -233,6 +237,26 @@ export function MailList({
                 title="읽지않음 처리"
               >
                 <MailOpen className="size-3.5 opacity-50" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-7 p-0"
+                onClick={onBulkStar}
+                disabled={isBulkLoading}
+                title="중요 표시"
+              >
+                <Star className="size-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-7 p-0"
+                onClick={onBulkUnstar}
+                disabled={isBulkLoading}
+                title="중요 해제"
+              >
+                <StarOff className="size-3.5" />
               </Button>
               {onBulkArchive && (
                 <Button

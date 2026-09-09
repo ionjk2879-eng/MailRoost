@@ -368,6 +368,8 @@ function App() {
 
   const handleBulkMarkRead = () => workspace.bulkMarkRead(visibleMails, true)
   const handleBulkMarkUnread = () => workspace.bulkMarkRead(visibleMails, false)
+  const handleBulkStar = () => workspace.bulkToggleStar(visibleMails, true)
+  const handleBulkUnstar = () => workspace.bulkToggleStar(visibleMails, false)
   const handleBulkDelete = () => workspace.bulkDelete(visibleMails)
   const handleBulkMoveFromInbox = (folderId: string | null) => workspace.bulkMoveFromInbox(visibleMails, folderId)
 
@@ -883,6 +885,8 @@ function App() {
           onActivateFilterSelectAll={workspace.activateFilterSelectAll}
           onBulkMarkRead={handleBulkMarkRead}
           onBulkMarkUnread={handleBulkMarkUnread}
+          onBulkStar={handleBulkStar}
+          onBulkUnstar={handleBulkUnstar}
           onBulkDelete={handleBulkDelete}
           isBulkLoading={workspace.isBulkLoading}
           onBulkArchive={() => handleBulkMoveFromInbox(ARCHIVE_FOLDER_ID)}
@@ -959,6 +963,8 @@ function App() {
       onClearChecked={() => workspace.setCheckedMailIds(new Set())}
       onBulkMarkRead={workspace.handleBulkMarkReadInFolder}
       onBulkMarkUnread={workspace.handleBulkMarkUnreadInFolder}
+      onBulkStar={workspace.handleBulkStarInFolder}
+      onBulkUnstar={workspace.handleBulkUnstarInFolder}
       onBulkDelete={workspace.handleBulkDeleteInFolder}
       isBulkLoading={workspace.isBulkLoading}
       onBulkArchive={view === "archive" ? undefined : () => workspace.handleBulkMoveFromFolder(ARCHIVE_FOLDER_ID)}

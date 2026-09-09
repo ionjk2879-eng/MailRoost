@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import {
   bulkDeleteMails,
   bulkMarkRead,
+  bulkToggleStar,
   emptyAllTrash,
   emptyTrash,
   fetchAccounts,
@@ -305,6 +306,40 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
   }
   const handleBulkMarkReadInFolder = () => bulkMarkReadGeneric(folderMails, setFolderMails, true)
   const handleBulkMarkUnreadInFolder = () => bulkMarkReadGeneric(folderMails, setFolderMails, false)
+
+  const bulkToggleStarGeneric = async (
+    mails: Mail[],
+    setList: (updater: (prev: Mail[]) => Mail[]) => void,
+    starred: boolean,
+  ) => {
+    const targets = mails.filter((m) => checkedMailIds.has(m.id) && m.isStarred !== starred)
+    setList((prev) => prev.map((m) => (checkedMailIds.has(m.id) ? { ...m, isStarred: starred } : m)))
+    setCheckedMailIds(new Set())
+    if (targets.length > 0) {
+      setIsBulkLoading(true)
+      const groups = groupIdsByAccount(targets)
+      await Promise.all([...groups.entries()].map(([accountId, ids]) => bulkToggleStar(accountId, ids, starred)))
+      setIsBulkLoading(false)
+    }
+  }
+
+  const bulkToggleStar_ = async (mails: Mail[], starred: boolean) => {
+    if (filterSelectAll) {
+      setIsBulkLoading(true)
+      const all = await fetchMailsByFilter(filterSelectAll)
+      const targets = all.filter((m) => m.isStarred !== starred)
+      const targetKeys = new Set(targets.map((m) => `${m.accountId}:${m.id}`))
+      setRealMails((prev) => prev.map((m) => (targetKeys.has(`${m.accountId}:${m.id}`) ? { ...m, isStarred: starred } : m)))
+      const groups = groupIdsByAccount(targets)
+      await Promise.all([...groups.entries()].map(([accountId, ids]) => bulkToggleStar(accountId, ids, starred)))
+      setFilterSelectAll(null)
+      setIsBulkLoading(false)
+      return
+    }
+    return bulkToggleStarGeneric(mails, setRealMails, starred)
+  }
+  const handleBulkStarInFolder = () => bulkToggleStarGeneric(folderMails, setFolderMails, true)
+  const handleBulkUnstarInFolder = () => bulkToggleStarGeneric(folderMails, setFolderMails, false)
 
   // 낙관적으로 즉시 제거하되, 실패한 계정 몫은 되돌리고 에러를 표시한다.
   // 삭제 확정 전까지는 tombstone에 등록해 폴링이 되살리지 못하게 막는다.
@@ -754,6 +789,9 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     bulkMarkRead: bulkMarkRead_,
     handleBulkMarkReadInFolder,
     handleBulkMarkUnreadInFolder,
+    bulkToggleStar: bulkToggleStar_,
+    handleBulkStarInFolder,
+    handleBulkUnstarInFolder,
     bulkDelete,
     handleBulkDeleteInFolder,
     handleMarkAsUnread,
