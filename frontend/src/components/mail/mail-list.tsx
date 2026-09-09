@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils"
 import { groupIntoThreads } from "@/lib/threading"
 
 type SelectFilter = "all" | "none" | "read" | "unread" | "starred" | "unstarred"
+// "전체 선택" 모드에서 실제로 서버 전체를 대상으로 삼을 수 있는 필터 (all/none은 의미가 없어 제외).
+type FilterSelectAllFilter = Exclude<SelectFilter, "all" | "none">
 
 interface MailListProps {
   mails: Mail[]
@@ -22,6 +24,10 @@ interface MailListProps {
   onCheckRange: (mailIds: string[]) => void
   onSelectByFilter: (filter: SelectFilter) => void
   onClearChecked: () => void
+  // 지금 로드된 페이지와 무관하게 "이 조건에 맞는 편지함 전체"를 일괄 작업 대상으로 삼는 모드.
+  // 제공되지 않으면(분류 메일함 화면 등) 관련 UI 자체가 나타나지 않는다.
+  filterSelectAll?: FilterSelectAllFilter | null
+  onActivateFilterSelectAll?: (filter: FilterSelectAllFilter) => void
   onBulkMarkRead: () => void
   onBulkMarkUnread: () => void
   onBulkDelete: () => void
@@ -62,6 +68,17 @@ const FILTER_OPTIONS: { value: SelectFilter; label: string }[] = [
   { value: "unstarred", label: "별표없음" },
 ]
 
+const FILTER_SELECT_ALL_LABELS: Record<FilterSelectAllFilter, string> = {
+  read: "읽음",
+  unread: "읽지않음",
+  starred: "별표",
+  unstarred: "별표없음",
+}
+
+function isFilterSelectAllFilter(filter: SelectFilter): filter is FilterSelectAllFilter {
+  return filter !== "all" && filter !== "none"
+}
+
 export function MailList({
   mails,
   selectedMailId,
@@ -73,6 +90,8 @@ export function MailList({
   onCheckRange,
   onSelectByFilter,
   onClearChecked,
+  filterSelectAll,
+  onActivateFilterSelectAll,
   onBulkMarkRead,
   onBulkMarkUnread,
   onBulkDelete,
@@ -94,8 +113,10 @@ export function MailList({
   const moveRef = useRef<HTMLDivElement>(null)
   // Shift-클릭 범위선택의 기준점 (마지막으로 클릭/체크한 메일)
   const [anchorId, setAnchorId] = useState<string | null>(null)
+  // 드롭다운에서 마지막으로 고른 필터 — "전체 선택 (불러오지 않은 메일 포함)" 문구/동작에 씀
+  const [lastFilter, setLastFilter] = useState<SelectFilter | null>(null)
 
-  const isSelecting = checkedIds.size > 0
+  const isSelecting = checkedIds.size > 0 || !!filterSelectAll
   const allChecked = mails.length > 0 && mails.every((m) => checkedIds.has(m.id))
   const someChecked = checkedIds.size > 0 && !allChecked
 
@@ -129,7 +150,10 @@ export function MailList({
         <div ref={filterRef} className="relative flex items-center">
           <button
             type="button"
-            onClick={() => onSelectByFilter(allChecked ? "none" : "all")}
+            onClick={() => {
+              setLastFilter(allChecked ? "none" : "all")
+              onSelectByFilter(allChecked ? "none" : "all")
+            }}
             className="border-input bg-background hover:bg-accent flex size-5 items-center justify-center rounded-sm border"
             aria-label={allChecked ? "전체 해제" : "전체 선택"}
           >
@@ -151,6 +175,7 @@ export function MailList({
                   key={opt.value}
                   type="button"
                   onClick={() => {
+                    setLastFilter(opt.value)
                     onSelectByFilter(opt.value)
                     setFilterOpen(false)
                   }}
@@ -162,6 +187,28 @@ export function MailList({
             </div>
           )}
         </div>
+
+        {/* 체크박스 옆 텍스트: 지금 로드된 페이지와 무관하게 이 필터 조건에 맞는 편지함
+            전체를 대상으로 삼는다 — "더 불러오기"를 다 누르지 않아도 됨. */}
+        {filterSelectAll ? (
+          <span className="text-primary shrink-0 pl-1.5 text-xs font-medium">
+            {FILTER_SELECT_ALL_LABELS[filterSelectAll]} 조건 · 편지함 전체 선택됨
+          </span>
+        ) : (
+          onActivateFilterSelectAll &&
+          hasMore &&
+          checkedIds.size > 0 &&
+          lastFilter &&
+          isFilterSelectAllFilter(lastFilter) && (
+            <button
+              type="button"
+              onClick={() => onActivateFilterSelectAll(lastFilter)}
+              className="text-primary shrink-0 pl-1.5 text-xs font-medium hover:underline"
+            >
+              불러오지 않은 메일 포함 전체 선택
+            </button>
+          )
+        )}
 
         {/* 선택 중일 때 액션 버튼 */}
         {isSelecting ? (

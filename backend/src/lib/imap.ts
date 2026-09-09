@@ -379,6 +379,46 @@ export async function imapSearchInbox(
   })
 }
 
+export type MailStatusFilter = "read" | "unread" | "starred" | "unstarred"
+
+// "읽음/안읽음/별표/별표없음" 조건에 맞는 받은편지함 메일을 페이지네이션 없이 전부 찾는다.
+// 프런트엔드에 이미 로드된 페이지와 무관하게 "이 조건에 맞는 메일 전체"를 골라 일괄 작업할 때 쓴다.
+export async function imapSearchMailsByFilter(
+  config: ImapConfig,
+  accountId: string,
+  filter: MailStatusFilter,
+): Promise<Mail[]> {
+  const criterion =
+    filter === "read" ? "SEEN" : filter === "unread" ? "UNSEEN" : filter === "starred" ? "FLAGGED" : "UNFLAGGED"
+
+  return withImap(config, async (client) => {
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
+
+    const searchResult = await client.command(`UID SEARCH ${criterion}`)
+    if (!searchResult.ok) throw new Error(`메일 검색에 실패했습니다 (${searchResult.statusLine}).`)
+    const line = searchResult.lines.find((l) => /^\*\s+SEARCH/i.test(l))
+    if (!line) return []
+    const uids = line.replace(/^\*\s+SEARCH\s*/i, "").trim().split(/\s+/).filter(Boolean)
+    if (uids.length === 0) return []
+
+    // 조건에 맞는 메일이 아주 많을 수 있으니 한 FETCH 명령에 다 넣지 않고 나눠서 가져온다
+    // (명령 하나에 UID를 너무 많이 넣으면 일부 서버가 응답 길이 제한에 걸리거나, 존재하지
+    // 않는/유효하지 않은 UID를 조용히 건너뛰어 놓고도 전체 응답을 OK로 돌려줄 수 있다).
+    const CHUNK = 200
+    const mails: Mail[] = []
+    for (let i = 0; i < uids.length; i += CHUNK) {
+      const chunk = uids.slice(i, i + CHUNK)
+      const fetchResult = await client.command(
+        `UID FETCH ${chunk.join(",")} (UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (FROM SUBJECT MESSAGE-ID REFERENCES IN-REPLY-TO)])`,
+      )
+      if (!fetchResult.ok) throw new Error(`메일 조회에 실패했습니다 (${fetchResult.statusLine}).`)
+      mails.push(...mapFetchLinesToMails(fetchResult.lines, accountId))
+    }
+    return mails
+  })
+}
+
 export async function imapListTrash(
   config: ImapConfig,
   accountId: string,
@@ -764,6 +804,10 @@ export async function naverDeleteMailBulk(email: string, appPassword: string, ui
   return imapDeleteMailBulk(naverConfig(email, appPassword), uids)
 }
 
+export async function naverSearchMailsByFilter(email: string, appPassword: string, accountId: string, filter: MailStatusFilter): Promise<Mail[]> {
+  return imapSearchMailsByFilter(naverConfig(email, appPassword), accountId, filter)
+}
+
 export async function naverListTrash(
   email: string,
   appPassword: string,
@@ -873,6 +917,10 @@ export async function daumToggleStarBulk(email: string, password: string, uids: 
 
 export async function daumDeleteMailBulk(email: string, password: string, uids: string[]): Promise<void> {
   return imapDeleteMailBulk(daumConfig(email, password), uids)
+}
+
+export async function daumSearchMailsByFilter(email: string, password: string, accountId: string, filter: MailStatusFilter): Promise<Mail[]> {
+  return imapSearchMailsByFilter(daumConfig(email, password), accountId, filter)
 }
 
 export async function daumListTrash(

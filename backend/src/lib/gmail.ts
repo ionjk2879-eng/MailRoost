@@ -463,6 +463,34 @@ export async function restoreFromTrashBulk(accessToken: string, ids: string[]): 
   await batchModifyMessages(accessToken, ids, { addLabelIds: ["INBOX"], removeLabelIds: ["TRASH"] })
 }
 
+// "읽음/안읽음/별표/별표없음" 조건에 맞는 받은편지함 메일을 페이지네이션 없이 전부 찾는다.
+// 프런트엔드에 이미 로드된 페이지와 무관하게 "이 조건에 맞는 메일 전체"를 골라 일괄 작업할 때 쓴다.
+export async function listAllInboxMailsByFilter(
+  accessToken: string,
+  accountId: string,
+  filter: "read" | "unread" | "starred" | "unstarred",
+): Promise<Mail[]> {
+  const q =
+    filter === "read" ? "is:read" : filter === "unread" ? "is:unread" : filter === "starred" ? "is:starred" : "-is:starred"
+
+  let pageToken: string | undefined
+  const allIds: string[] = []
+  do {
+    const params = new URLSearchParams({ maxResults: "500", q: `in:inbox ${q}` })
+    if (pageToken) params.set("pageToken", pageToken)
+    const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) throw new Error(`Gmail 검색 실패: ${res.status}`)
+    const json = (await res.json()) as { messages?: { id: string }[]; nextPageToken?: string }
+    for (const m of json.messages ?? []) allIds.push(m.id)
+    pageToken = json.nextPageToken
+  } while (pageToken)
+
+  const messages = await batchGetMessages(accessToken, allIds)
+  return messages.map((m) => mapMessageToMail(m, accountId))
+}
+
 export async function markAllInboxUnreadAsRead(accessToken: string): Promise<void> {
   let pageToken: string | undefined
   const allIds: string[] = []

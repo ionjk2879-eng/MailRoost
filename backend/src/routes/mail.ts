@@ -5,6 +5,7 @@ import {
   ensureFreshToken,
   getMailDetail,
   getRawMessage,
+  listAllInboxMailsByFilter,
   listInboxMails,
   markAsRead as gmailMarkAsRead,
   markAsUnread as gmailMarkAsUnread,
@@ -24,6 +25,7 @@ import {
   daumMarkAsReadBulk,
   daumMarkAllInboxUnreadAsRead,
   daumMarkAsUnread,
+  daumSearchMailsByFilter,
   daumToggleStar,
   daumToggleStarBulk,
   imapDeleteMail,
@@ -34,8 +36,10 @@ import {
   imapMarkAllInboxUnreadAsRead,
   imapMarkAsReadBulk,
   imapMarkAsUnread,
+  imapSearchMailsByFilter,
   imapToggleStar,
   imapToggleStarBulk,
+  type MailStatusFilter,
   naverDeleteMail,
   naverDeleteMailBulk,
   naverGetMailDetail,
@@ -46,6 +50,7 @@ import {
   naverMarkAllInboxUnreadAsRead,
   naverMarkAsUnread,
   naverSearchInbox,
+  naverSearchMailsByFilter,
   naverToggleStar,
   naverToggleStarBulk,
 } from "../lib/imap"
@@ -533,6 +538,58 @@ mail.post("/mail/bulk-delete", async (c) => {
 
   await mutateMailOrg(c.env, sessionId, session, { type: "clearMailKeys", accountId, mailIds })
   return c.json({ ok: true })
+})
+
+const MAIL_STATUS_FILTERS: MailStatusFilter[] = ["read", "unread", "starred", "unstarred"]
+
+// 프런트엔드에 지금 로드돼 있는 페이지와 무관하게, 연결된 모든 계정의 받은편지함에서
+// "읽음/안읽음/별표/별표없음" 조건에 맞는 메일 전체를 찾는다 — 체크박스 옆 "전체 선택
+// (불러오지 않은 메일 포함)" 기능이 일괄 작업 대상을 정할 때 쓴다.
+mail.get("/mail/filter-mails", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ mails: [] })
+
+  const filterParam = c.req.query("filter")
+  const filter = MAIL_STATUS_FILTERS.find((f) => f === filterParam)
+  if (!filter) return c.json({ error: "bad request" }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const accountIds = Object.keys(accountMap)
+  const accountPatch: Record<string, GmailTokenPatch> = {}
+
+  // 계정 하나가 실패해도 나머지 계정 결과까지 통째로 날아가면 안 되므로 계정별로 에러를 잡는다.
+  const perAccountMails = await Promise.all(
+    accountIds.map(async (accountId) => {
+      const record = accountMap[accountId]
+      if (!record) return []
+      try {
+        if (record.provider === "naver") {
+          return await naverSearchMailsByFilter(record.email, record.appPassword, accountId, filter)
+        }
+        if (record.provider === "daum") {
+          return await daumSearchMailsByFilter(record.email, record.password, accountId, filter)
+        }
+        if (record.provider === "imap") {
+          return await imapSearchMailsByFilter(
+            { host: record.host, port: record.port, email: record.email, password: record.password },
+            accountId,
+            filter,
+          )
+        }
+        const fresh = await ensureFreshToken(c.env, record)
+        if (fresh.accessToken !== record.accessToken) accountPatch[accountId] = gmailTokenPatchOf(fresh)
+        return await listAllInboxMailsByFilter(fresh.accessToken, accountId, filter)
+      } catch (err) {
+        console.error(`[mail-filter] account ${accountId} failed, skipping:`, err)
+        return []
+      }
+    }),
+  )
+
+  if (Object.keys(accountPatch).length > 0) await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, accountPatch)
+
+  return c.json({ mails: perAccountMails.flat() })
 })
 
 mail.get("/mail/:id", async (c) => {

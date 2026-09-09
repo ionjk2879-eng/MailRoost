@@ -440,6 +440,19 @@ export async function markAllMailsRead(accountId: string): Promise<void> {
   })
 }
 
+export type MailStatusFilter = "read" | "unread" | "starred" | "unstarred"
+
+// 연결된 모든 계정의 받은편지함에서 조건에 맞는 메일 전체를 찾는다 — 프런트엔드에 지금
+// 로드돼 있는 페이지와 무관하게 "전체 선택 (불러오지 않은 메일 포함)"에서 쓴다.
+export async function fetchMailsByFilter(filter: MailStatusFilter): Promise<Mail[]> {
+  const res = await requireOk(
+    await fetch(`/api/mail/filter-mails?filter=${filter}`),
+    "메일을 불러오지 못했습니다.",
+  )
+  const data = (await res.json()) as { mails: Mail[] }
+  return data.mails
+}
+
 export async function bulkMarkRead(accountId: string, mailIds: string[], read: boolean): Promise<void> {
   if (mailIds.length === 0) return
   await fetch("/api/mail/bulk/read", {

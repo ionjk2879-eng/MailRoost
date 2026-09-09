@@ -7,6 +7,7 @@ import {
   fetchAccounts,
   fetchFolderMails,
   fetchMails,
+  fetchMailsByFilter,
   fetchTrashMails,
   markAllMailsRead,
   markAsRead,
@@ -46,6 +47,9 @@ function groupIdsByAccount(mails: Mail[]): Map<string, string[]> {
 }
 
 export type BulkSelectFilter = "all" | "none" | "read" | "unread" | "starred" | "unstarred"
+
+// "전체 선택" 모드에서 실제로 서버 전체를 대상으로 삼을 수 있는 필터 (all/none은 의미가 없어 제외).
+export type FilterSelectAllFilter = Exclude<BulkSelectFilter, "all" | "none">
 
 interface UseMailWorkspaceParams {
   currentUser: { id: string; email: string } | null
@@ -90,6 +94,15 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
 
   const [checkedMailIds, setCheckedMailIds] = useState<Set<string>>(new Set())
   const [isBulkLoading, setIsBulkLoading] = useState(false)
+  // 체크박스로 낱개 선택하는 대신, "지금 로드된 페이지와 무관하게 이 조건에 맞는 받은편지함
+  // 전체"를 일괄 작업 대상으로 삼는 모드. 실제 대상 목록은 여기 저장하지 않고, 일괄 작업
+  // 버튼을 누르는 시점에 서버에서 조회한다 (수천 건을 미리 다 불러와 화면에 그리지 않기 위함).
+  const [filterSelectAll, setFilterSelectAll] = useState<FilterSelectAllFilter | null>(null)
+  const activateFilterSelectAll = (filter: FilterSelectAllFilter) => {
+    setCheckedMailIds(new Set())
+    setFilterSelectAll(filter)
+  }
+  const clearFilterSelectAll = () => setFilterSelectAll(null)
 
   const [selectedMailId, setSelectedMailId] = useState<string | null>(null)
   // J/K 키보드 탐색 포커스 (열려있는 메일과는 별개)
@@ -226,6 +239,7 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
   }
 
   const handleToggleCheck = (mailId: string) => {
+    setFilterSelectAll(null) // 낱개 체크는 "전체 선택" 모드보다 우선한다
     setCheckedMailIds((prev) => {
       const next = new Set(prev)
       if (next.has(mailId)) next.delete(mailId)
@@ -236,6 +250,7 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
 
   // Shift-클릭 범위선택: 범위 안의 메일을 기존 선택에 더한다 (제거는 하지 않음)
   const handleCheckRange = (mailIds: string[]) => {
+    setFilterSelectAll(null)
     setCheckedMailIds((prev) => {
       const next = new Set(prev)
       for (const id of mailIds) next.add(id)
@@ -244,6 +259,7 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
   }
 
   const selectByFilter = (mails: Mail[], filter: BulkSelectFilter) => {
+    setFilterSelectAll(null)
     switch (filter) {
       case "all": setCheckedMailIds(new Set(mails.map((m) => m.id))); break
       case "none": setCheckedMailIds(new Set()); break
@@ -272,7 +288,21 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     }
   }
 
-  const bulkMarkRead_ = (mails: Mail[], read: boolean) => bulkMarkReadGeneric(mails, setRealMails, read)
+  const bulkMarkRead_ = async (mails: Mail[], read: boolean) => {
+    if (filterSelectAll) {
+      setIsBulkLoading(true)
+      const all = await fetchMailsByFilter(filterSelectAll)
+      const targets = all.filter((m) => m.isRead !== read)
+      const targetKeys = new Set(targets.map((m) => `${m.accountId}:${m.id}`))
+      setRealMails((prev) => prev.map((m) => (targetKeys.has(`${m.accountId}:${m.id}`) ? { ...m, isRead: read } : m)))
+      const groups = groupIdsByAccount(targets)
+      await Promise.all([...groups.entries()].map(([accountId, ids]) => bulkMarkRead(accountId, ids, read)))
+      setFilterSelectAll(null)
+      setIsBulkLoading(false)
+      return
+    }
+    return bulkMarkReadGeneric(mails, setRealMails, read)
+  }
   const handleBulkMarkReadInFolder = () => bulkMarkReadGeneric(folderMails, setFolderMails, true)
   const handleBulkMarkUnreadInFolder = () => bulkMarkReadGeneric(folderMails, setFolderMails, false)
 
@@ -323,6 +353,16 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
   }
 
   const bulkDelete = async (mails: Mail[]) => {
+    if (filterSelectAll) {
+      setIsBulkLoading(true)
+      const all = await fetchMailsByFilter(filterSelectAll)
+      const targets = all.filter((m) => !m.isStarred)
+      if (all.length > targets.length) showError("별표 표시된 메일은 삭제되지 않았습니다.")
+      await deleteMailsWithRevert(targets)
+      setFilterSelectAll(null)
+      setIsBulkLoading(false)
+      return
+    }
     const checked = mails.filter((m) => checkedMailIds.has(m.id))
     const targets = checked.filter((m) => !m.isStarred)
     if (checked.length > targets.length) showError("별표 표시된 메일은 삭제되지 않았습니다.")
@@ -394,7 +434,15 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     }
   }
 
-  const bulkMoveFromInbox = (mails: Mail[], folderId: string | null) => {
+  const bulkMoveFromInbox = async (mails: Mail[], folderId: string | null) => {
+    if (filterSelectAll) {
+      setIsBulkLoading(true)
+      const all = await fetchMailsByFilter(filterSelectAll)
+      await applyMove(all, folderId, "inbox")
+      setFilterSelectAll(null)
+      setIsBulkLoading(false)
+      return
+    }
     const targets = mails.filter((m) => checkedMailIds.has(m.id))
     setCheckedMailIds(new Set())
     applyMove(targets, folderId, "inbox")
@@ -677,6 +725,9 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     isServerSearching,
     searchQuery,
     checkedMailIds,
+    filterSelectAll,
+    activateFilterSelectAll,
+    clearFilterSelectAll,
     isBulkLoading,
     selectedMailId,
     focusedMailId,

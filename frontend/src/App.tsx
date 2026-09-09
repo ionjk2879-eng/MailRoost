@@ -875,7 +875,12 @@ function App() {
           onToggleCheck={workspace.handleToggleCheck}
           onCheckRange={workspace.handleCheckRange}
           onSelectByFilter={handleSelectByFilter}
-          onClearChecked={() => workspace.setCheckedMailIds(new Set())}
+          onClearChecked={() => {
+            workspace.setCheckedMailIds(new Set())
+            workspace.clearFilterSelectAll()
+          }}
+          filterSelectAll={workspace.filterSelectAll}
+          onActivateFilterSelectAll={workspace.activateFilterSelectAll}
           onBulkMarkRead={handleBulkMarkRead}
           onBulkMarkUnread={handleBulkMarkUnread}
           onBulkDelete={handleBulkDelete}
