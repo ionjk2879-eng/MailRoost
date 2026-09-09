@@ -1087,7 +1087,11 @@ function App() {
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-3 border-b border-sidebar-border bg-sidebar/40 px-5 backdrop-blur-sm">
+        {/* z-20: main과의 flex 형제 관계상, z-index가 없으면 헤더는 뒤에 그려지는 flex 아이템(본문
+            콘텐츠) 안의 position:relative 요소보다 항상 먼저(아래에) 칠해진다 — 그 결과 헤더 안
+            알림 드롭다운(z-30)처럼 명시적 z-index를 줘도, 본문 쪽에 position:relative 요소가 있으면
+            그 밑에 깔릴 수 있다. 헤더 자체를 승격해 본문 전체보다 항상 위에 그려지게 한다. */}
+        <header className="relative z-20 flex h-16 shrink-0 items-center gap-3 border-b border-sidebar-border bg-sidebar/40 px-5 backdrop-blur-sm">
           <SidebarTrigger />
           <span className="min-w-0 truncate text-base font-semibold tracking-tight">
             {view === "home"

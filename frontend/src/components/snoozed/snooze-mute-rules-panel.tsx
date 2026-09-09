@@ -100,7 +100,7 @@ export function SnoozeMuteRulesPanel({ mails, rules, onCreateRule, onUpdateRule,
   }
 
   return (
-    <section className={cn("relative min-h-0 overflow-hidden rounded-xl border bg-background", className)}>
+    <section className={cn("min-h-0 overflow-hidden rounded-xl border bg-background", className)}>
       <div className="flex h-[78px] items-center justify-between border-b px-5">
         <div>
           <h2 className="text-lg font-semibold">자동 규칙</h2>
