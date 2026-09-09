@@ -1263,6 +1263,11 @@ function App() {
             onUnsnooze={mailOrg.handleUnsnooze}
             onUnmute={(email) => mailOrg.handleMuteSender(email)}
             onSelectMail={handleSnoozedMailSelect}
+            snoozeMuteRules={mailOrg.snoozeMuteRules}
+            onCreateSnoozeMuteRule={mailOrg.handleCreateSnoozeMuteRule}
+            onUpdateSnoozeMuteRule={mailOrg.handleUpdateSnoozeMuteRule}
+            onToggleSnoozeMuteRule={mailOrg.handleToggleSnoozeMuteRule}
+            onDeleteSnoozeMuteRule={mailOrg.handleDeleteSnoozeMuteRule}
           />
         ) : view === "folder" || view === "archive" ? (
           workspace.isFolderLoading && workspace.folderMails.length === 0 ? (

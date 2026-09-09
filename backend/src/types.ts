@@ -163,6 +163,23 @@ export interface AutoClassifyRule {
   createdAt: number
 }
 
+export type AutoSnoozeMuteAction = { type: "snooze"; days: number } | { type: "mute" }
+
+// 자동 스누즈/뮤트 규칙: 조건은 AutoClassifyRule과 동일(from/subject/excludeFrom/excludeSubject,
+// 전부 AND, 빈 문자열은 안 따짐). 새로 도착한 메일에만 적용되고(소급 적용 없음), 매치되면 기존
+// 수동 스누즈(snoozed)/뮤트(muted) 상태를 그대로 채워넣는다.
+export interface AutoSnoozeMuteRule {
+  id: string
+  name?: string
+  from: string
+  subject: string
+  excludeFrom: string
+  excludeSubject: string
+  action: AutoSnoozeMuteAction
+  enabled: boolean
+  createdAt: number
+}
+
 // 저장된 검색/스마트 필터: 구조화된 조건에 이름을 붙여 저장해두고 사이드바에서 재사용한다.
 // 각 조건은 비어있으면(null/"") 그 조건을 따지지 않는다.
 export interface SavedFilter {
@@ -227,6 +244,8 @@ export interface MailOrgState {
   // 뮤트된 발신자 이메일 목록. 해당 발신자의 메일은 받은편지함에 표시되지 않는다.
   muted: string[]
   savedFilters: SavedFilter[]
+  // 새로 도착한 메일에 자동으로 스누즈/뮤트를 걸어주는 규칙. classifyMails에서 rules와 별개로 평가된다.
+  snoozeMuteRules: AutoSnoozeMuteRule[]
 }
 
 // 전달(forward)로 보낼 때 원본 첨부를 다시 첨부하기 위한 참조. filename/mimeType은

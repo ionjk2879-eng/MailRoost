@@ -1,4 +1,4 @@
-import type { AutoClassifyRule, MailCategory, MailFolder, MailOrgState, SavedFilter } from "../types"
+import type { AutoClassifyRule, AutoSnoozeMuteAction, AutoSnoozeMuteRule, MailCategory, MailFolder, MailOrgState, SavedFilter } from "../types"
 import { ARCHIVE_FOLDER_ID, applyOrder, assignmentKey, folderIdsOf, isArchived, normalizeMailOrgState, toggleFolderAssignment } from "./mailOrg"
 import { applyCategoryRules, matchRule } from "./rules"
 
@@ -45,6 +45,29 @@ export type MailOrgOp =
   | { type: "deleteRule"; ruleId: string }
   | { type: "applyRuleMatches"; targetFolderId: string; matches: { accountId: string; mailId: string }[] }
   | {
+      type: "createSnoozeMuteRule"
+      id: string
+      name: string
+      from: string
+      subject: string
+      excludeFrom: string
+      excludeSubject: string
+      action: AutoSnoozeMuteAction
+      createdAt: number
+    }
+  | {
+      type: "updateSnoozeMuteRule"
+      ruleId: string
+      name?: string
+      from?: string
+      subject?: string
+      excludeFrom?: string
+      excludeSubject?: string
+      action?: AutoSnoozeMuteAction
+      enabled?: boolean
+    }
+  | { type: "deleteSnoozeMuteRule"; ruleId: string }
+  | {
       type: "createSavedFilter"
       id: string
       name: string
@@ -63,6 +86,8 @@ export type MailOrgOp =
   | {
       type: "classifyMails"
       items: { accountId: string; mailId: string; fromName: string; fromEmail: string; subject: string; category: MailCategory }[]
+      // 자동 스누즈 규칙이 "지금 + N일"을 계산할 기준 시각. 호출부(라우트)에서 만들어 실어보낸다.
+      now: number
     }
   | { type: "clearMailKeys"; accountId: string; mailIds: string[] }
   | { type: "snoozeMail"; accountId: string; mailId: string; until: number }
@@ -79,6 +104,8 @@ export type CreateFolderResult = { ok: true; folder: MailFolder } | { ok: false;
 export type RenameFolderResult = { ok: true; folder: MailFolder } | { ok: false; status: 404 | 400; error: string }
 export type CreateRuleResult = { ok: true; rule: AutoClassifyRule } | { ok: false; error: string }
 export type UpdateRuleResult = { ok: true; rule: AutoClassifyRule } | { ok: false; status: 404 | 400; error: string }
+export type CreateSnoozeMuteRuleResult = { ok: true; rule: AutoSnoozeMuteRule } | { ok: false; error: string }
+export type UpdateSnoozeMuteRuleResult = { ok: true; rule: AutoSnoozeMuteRule } | { ok: false; status: 404 | 400; error: string }
 export type ApplyRuleMatchesResult = { count: number; alreadyClassified: number }
 export type CreateSavedFilterResult = { ok: true; filter: SavedFilter } | { ok: false; error: string }
 export type MoveMailResult = { ok: true } | { ok: false; error: string }
@@ -199,6 +226,60 @@ export function applyMailOrgOp(org: MailOrgState, op: MailOrgOp): unknown {
       return undefined
     }
 
+    case "createSnoozeMuteRule": {
+      if (!op.from.trim() && !op.subject.trim()) {
+        return { ok: false as const, error: "발신자 또는 제목 포함 조건을 하나 이상 입력해주세요." }
+      }
+      if (op.action.type === "snooze" && !(op.action.days > 0)) {
+        return { ok: false as const, error: "스누즈 기간은 1일 이상이어야 합니다." }
+      }
+      const rule: AutoSnoozeMuteRule = {
+        id: op.id,
+        name: op.name,
+        from: op.from.trim(),
+        subject: op.subject.trim(),
+        excludeFrom: op.excludeFrom.trim(),
+        excludeSubject: op.excludeSubject.trim(),
+        action: op.action,
+        enabled: true,
+        createdAt: op.createdAt,
+      }
+      org.snoozeMuteRules.push(rule)
+      return { ok: true as const, rule }
+    }
+
+    case "updateSnoozeMuteRule": {
+      const rule = org.snoozeMuteRules.find((r) => r.id === op.ruleId)
+      if (!rule) return { ok: false as const, status: 404 as const, error: "규칙을 찾을 수 없습니다." }
+
+      if (op.name !== undefined) {
+        const name = op.name.trim()
+        if (!name) return { ok: false as const, status: 400 as const, error: "규칙 이름을 입력해주세요." }
+        rule.name = name
+      }
+
+      if (op.from !== undefined) rule.from = op.from.trim()
+      if (op.subject !== undefined) rule.subject = op.subject.trim()
+      if (op.excludeFrom !== undefined) rule.excludeFrom = op.excludeFrom.trim()
+      if (op.excludeSubject !== undefined) rule.excludeSubject = op.excludeSubject.trim()
+      if (!rule.from && !rule.subject) {
+        return { ok: false as const, status: 400 as const, error: "발신자 또는 제목 포함 조건을 하나 이상 입력해주세요." }
+      }
+      if (op.action !== undefined) {
+        if (op.action.type === "snooze" && !(op.action.days > 0)) {
+          return { ok: false as const, status: 400 as const, error: "스누즈 기간은 1일 이상이어야 합니다." }
+        }
+        rule.action = op.action
+      }
+      if (op.enabled !== undefined) rule.enabled = op.enabled
+      return { ok: true as const, rule }
+    }
+
+    case "deleteSnoozeMuteRule": {
+      org.snoozeMuteRules = org.snoozeMuteRules.filter((r) => r.id !== op.ruleId)
+      return undefined
+    }
+
     case "applyRuleMatches": {
       let count = 0
       let alreadyClassified = 0
@@ -284,6 +365,17 @@ export function applyMailOrgOp(org: MailOrgState, op: MailOrgOp): unknown {
               }
               break
             }
+          }
+          // 분류 규칙(위)과 별개의 목록이라 폴더 이동과 동시에 적용될 수 있다.
+          for (const rule of org.snoozeMuteRules) {
+            if (!rule.enabled) continue
+            if (!matchRule(rule, item)) continue
+            if (rule.action.type === "snooze") {
+              org.snoozed[key] = op.now + rule.action.days * 24 * 60 * 60 * 1000
+            } else if (!org.muted.includes(item.fromEmail)) {
+              org.muted = [...org.muted, item.fromEmail]
+            }
+            break
           }
           org.classified[key] = true
         }

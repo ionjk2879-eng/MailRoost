@@ -209,7 +209,7 @@ mail.get("/mail", async (c) => {
 
   const classifyResults =
     classifyItems.length > 0
-      ? await mutateMailOrg<ClassifyMailsResult>(c.env, sessionId, session, { type: "classifyMails", items: classifyItems })
+      ? await mutateMailOrg<ClassifyMailsResult>(c.env, sessionId, session, { type: "classifyMails", items: classifyItems, now: Date.now() })
       : null
 
   let classifyIdx = 0

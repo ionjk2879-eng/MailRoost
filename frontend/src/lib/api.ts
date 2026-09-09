@@ -1,4 +1,4 @@
-import type { Account, AppNotification, AttachmentListItem, AutoClassifyRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, MemoLinkedMail, QuickReply, SavedFilter } from "@/types/mail"
+import type { Account, AppNotification, AttachmentListItem, AutoClassifyRule, AutoSnoozeMuteAction, AutoSnoozeMuteRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, MemoLinkedMail, QuickReply, SavedFilter } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -217,6 +217,51 @@ export async function applyRuleToExisting(id: string): Promise<{ ok: true; count
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; count?: number; alreadyClassified?: number; error?: string }
   if (!res.ok || !data.ok) return { ok: false, error: data.error ?? "적용에 실패했습니다." }
   return { ok: true, count: data.count ?? 0, alreadyClassified: data.alreadyClassified ?? 0 }
+}
+
+export async function fetchSnoozeMuteRules(): Promise<AutoSnoozeMuteRule[]> {
+  const res = await fetch("/api/snooze-mute-rules")
+  if (!res.ok) return []
+  const data = (await res.json()) as { rules: AutoSnoozeMuteRule[] }
+  return data.rules
+}
+
+export async function createSnoozeMuteRule(
+  conditions: RuleConditions,
+  action: AutoSnoozeMuteAction,
+  name?: string,
+): Promise<{ ok: true; rule: AutoSnoozeMuteRule } | { ok: false; error: string }> {
+  const res = await fetch("/api/snooze-mute-rules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...conditions, action, name }),
+  })
+  const data = (await res.json().catch(() => ({}))) as { rule?: AutoSnoozeMuteRule; error?: string }
+  if (!res.ok || !data.rule) return { ok: false, error: data.error ?? "규칙 생성에 실패했습니다." }
+  return { ok: true, rule: data.rule }
+}
+
+export async function updateSnoozeMuteRule(
+  id: string,
+  patch: Partial<Omit<AutoSnoozeMuteRule, "id" | "createdAt">>,
+): Promise<{ ok: true; rule: AutoSnoozeMuteRule } | { ok: false; error: string }> {
+  const res = await fetch(`/api/snooze-mute-rules/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  })
+  const data = (await res.json().catch(() => ({}))) as { rule?: AutoSnoozeMuteRule; error?: string }
+  if (!res.ok || !data.rule) return { ok: false, error: data.error ?? "규칙 수정에 실패했습니다." }
+  return { ok: true, rule: data.rule }
+}
+
+export async function deleteSnoozeMuteRule(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/snooze-mute-rules/${encodeURIComponent(id)}`, { method: "DELETE" })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "규칙 삭제에 실패했습니다." }
+  }
+  return { ok: true }
 }
 
 export async function fetchSavedFilters(): Promise<SavedFilter[]> {

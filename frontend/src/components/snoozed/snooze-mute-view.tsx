@@ -1,7 +1,9 @@
 import { AlarmClock, ChevronDown, Inbox, VolumeX } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { Account, Mail } from "@/types/mail"
+import { SnoozeMuteRulesPanel } from "@/components/snoozed/snooze-mute-rules-panel"
+import type { Account, AutoSnoozeMuteAction, AutoSnoozeMuteRule, Mail } from "@/types/mail"
+import type { RuleConditions } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 interface SnoozeMuteViewProps {
@@ -14,6 +16,12 @@ interface SnoozeMuteViewProps {
   onUnsnooze: (mailId: string, accountId: string) => void
   onUnmute: (email: string) => void
   onSelectMail: (mailId: string, accountId: string) => void
+  // 자동 스누즈/뮤트 규칙 패널
+  snoozeMuteRules: AutoSnoozeMuteRule[]
+  onCreateSnoozeMuteRule: (conditions: RuleConditions, action: AutoSnoozeMuteAction, name?: string) => Promise<{ ok: boolean; error?: string }>
+  onUpdateSnoozeMuteRule: (ruleId: string, patch: Partial<Omit<AutoSnoozeMuteRule, "id" | "createdAt">>) => Promise<{ ok: boolean; error?: string }>
+  onToggleSnoozeMuteRule: (ruleId: string, enabled: boolean) => void
+  onDeleteSnoozeMuteRule: (ruleId: string) => void
 }
 
 function formatUntil(timestamp: number) {
@@ -52,6 +60,11 @@ export function SnoozeMuteView({
   onUnsnooze,
   onUnmute,
   onSelectMail,
+  snoozeMuteRules,
+  onCreateSnoozeMuteRule,
+  onUpdateSnoozeMuteRule,
+  onToggleSnoozeMuteRule,
+  onDeleteSnoozeMuteRule,
 }: SnoozeMuteViewProps) {
   const now = Date.now()
   const snoozedItems = Object.entries(snoozed)
@@ -74,7 +87,7 @@ export function SnoozeMuteView({
 
   return (
     <div className="min-h-0 flex-1 bg-muted/20 p-3 sm:p-5">
-      <div className="mx-auto flex h-full max-w-[1240px] min-h-0 flex-col gap-4">
+      <div className="mx-auto flex h-full max-w-[1800px] min-h-0 flex-col gap-4">
         <div className="grid h-11 shrink-0 grid-cols-2 rounded-xl bg-muted p-0.5 sm:max-w-md">
           {(["snoozed", "muted"] as const).map((tab) => (
             <button
@@ -93,7 +106,7 @@ export function SnoozeMuteView({
           ))}
         </div>
 
-        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1.45fr_1fr]">
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2 xl:grid-cols-[1.3fr_1fr_1fr]">
           <section className={cn("min-h-0 overflow-hidden rounded-xl border bg-background", activeTab !== "snoozed" && "hidden lg:block")}>
             <div className="flex h-[78px] items-center justify-between border-b px-5">
               <div>
@@ -196,6 +209,16 @@ export function SnoozeMuteView({
               </div>
             </ScrollArea>
           </section>
+
+          <SnoozeMuteRulesPanel
+            mails={mails}
+            rules={snoozeMuteRules}
+            onCreateRule={onCreateSnoozeMuteRule}
+            onUpdateRule={onUpdateSnoozeMuteRule}
+            onToggleRule={onToggleSnoozeMuteRule}
+            onDeleteRule={onDeleteSnoozeMuteRule}
+            className="min-h-[420px] lg:col-span-2 xl:col-span-1 xl:min-h-0"
+          />
         </div>
       </div>
     </div>

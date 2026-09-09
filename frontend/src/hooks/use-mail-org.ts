@@ -9,6 +9,7 @@ import {
   createRule as apiCreateRule,
   type RuleConditions,
   createSavedFilter as apiCreateSavedFilter,
+  createSnoozeMuteRule as apiCreateSnoozeMuteRule,
   deleteContact,
   deleteDraft,
   deleteFolder as apiDeleteFolder,
@@ -16,6 +17,7 @@ import {
   deleteQuickReply,
   deleteRule as apiDeleteRule,
   deleteSavedFilter as apiDeleteSavedFilter,
+  deleteSnoozeMuteRule as apiDeleteSnoozeMuteRule,
   dismissNotification,
   fetchContacts,
   fetchDrafts,
@@ -27,6 +29,7 @@ import {
   fetchRules,
   fetchSavedFilters,
   fetchSnoozed,
+  fetchSnoozeMuteRules,
   markAllNotificationsRead,
   markNotificationRead,
   muteSender,
@@ -40,8 +43,9 @@ import {
   updateMemo,
   updateQuickReply,
   updateRule as apiUpdateRule,
+  updateSnoozeMuteRule as apiUpdateSnoozeMuteRule,
 } from "@/lib/api"
-import type { AppNotification, AutoClassifyRule, Contact, Draft, MailCategory, MailFolder, MemoItem, MemoLinkedMail, QuickReply, SavedFilter } from "@/types/mail"
+import type { AppNotification, AutoClassifyRule, AutoSnoozeMuteRule, Contact, Draft, MailCategory, MailFolder, MemoItem, MemoLinkedMail, QuickReply, SavedFilter } from "@/types/mail"
 
 interface UseMailOrgParams {
   currentUser: { id: string; email: string } | null
@@ -61,6 +65,7 @@ interface UseMailOrgParams {
 export function useMailOrg({ showError, refreshMails, refreshFolderMails, selectedFolderId }: UseMailOrgParams) {
   const [folders, setFolders] = useState<MailFolder[]>([])
   const [rules, setRules] = useState<AutoClassifyRule[]>([])
+  const [snoozeMuteRules, setSnoozeMuteRules] = useState<AutoSnoozeMuteRule[]>([])
   const [snoozed, setSnoozed] = useState<Record<string, number>>({})
   const [muted, setMuted] = useState<string[]>([])
   const [savedFilters, setSavedFilters] = useState<SavedFilter[]>([])
@@ -76,6 +81,7 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
   const loadInitialData = () => Promise.all([
     fetchFolders().then(setFolders),
     fetchRules().then(setRules),
+    fetchSnoozeMuteRules().then(setSnoozeMuteRules),
     fetchMemos().then(setMemos),
     fetchQuickReplies().then(setQuickReplies),
     fetchContacts().then(setContacts),
@@ -185,6 +191,49 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
     const result = await apiDeleteRule(ruleId)
     if (!result.ok) {
       if (removed) setRules((prev) => [...prev, removed])
+      showError(result.error ?? "규칙 삭제에 실패했습니다.")
+    }
+  }
+
+  // 자동 스누즈/뮤트 규칙 CRUD — 자동분류 규칙과 달리 새로 도착하는 메일에만 적용되고
+  // 기존 메일 소급 적용은 지원하지 않는다(스누즈/뮤트는 원래도 그때그때 개별 적용하는 기능이라
+  // 소급 검색까지 필요할 만큼 자주 쓰이지 않을 것으로 보고 범위에서 뺐다).
+  const handleCreateSnoozeMuteRule = async (
+    conditions: RuleConditions,
+    action: AutoSnoozeMuteRule["action"],
+    name?: string,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const result = await apiCreateSnoozeMuteRule(conditions, action, name)
+    if (!result.ok) return { ok: false, error: result.error }
+    setSnoozeMuteRules((prev) => [...prev, result.rule])
+    return { ok: true }
+  }
+
+  const handleUpdateSnoozeMuteRule = async (
+    ruleId: string,
+    patch: Partial<Omit<AutoSnoozeMuteRule, "id" | "createdAt">>,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const result = await apiUpdateSnoozeMuteRule(ruleId, patch)
+    if (!result.ok) return result
+    setSnoozeMuteRules((prev) => prev.map((rule) => (rule.id === ruleId ? result.rule : rule)))
+    return { ok: true }
+  }
+
+  const handleToggleSnoozeMuteRule = async (ruleId: string, enabled: boolean) => {
+    setSnoozeMuteRules((prev) => prev.map((r) => (r.id === ruleId ? { ...r, enabled } : r)))
+    const result = await apiUpdateSnoozeMuteRule(ruleId, { enabled })
+    if (!result.ok) {
+      setSnoozeMuteRules((prev) => prev.map((r) => (r.id === ruleId ? { ...r, enabled: !enabled } : r)))
+      showError(result.error ?? "규칙 수정에 실패했습니다.")
+    }
+  }
+
+  const handleDeleteSnoozeMuteRule = async (ruleId: string) => {
+    const removed = snoozeMuteRules.find((r) => r.id === ruleId)
+    setSnoozeMuteRules((prev) => prev.filter((r) => r.id !== ruleId))
+    const result = await apiDeleteSnoozeMuteRule(ruleId)
+    if (!result.ok) {
+      if (removed) setSnoozeMuteRules((prev) => [...prev, removed])
       showError(result.error ?? "규칙 삭제에 실패했습니다.")
     }
   }
@@ -366,6 +415,7 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
   const reset = () => {
     setFolders([])
     setRules([])
+    setSnoozeMuteRules([])
     setMemos([])
     setQuickReplies([])
     setNotifications([])
@@ -378,6 +428,7 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
     // 상태
     folders,
     rules,
+    snoozeMuteRules,
     snoozed,
     muted,
     mutedSet,
@@ -404,6 +455,10 @@ export function useMailOrg({ showError, refreshMails, refreshFolderMails, select
     handleUpdateRule,
     handleToggleRule,
     handleDeleteRule,
+    handleCreateSnoozeMuteRule,
+    handleUpdateSnoozeMuteRule,
+    handleToggleSnoozeMuteRule,
+    handleDeleteSnoozeMuteRule,
     handleCreateFilter,
     handleDeleteFilter,
     handleMuteSender,

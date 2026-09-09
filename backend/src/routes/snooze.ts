@@ -1,8 +1,9 @@
 import { Hono } from "hono"
-import type { Env } from "../types"
+import type { AutoSnoozeMuteAction, Env } from "../types"
 import { resolveAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
 import { mutateMailOrg, parseAssignmentKey, resolveMailOrg } from "../lib/mailOrg"
+import type { CreateSnoozeMuteRuleResult, UpdateSnoozeMuteRuleResult } from "../lib/mailOrgOps"
 import { readSession, SESSION_COOKIE } from "../lib/session"
 
 const snooze = new Hono<{ Bindings: Env }>()
@@ -94,6 +95,96 @@ snooze.delete("/muted", async (c) => {
   if (!body?.email) return c.json({ error: "invalid" }, 400)
 
   await mutateMailOrg(c.env, sessionId, session, { type: "unmuteSender", email: body.email })
+  return c.json({ ok: true })
+})
+
+// ── 자동 스누즈/뮤트 규칙 ──────────────────────────────────────────────────────
+
+function parseAction(raw: unknown): AutoSnoozeMuteAction | null {
+  if (!raw || typeof raw !== "object") return null
+  const type = (raw as { type?: unknown }).type
+  if (type === "mute") return { type: "mute" }
+  if (type === "snooze") {
+    const days = (raw as { days?: unknown }).days
+    if (typeof days !== "number" || !(days > 0)) return null
+    return { type: "snooze", days }
+  }
+  return null
+}
+
+snooze.get("/snooze-mute-rules", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ rules: [] })
+  const session = await readSession(c.env, sessionId)
+  const org = await resolveMailOrg(c.env, session)
+  return c.json({ rules: org.snoozeMuteRules })
+})
+
+snooze.post("/snooze-mute-rules", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req
+    .json<{ name?: string; from?: string; subject?: string; excludeFrom?: string; excludeSubject?: string; action?: unknown }>()
+    .catch(() => null)
+  const from = body?.from?.trim() ?? ""
+  const subject = body?.subject?.trim() ?? ""
+  const excludeFrom = body?.excludeFrom?.trim() ?? ""
+  const excludeSubject = body?.excludeSubject?.trim() ?? ""
+  if (!from && !subject) return c.json({ error: "발신자 또는 제목 포함 조건을 하나 이상 입력해주세요." }, 400)
+  const action = parseAction(body?.action)
+  if (!action) return c.json({ error: "스누즈 기간 또는 뮤트 중 하나를 선택해주세요." }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const result = await mutateMailOrg<CreateSnoozeMuteRuleResult>(c.env, sessionId, session, {
+    type: "createSnoozeMuteRule",
+    id: crypto.randomUUID(),
+    name: body?.name?.trim() || "",
+    from,
+    subject,
+    excludeFrom,
+    excludeSubject,
+    action,
+    createdAt: Date.now(),
+  })
+  if (!result.ok) return c.json({ error: result.error }, 400)
+  return c.json({ rule: result.rule })
+})
+
+snooze.patch("/snooze-mute-rules/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const ruleId = c.req.param("id")
+  const body = await c.req
+    .json<{ name?: string; from?: string; subject?: string; excludeFrom?: string; excludeSubject?: string; action?: unknown; enabled?: boolean }>()
+    .catch(() => null)
+  const action = body?.action !== undefined ? parseAction(body.action) : undefined
+  if (body?.action !== undefined && !action) return c.json({ error: "스누즈 기간 또는 뮤트 중 하나를 선택해주세요." }, 400)
+
+  const session = await readSession(c.env, sessionId)
+  const result = await mutateMailOrg<UpdateSnoozeMuteRuleResult>(c.env, sessionId, session, {
+    type: "updateSnoozeMuteRule",
+    ruleId,
+    name: body?.name,
+    from: body?.from,
+    subject: body?.subject,
+    excludeFrom: body?.excludeFrom,
+    excludeSubject: body?.excludeSubject,
+    action: action ?? undefined,
+    enabled: body?.enabled,
+  })
+  if (!result.ok) return c.json({ error: result.error }, result.status)
+  return c.json({ rule: result.rule })
+})
+
+snooze.delete("/snooze-mute-rules/:id", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const ruleId = c.req.param("id")
+  const session = await readSession(c.env, sessionId)
+  await mutateMailOrg(c.env, sessionId, session, { type: "deleteSnoozeMuteRule", ruleId })
   return c.json({ ok: true })
 })
 

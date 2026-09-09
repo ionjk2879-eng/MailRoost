@@ -77,7 +77,7 @@ async function processGmailPush(env: Env, email: string, pushedHistoryId: string
     // 전혀 쓰지 않고 MailOrgStore DO의 applyOp RPC로 곧장 위임한다(durable/MailOrgStore.ts의
     // applyOp(userId, op)도 userId만 쓴다) — 그래서 sessionId에 빈 문자열, session에는
     // { userId, accounts: {} }만 채운 최소 객체를 넘겨도 안전하다.
-    await mutateMailOrg<ClassifyMailsResult>(env, "", { userId, accounts: {} }, { type: "classifyMails", items: classifyItems })
+    await mutateMailOrg<ClassifyMailsResult>(env, "", { userId, accounts: {} }, { type: "classifyMails", items: classifyItems, now: Date.now() })
   }
 
   const latestAccounts = await getUserAccounts(env, userId)

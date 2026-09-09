@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { AutoClassifyRule, MailFolder, MailOrgState } from "../types"
+import type { AutoClassifyRule, AutoSnoozeMuteRule, MailFolder, MailOrgState } from "../types"
 import { assignmentKey, emptyMailOrgState } from "./mailOrg"
 import { applyMailOrgOp } from "./mailOrgOps"
 
@@ -21,6 +21,21 @@ function makeRule(overrides: Partial<AutoClassifyRule> = {}): AutoClassifyRule {
     excludeSubject: "",
     targetFolderId: "folder-1",
     category: null,
+    enabled: true,
+    createdAt: 1,
+    ...overrides,
+  }
+}
+
+function makeSnoozeMuteRule(overrides: Partial<AutoSnoozeMuteRule> = {}): AutoSnoozeMuteRule {
+  return {
+    id: "sm-rule-1",
+    name: "Rule 1",
+    from: "alice",
+    subject: "",
+    excludeFrom: "",
+    excludeSubject: "",
+    action: { type: "mute" },
     enabled: true,
     createdAt: 1,
     ...overrides,
@@ -177,6 +192,92 @@ describe("rules", () => {
   })
 })
 
+describe("snoozeMuteRules", () => {
+  it("createSnoozeMuteRule adds a snooze rule", () => {
+    const org = makeOrg()
+    const result = applyMailOrgOp(org, {
+      type: "createSnoozeMuteRule",
+      id: "sm1",
+      name: "SM1",
+      from: "alice",
+      subject: "",
+      excludeFrom: "",
+      excludeSubject: "",
+      action: { type: "snooze", days: 3 },
+      createdAt: 1,
+    }) as { ok: true; rule: AutoSnoozeMuteRule } | { ok: false; error: string }
+    expect(result.ok).toBe(true)
+    expect(org.snoozeMuteRules).toHaveLength(1)
+  })
+
+  it("createSnoozeMuteRule fails when from and subject are both empty", () => {
+    const org = makeOrg()
+    const result = applyMailOrgOp(org, {
+      type: "createSnoozeMuteRule",
+      id: "sm1",
+      name: "SM1",
+      from: "  ",
+      subject: "",
+      excludeFrom: "",
+      excludeSubject: "",
+      action: { type: "mute" },
+      createdAt: 1,
+    }) as { ok: true } | { ok: false; error: string }
+    expect(result.ok).toBe(false)
+    expect(org.snoozeMuteRules).toHaveLength(0)
+  })
+
+  it("createSnoozeMuteRule fails when the snooze action has non-positive days", () => {
+    const org = makeOrg()
+    const result = applyMailOrgOp(org, {
+      type: "createSnoozeMuteRule",
+      id: "sm1",
+      name: "SM1",
+      from: "alice",
+      subject: "",
+      excludeFrom: "",
+      excludeSubject: "",
+      action: { type: "snooze", days: 0 },
+      createdAt: 1,
+    }) as { ok: true } | { ok: false; error: string }
+    expect(result.ok).toBe(false)
+    expect(org.snoozeMuteRules).toHaveLength(0)
+  })
+
+  it("updateSnoozeMuteRule updates only the provided fields", () => {
+    const org = makeOrg({ snoozeMuteRules: [makeSnoozeMuteRule({ id: "sm1", from: "alice" })] })
+    const result = applyMailOrgOp(org, { type: "updateSnoozeMuteRule", ruleId: "sm1", from: "bob" }) as
+      | { ok: true; rule: AutoSnoozeMuteRule }
+      | { ok: false }
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.rule.from).toBe("bob")
+  })
+
+  it("updateSnoozeMuteRule rejects clearing both from and subject", () => {
+    const org = makeOrg({ snoozeMuteRules: [makeSnoozeMuteRule({ id: "sm1", from: "alice", subject: "" })] })
+    const result = applyMailOrgOp(org, { type: "updateSnoozeMuteRule", ruleId: "sm1", from: "" }) as
+      | { ok: true }
+      | { ok: false; status: number; error: string }
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(400)
+  })
+
+  it("updateSnoozeMuteRule returns 404 for an unknown rule", () => {
+    const org = makeOrg()
+    const result = applyMailOrgOp(org, { type: "updateSnoozeMuteRule", ruleId: "missing", from: "bob" }) as
+      | { ok: true }
+      | { ok: false; status: number; error: string }
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.status).toBe(404)
+  })
+
+  it("deleteSnoozeMuteRule removes the rule", () => {
+    const org = makeOrg({ snoozeMuteRules: [makeSnoozeMuteRule({ id: "sm1" }), makeSnoozeMuteRule({ id: "sm2" })] })
+    applyMailOrgOp(org, { type: "deleteSnoozeMuteRule", ruleId: "sm1" })
+    expect(org.snoozeMuteRules.map((r) => r.id)).toEqual(["sm2"])
+  })
+})
+
 describe("applyRuleMatches", () => {
   it("assigns new matches and counts already-classified ones", () => {
     const org = makeOrg({
@@ -304,6 +405,7 @@ describe("classifyMails", () => {
     const result = applyMailOrgOp(org, {
       type: "classifyMails",
       items: [{ accountId: "acct", mailId: "mail1", fromName: "Alice", fromEmail: "alice@example.com", subject: "Hi", category: "primary" }],
+      now: 1000,
     }) as { archived: boolean; folderIds: string[]; category: string }[]
 
     expect(result[0].folderIds).toEqual(["f1"])
@@ -319,10 +421,64 @@ describe("classifyMails", () => {
     const result = applyMailOrgOp(org, {
       type: "classifyMails",
       items: [{ accountId: "acct", mailId: "mail1", fromName: "Alice", fromEmail: "alice@example.com", subject: "Hi", category: "primary" }],
+      now: 1000,
     }) as { archived: boolean; folderIds: string[]; category: string }[]
 
     expect(result[0].folderIds).toEqual([])
     expect(org.assignments[acctMail1]).toBeUndefined()
+  })
+
+  it("snoozes a new mail matching an enabled snooze rule, until now + days", () => {
+    const org = makeOrg({
+      snoozeMuteRules: [makeSnoozeMuteRule({ from: "alice", action: { type: "snooze", days: 2 } })],
+    })
+    applyMailOrgOp(org, {
+      type: "classifyMails",
+      items: [{ accountId: "acct", mailId: "mail1", fromName: "Alice", fromEmail: "alice@example.com", subject: "Hi", category: "primary" }],
+      now: 1000,
+    })
+
+    expect(org.snoozed[acctMail1]).toBe(1000 + 2 * 24 * 60 * 60 * 1000)
+  })
+
+  it("mutes the sender of a new mail matching an enabled mute rule", () => {
+    const org = makeOrg({
+      snoozeMuteRules: [makeSnoozeMuteRule({ from: "alice", action: { type: "mute" } })],
+    })
+    applyMailOrgOp(org, {
+      type: "classifyMails",
+      items: [{ accountId: "acct", mailId: "mail1", fromName: "Alice", fromEmail: "alice@example.com", subject: "Hi", category: "primary" }],
+      now: 1000,
+    })
+
+    expect(org.muted).toEqual(["alice@example.com"])
+  })
+
+  it("does not apply a disabled snooze/mute rule", () => {
+    const org = makeOrg({
+      snoozeMuteRules: [makeSnoozeMuteRule({ from: "alice", action: { type: "mute" }, enabled: false })],
+    })
+    applyMailOrgOp(org, {
+      type: "classifyMails",
+      items: [{ accountId: "acct", mailId: "mail1", fromName: "Alice", fromEmail: "alice@example.com", subject: "Hi", category: "primary" }],
+      now: 1000,
+    })
+
+    expect(org.muted).toEqual([])
+  })
+
+  it("does not re-apply snooze/mute rules to a mail already marked classified", () => {
+    const org = makeOrg({
+      snoozeMuteRules: [makeSnoozeMuteRule({ from: "alice", action: { type: "mute" } })],
+      classified: { [acctMail1]: true },
+    })
+    applyMailOrgOp(org, {
+      type: "classifyMails",
+      items: [{ accountId: "acct", mailId: "mail1", fromName: "Alice", fromEmail: "alice@example.com", subject: "Hi", category: "primary" }],
+      now: 1000,
+    })
+
+    expect(org.muted).toEqual([])
   })
 })
 

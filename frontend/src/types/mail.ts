@@ -35,6 +35,21 @@ export interface AutoClassifyRule {
   createdAt: number
 }
 
+export type AutoSnoozeMuteAction = { type: "snooze"; days: number } | { type: "mute" }
+
+// 자동 스누즈/뮤트 규칙: 조건은 AutoClassifyRule과 동일. 새로 도착한 메일에만 적용된다(소급 적용 없음).
+export interface AutoSnoozeMuteRule {
+  id: string
+  name?: string
+  from: string
+  subject: string
+  excludeFrom: string
+  excludeSubject: string
+  action: AutoSnoozeMuteAction
+  enabled: boolean
+  createdAt: number
+}
+
 // 저장된 검색/스마트 필터: 구조화된 조건에 이름을 붙여 저장해두고 사이드바에서 재사용한다.
 // 각 조건은 비어있으면(null/"") 그 조건을 따지지 않는다.
 export interface SavedFilter {
