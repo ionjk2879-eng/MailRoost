@@ -6,6 +6,7 @@ import {
   emptyAllTrash,
   emptyTrash,
   fetchAccounts,
+  type FailedAccountError,
   fetchFolderMails,
   fetchMails,
   fetchMailsByFilter,
@@ -65,6 +66,7 @@ interface UseMailWorkspaceParams {
 export function useMailWorkspace({ currentUser, view, selectedFolderId, showError }: UseMailWorkspaceParams) {
   const [realAccounts, setRealAccounts] = useState<Account[]>([])
   const [failedAccountIds, setFailedAccountIds] = useState<string[]>([])
+  const [failedAccountErrors, setFailedAccountErrors] = useState<Record<string, FailedAccountError>>({})
   const [realMails, setRealMails] = useState<Mail[]>([])
   const [mailDetails, setMailDetails] = useState<Record<string, Mail>>({})
   const [nextCursor, setNextCursor] = useState<string | null>(null)
@@ -135,10 +137,11 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     const generation = ++loadGenerationRef.current
     const request = (async () => {
       try {
-      const [accounts, { mails, nextCursor: cursor, failedAccountIds: failed }] = await Promise.all([fetchAccounts(), fetchMails()])
+      const [accounts, { mails, nextCursor: cursor, failedAccountIds: failed, failedAccountErrors: failedErrors }] = await Promise.all([fetchAccounts(), fetchMails()])
       if (generation !== loadGenerationRef.current) return
       setRealAccounts(accounts)
       setFailedAccountIds(failed ?? [])
+      setFailedAccountErrors(failedErrors ?? {})
       const freshMails = filterOutDeleted(mails)
 
       // 새 메일 감지: 이전에 알고 있던 키에 없는 메일이 왔을 때 소리 + 푸시
@@ -746,6 +749,7 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     // 상태
     accounts,
     failedAccountIds,
+    failedAccountErrors,
     allMails,
     mailDetails,
     nextCursor,

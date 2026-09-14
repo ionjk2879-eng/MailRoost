@@ -78,7 +78,14 @@ export async function updateAccountSignature(
   return { ok: true }
 }
 
-export async function fetchMails(cursor?: string): Promise<{ mails: Mail[]; nextCursor: string | null; failedAccountIds: string[] }> {
+export interface FailedAccountError {
+  message: string
+  authError: boolean
+}
+
+export async function fetchMails(
+  cursor?: string,
+): Promise<{ mails: Mail[]; nextCursor: string | null; failedAccountIds: string[]; failedAccountErrors: Record<string, FailedAccountError> }> {
   const url = cursor ? `/api/mail?cursor=${encodeURIComponent(cursor)}` : "/api/mail"
   const res = await requireOk(await fetchWithTransientRetry(url), "메일 목록을 불러오지 못했습니다.")
   return res.json()

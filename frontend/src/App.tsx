@@ -1332,15 +1332,34 @@ function App() {
         )}
       </SidebarInset>
       {workspace.failedAccountIds.length > 0 && (() => {
-        const failedAccounts = accounts.filter((a) => workspace.failedAccountIds.includes(a.id))
-        const hasImapOrNaver = failedAccounts.some((a) => a.provider === "naver" || a.provider === "daum" || a.provider === "imap")
-        if (!hasImapOrNaver) return null
-        const names = failedAccounts.map((a) => a.email ?? a.label).join(", ")
+        const failedAccounts = accounts.filter(
+          (a) => workspace.failedAccountIds.includes(a.id) && (a.provider === "naver" || a.provider === "daum" || a.provider === "imap"),
+        )
+        if (failedAccounts.length === 0) return null
+        const authFailed = failedAccounts.filter((a) => workspace.failedAccountErrors[a.id]?.authError)
+        const otherFailed = failedAccounts.filter((a) => !workspace.failedAccountErrors[a.id]?.authError)
         return (
-          <div className="fixed top-4 left-1/2 z-50 -translate-x-1/2 max-w-sm w-full mx-4 rounded-md bg-amber-500 px-4 py-2.5 text-sm text-white shadow-lg">
-            <p className="font-medium">{names} — 일시적 연결 오류</p>
-            <p className="mt-0.5 text-amber-100">사이트 문제가 아니라 메일 서버가 잠시 응답하지 않는 것으로, 시간이 지나면 자동으로 복구됩니다.</p>
-          </div>
+          <>
+            {authFailed.length > 0 && (
+              <div className="fixed top-4 left-1/2 z-50 -translate-x-1/2 max-w-sm w-full mx-4 rounded-md bg-destructive px-4 py-2.5 text-sm text-white shadow-lg">
+                <p className="font-medium">{authFailed.map((a) => a.email ?? a.label).join(", ")} — 로그인 실패</p>
+                <p className="mt-0.5 opacity-90">{workspace.failedAccountErrors[authFailed[0].id]?.message}</p>
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                  className="mt-1.5 rounded bg-white/15 px-2 py-1 text-xs font-medium hover:bg-white/25"
+                >
+                  다시 연결하기
+                </button>
+              </div>
+            )}
+            {otherFailed.length > 0 && (
+              <div className={cn("fixed left-1/2 z-50 -translate-x-1/2 max-w-sm w-full mx-4 rounded-md bg-amber-500 px-4 py-2.5 text-sm text-white shadow-lg", authFailed.length > 0 ? "top-28" : "top-4")}>
+                <p className="font-medium">{otherFailed.map((a) => a.email ?? a.label).join(", ")} — 일시적 연결 오류</p>
+                <p className="mt-0.5 text-amber-100">사이트 문제가 아니라 메일 서버가 잠시 응답하지 않는 것으로, 시간이 지나면 자동으로 복구됩니다.</p>
+              </div>
+            )}
+          </>
         )
       })()}
       {errorMessage && (

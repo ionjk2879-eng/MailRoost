@@ -154,7 +154,7 @@ export interface ImapConfig {
 
 // 아이디/비밀번호가 틀려서 로그인 자체가 거부된 경우 — 서버에 연결은 됐고 명확한 답을 받은
 // 것이므로 재시도해도 결과가 같다. 연결 실패/끊김 등 그 외 오류와 구분해 재시도 대상에서 뺀다.
-class ImapAuthError extends Error {}
+export class ImapAuthError extends Error {}
 
 async function withImapOnce<T>(config: ImapConfig, fn: (client: ImapClient) => Promise<T>): Promise<T> {
   const socket = connect(

@@ -53,6 +53,7 @@ import {
   naverSearchMailsByFilter,
   naverToggleStar,
   naverToggleStarBulk,
+  ImapAuthError,
 } from "../lib/imap"
 import { type GmailTokenPatch, gmailTokenPatchOf, persistAccountTokenRefresh, resolveAccounts } from "../lib/auth"
 import { readRawCookie } from "../lib/cookies"
@@ -181,7 +182,8 @@ mail.get("/mail", async (c) => {
         return { accountId, mails, cursor: nextPageToken ? { pageToken: nextPageToken } : undefined, updatedRecord, failed: false as const }
       } catch (err) {
         console.error(`[mail] account ${accountId} failed, skipping:`, err)
-        return { accountId, failed: true as const }
+        const message = err instanceof Error ? err.message : "메일을 불러오지 못했습니다."
+        return { accountId, failed: true as const, authError: err instanceof ImapAuthError, error: message }
       }
     }),
   )
@@ -212,11 +214,13 @@ mail.get("/mail", async (c) => {
       ? await mutateMailOrg<ClassifyMailsResult>(c.env, sessionId, session, { type: "classifyMails", items: classifyItems, now: Date.now() })
       : null
 
+  const failedAccountErrors: Record<string, { message: string; authError: boolean }> = {}
   let classifyIdx = 0
   for (const result of perAccountResults) {
     if (!result) continue
     if (result.failed) {
       failedAccountIds.push(result.accountId)
+      failedAccountErrors[result.accountId] = { message: result.error, authError: result.authError }
       continue
     }
     for (const item of result.mails) {
@@ -245,7 +249,7 @@ mail.get("/mail", async (c) => {
 
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   const nextCursor = Object.keys(nextCursorMap).length > 0 ? encodeCursor(nextCursorMap) : null
-  return c.json({ mails: results, nextCursor, failedAccountIds })
+  return c.json({ mails: results, nextCursor, failedAccountIds, failedAccountErrors })
 })
 
 // 이미 불러온 메일 안에서만 훑는 클라이언트 검색과 달리, 계정 서버(Gmail 검색 / IMAP SEARCH)에서
