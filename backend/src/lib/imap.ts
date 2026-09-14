@@ -175,11 +175,26 @@ async function withImapOnce<T>(config: ImapConfig, fn: (client: ImapClient) => P
   }
 }
 
+// 소켓 read()에 자체 타임아웃이 없어서, 서버가 응답 없이 연결만 물고 있으면 요청이 영영 안
+// 끝난다 — 그러면 /api/mail이 계정 하나 때문에 통째로 멈춰서 다른 계정 메일도, 계정 목록 자체도
+// 화면에 안 뜬다("계정 하나 실패해도 나머지는 살아남아야 한다"는 의도가 무너짐). 이 정도 시간이
+// 지나도 응답이 없으면 그 계정만 실패 처리하고 다음 시도로 넘어간다.
+// ponytail: 진행 중이던 소켓 자체를 취소하진 않고 기다리기만 그만둔다 — 워커 인스턴스가 재활용되면서
+// 정리되는 걸로 충분하다고 봄. 문제가 되면 ImapSocket에 AbortController를 연결.
+const IMAP_ATTEMPT_TIMEOUT_MS = 8000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ])
+}
+
 // 네이버/다음 등 IMAP 서버가 동시 연결 수를 제한해두는 경우가 있어, 계정 수가 늘면 연결 거부/
 // 순간적인 끊김을 겪기 쉽다. 로그인 실패(비번 오류 등 명확한 거부)는 재시도해도 소용없으므로
 // 제외하고, 그 외 연결/통신 오류만 지수 백오프로 재시도한다.
 async function withImap<T>(config: ImapConfig, fn: (client: ImapClient) => Promise<T>): Promise<T> {
-  return retryAsync(() => withImapOnce(config, fn), {
+  return retryAsync(() => withTimeout(withImapOnce(config, fn), IMAP_ATTEMPT_TIMEOUT_MS, "메일 서버 응답이 없습니다."), {
     maxAttempts: 3,
     baseDelayMs: 400,
     maxDelayMs: 4000,
