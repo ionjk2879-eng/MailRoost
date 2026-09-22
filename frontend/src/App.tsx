@@ -108,6 +108,11 @@ function App() {
   } | null>(null)
   // 참고용 사이드 패널 — 비교/참고 목적으로 다른 메일 하나를 읽기 전용으로 옆에 띄운다. 한 번에 1개만.
   const [referenceMail, setReferenceMail] = useState<{ mailId: string; accountId: string } | null>(null)
+  const [mobilePane, setMobilePane] = useState<"detail" | "reference">("detail")
+  const openReferenceMail = useCallback((mailId: string, accountId: string) => {
+    setReferenceMail({ mailId, accountId })
+    setMobilePane("reference")
+  }, [])
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(() => initialHistoryStateRef.current?.accountId ?? null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
@@ -792,7 +797,7 @@ function App() {
       } else if ((e.key === "u" || e.key === "U") && relevant.isRead) {
         workspace.handleMarkAsUnread(relevant.id, relevant.accountId)
       } else if (e.key === "p" || e.key === "P") {
-        setReferenceMail({ mailId: relevant.id, accountId: relevant.accountId })
+        openReferenceMail(relevant.id, relevant.accountId)
       }
     }
 
@@ -903,7 +908,7 @@ function App() {
           isLoadingMore={workspace.isLoadingMore}
           onLoadMore={workspace.handleLoadMore}
           groupThreads={!workspace.searchQuery}
-          onOpenReference={(mailId, accountId) => setReferenceMail({ mailId, accountId })}
+          onOpenReference={openReferenceMail}
         />
       </div>
     </div>
@@ -978,7 +983,7 @@ function App() {
       folders={mailOrg.folders}
       currentFolderId={selectedFolderId ?? undefined}
       onBulkMove={workspace.handleBulkMoveFromFolder}
-      onOpenReference={(mailId, accountId) => setReferenceMail({ mailId, accountId })}
+      onOpenReference={openReferenceMail}
     />
   )
 
@@ -1039,7 +1044,7 @@ function App() {
         <span className="text-muted-foreground text-xs font-medium">참고용</span>
         <button
           type="button"
-          onClick={() => setReferenceMail(null)}
+          onClick={() => { setReferenceMail(null); setMobilePane("detail") }}
           aria-label="참고용 패널 닫기"
           className="text-muted-foreground hover:text-foreground rounded p-1"
         >
@@ -1315,20 +1320,30 @@ function App() {
             </ResizablePanelGroup>
           )
         ) : isMobile ? (
-          <div className="min-h-0 flex-1">
-            {referencePane ? (
-              <ResizablePanelGroup orientation="vertical" className="h-full">
-                <ResizablePanel defaultSize={50} minSize={25} className="overflow-hidden">
-                  {referencePane}
-                </ResizablePanel>
-                <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={50} minSize={25} className="overflow-hidden">
-                  {workspace.selectedMailId || composeState ? mailDetailPane : mailListPane}
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            ) : (
-              workspace.selectedMailId || composeState ? mailDetailPane : mailListPane
+          <div className="flex min-h-0 flex-1 flex-col">
+            {referenceMail && (
+              <div className="flex shrink-0 border-b">
+                <button
+                  type="button"
+                  onClick={() => setMobilePane("detail")}
+                  className={`flex-1 py-2 text-xs font-medium transition-colors ${mobilePane === "detail" ? "border-b-2 border-primary text-primary" : "text-muted-foreground"}`}
+                >
+                  읽는 중
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobilePane("reference")}
+                  className={`flex-1 py-2 text-xs font-medium transition-colors ${mobilePane === "reference" ? "border-b-2 border-primary text-primary" : "text-muted-foreground"}`}
+                >
+                  참고용
+                </button>
+              </div>
             )}
+            <div className="min-h-0 flex-1">
+              {referenceMail && mobilePane === "reference"
+                ? referencePane
+                : workspace.selectedMailId || composeState ? mailDetailPane : mailListPane}
+            </div>
           </div>
         ) : (
           <ResizablePanelGroup groupRef={mailSnap.groupRef} onLayoutChange={mailSnap.onLayoutChange} orientation="horizontal" className="flex-1">
