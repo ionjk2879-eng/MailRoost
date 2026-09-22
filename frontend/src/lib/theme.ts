@@ -13,6 +13,7 @@ export function getStoredTheme(): Theme {
 export function applyTheme(theme: Theme): void {
   const resolved = theme === "system" ? getSystemTheme() : theme
   document.documentElement.classList.toggle("dark", resolved === "dark")
+  document.documentElement.style.colorScheme = theme === "system" ? "light dark" : resolved
 }
 
 export function setTheme(theme: Theme): void {
