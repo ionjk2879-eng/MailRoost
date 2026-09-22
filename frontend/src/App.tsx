@@ -1316,7 +1316,19 @@ function App() {
           )
         ) : isMobile ? (
           <div className="min-h-0 flex-1">
-            {referencePane ?? (workspace.selectedMailId || composeState ? mailDetailPane : mailListPane)}
+            {referencePane ? (
+              <ResizablePanelGroup orientation="vertical" className="h-full">
+                <ResizablePanel defaultSize={50} minSize={25} className="overflow-hidden">
+                  {referencePane}
+                </ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={50} minSize={25} className="overflow-hidden">
+                  {workspace.selectedMailId || composeState ? mailDetailPane : mailListPane}
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            ) : (
+              workspace.selectedMailId || composeState ? mailDetailPane : mailListPane
+            )}
           </div>
         ) : (
           <ResizablePanelGroup groupRef={mailSnap.groupRef} onLayoutChange={mailSnap.onLayoutChange} orientation="horizontal" className="flex-1">
