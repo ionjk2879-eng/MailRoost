@@ -47,7 +47,7 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
   const [pushLoading, setPushLoading] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
   const [sound, setSound] = useState<NotificationSound>("bird")
-  const [pushSupported, setPushSupported] = useState(true)
+  const [pushUnsupportedReason, setPushUnsupportedReason] = useState<"ios-pwa" | "browser" | null>(null)
   const [theme, setThemeState] = useState<Theme>("system")
   const [pendingDelete, setPendingDelete] = useState<Account | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
@@ -62,7 +62,12 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
     if (!open) return
     setPushEnabled(getPushEnabled())
     setSound(getSoundPreference())
-    setPushSupported("serviceWorker" in navigator && "PushManager" in window)
+    const nativeSupport = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window
+    const isIos = /iPhone|iPad|iPod/.test(navigator.userAgent)
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || !!(navigator as Navigator & { standalone?: boolean }).standalone
+    if (!nativeSupport) setPushUnsupportedReason("browser")
+    else if (isIos && !isStandalone) setPushUnsupportedReason("ios-pwa")
+    else setPushUnsupportedReason(null)
     setThemeState(getStoredTheme())
     setPushError(null)
   }, [open])
@@ -234,7 +239,16 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
           {/* 푸시 알림 */}
           <section className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">푸시 알림</h3>
-            {!pushSupported ? (
+            {pushUnsupportedReason === "ios-pwa" ? (
+              <div className="bg-muted/50 flex flex-col gap-2 rounded-lg border p-3">
+                <p className="text-sm font-medium">홈 화면에 추가 후 사용 가능합니다</p>
+                <ol className="text-muted-foreground flex flex-col gap-1 text-xs">
+                  <li>1. Safari 하단 공유 버튼(□↑) 탭</li>
+                  <li>2. "홈 화면에 추가" 선택</li>
+                  <li>3. 홈 화면의 MailRoost 아이콘으로 열기</li>
+                </ol>
+              </div>
+            ) : pushUnsupportedReason === "browser" ? (
               <p className="text-muted-foreground text-xs">이 브라우저는 푸시 알림을 지원하지 않습니다.</p>
             ) : (
               <div className="flex items-center justify-between">
