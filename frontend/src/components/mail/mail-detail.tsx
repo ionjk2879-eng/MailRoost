@@ -109,7 +109,7 @@ export function MailDetail({ thread, isLoadingBody, onBack, mutedSet, ...rest }:
             <img
               src="/mail-empty-roost.png"
               alt="새들이 메일을 나르는 새집"
-              className="h-auto w-[min(25rem,78vw)] select-none"
+              className="h-auto w-[min(25rem,78vw)] max-h-[38vh] object-contain select-none"
               draggable={false}
             />
             <div className="-mt-3 flex flex-col items-center">
