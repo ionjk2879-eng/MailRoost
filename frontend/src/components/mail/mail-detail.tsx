@@ -104,8 +104,8 @@ export function MailDetail({ thread, isLoadingBody, onBack, mutedSet, ...rest }:
     return (
       <div className="flex h-full min-h-0 w-full flex-col">
         {onBack && <BackButton onBack={onBack} />}
-        <div className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden px-6 pb-16">
-          <div className="flex -translate-y-2 flex-col items-center text-center">
+        <div className="flex min-h-0 w-full flex-1 items-center justify-center overflow-y-auto px-6 py-8">
+          <div className="flex flex-col items-center text-center">
             <img
               src="/mail-empty-roost.png"
               alt="새들이 메일을 나르는 새집"
