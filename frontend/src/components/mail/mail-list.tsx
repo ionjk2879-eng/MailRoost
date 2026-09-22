@@ -466,7 +466,7 @@ export function MailList({
                         e.stopPropagation()
                         onOpenReference(mail.id, mail.accountId)
                       }}
-                      className="hidden shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-40 hover:!opacity-70 lg:inline-flex"
+                      className="inline-flex shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-40 hover:!opacity-70 lg:opacity-0 max-lg:opacity-40"
                       aria-label="참고용으로 열기"
                       title="참고용으로 열기 (단축키 P)"
                     >
