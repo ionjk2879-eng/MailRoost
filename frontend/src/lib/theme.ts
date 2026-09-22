@@ -12,8 +12,11 @@ export function getStoredTheme(): Theme {
 
 export function applyTheme(theme: Theme): void {
   const resolved = theme === "system" ? getSystemTheme() : theme
+  const cs = theme === "system" ? "light dark" : resolved
   document.documentElement.classList.toggle("dark", resolved === "dark")
-  document.documentElement.style.colorScheme = theme === "system" ? "light dark" : resolved
+  document.documentElement.style.colorScheme = cs
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]')
+  if (meta) meta.content = cs
 }
 
 export function setTheme(theme: Theme): void {

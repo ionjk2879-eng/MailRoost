@@ -3,5 +3,10 @@
   if (t === "dark" || (t === "system" && window.matchMedia("(prefers-color-scheme:dark)").matches)) {
     document.documentElement.classList.add("dark")
   }
-  document.documentElement.style.colorScheme = t === "system" ? "light dark" : t
+  var cs = t === "system" ? "light dark" : t
+  document.documentElement.style.colorScheme = cs
+  var meta = document.createElement("meta")
+  meta.name = "color-scheme"
+  meta.content = cs
+  document.head.appendChild(meta)
 })()
