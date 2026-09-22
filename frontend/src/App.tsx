@@ -591,7 +591,7 @@ function App() {
           .filter((att) => att.contentId)
           .map((att) => [att.contentId!.replace(/^<|>$/g, "").toLowerCase(), inlineAttachmentUrl(mail.id, mail.accountId, att)]),
       )
-      bodyHtml = mail.bodyHtml.replace(
+      let html = mail.bodyHtml.replace(
         /\b(src|background)\s*=\s*(["'])cid:([^"']+)\2/gi,
         (_match, attr: string, quote: string, rawCid: string) => {
           let cid = rawCid
@@ -601,6 +601,13 @@ function App() {
           return url ? `${attr}=${quote}${url}${quote}` : _match
         },
       )
+      // 이메일 HTML 문서 구조(<head><style>...)를 contenteditable에 직접 넣으면
+      // CSS가 메인 페이지 전체에 누출된다. head를 제거하고 body 내용만 추출한다.
+      html = html.replace(/<!DOCTYPE[^>]*>/gi, "").replace(/<head[\s\S]*?<\/head>/gi, "")
+      html = html.replace(/<html[^>]*>/gi, "").replace(/<\/html>/gi, "")
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i)
+      bodyHtml = (bodyMatch ? bodyMatch[1] : html.replace(/<\/?body[^>]*>/gi, "")).trim()
+      if (!bodyHtml) bodyHtml = esc(mail.body ?? "").replace(/\n/g, "<br>")
     } else {
       bodyHtml = esc(mail.body ?? "").replace(/\n/g, "<br>")
     }
@@ -1309,7 +1316,7 @@ function App() {
           )
         ) : isMobile ? (
           <div className="min-h-0 flex-1">
-            {workspace.selectedMailId || composeState ? mailDetailPane : mailListPane}
+            {referencePane ?? (workspace.selectedMailId || composeState ? mailDetailPane : mailListPane)}
           </div>
         ) : (
           <ResizablePanelGroup groupRef={mailSnap.groupRef} onLayoutChange={mailSnap.onLayoutChange} orientation="horizontal" className="flex-1">
