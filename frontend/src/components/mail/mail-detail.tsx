@@ -112,7 +112,7 @@ export function MailDetail({ thread, isLoadingBody, onBack, mutedSet, ...rest }:
               className="h-auto w-[min(25rem,78vw)] max-h-[38vh] object-contain select-none"
               draggable={false}
             />
-            <div className="-mt-3 flex flex-col items-center">
+            <div className="flex flex-col items-center">
               <h2 className="text-foreground text-xl font-bold tracking-tight sm:text-2xl">
                 메일을 선택해 내용을 확인하세요
               </h2>
