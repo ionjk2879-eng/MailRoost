@@ -5,8 +5,6 @@
   }
   var cs = t === "system" ? "light dark" : t === "light" ? "only light" : "dark"
   document.documentElement.style.colorScheme = cs
-  var meta = document.createElement("meta")
-  meta.name = "color-scheme"
-  meta.content = cs
-  document.head.appendChild(meta)
+  var meta = document.querySelector("meta[name='color-scheme']")
+  if (meta) meta.content = cs
 })()
