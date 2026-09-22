@@ -431,7 +431,7 @@ export function MailList({
                         "absolute inset-0 flex items-center justify-center rounded-sm border transition-opacity",
                         isChecked
                           ? "bg-primary border-primary opacity-100"
-                          : "border-input bg-background dark:bg-muted dark:border-muted-foreground/50 opacity-0 group-hover:opacity-100",
+                          : "border-input bg-background dark:bg-muted dark:border-muted-foreground/50 opacity-30 group-hover:opacity-100",
                       )}
                     >
                       {isChecked && <Check className="text-primary-foreground size-3" />}
