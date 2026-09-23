@@ -1,10 +1,8 @@
 (function () {
   var t = localStorage.getItem("mailroost_theme") || "system"
-  if (t === "dark" || (t === "system" && window.matchMedia("(prefers-color-scheme:dark)").matches)) {
+  var isDark = t === "dark" || (t === "system" && window.matchMedia("(prefers-color-scheme:dark)").matches)
+  if (isDark) {
     document.documentElement.classList.add("dark")
   }
-  var cs = "only light"
-  document.documentElement.style.colorScheme = cs
-  var meta = document.querySelector("meta[name='color-scheme']")
-  if (meta) meta.content = cs
+  document.documentElement.style.colorScheme = isDark ? "dark" : "only light"
 })()
