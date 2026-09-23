@@ -7,8 +7,6 @@ import { buildAuthUrl, exchangeCodeForTokens, fetchProfile } from "../lib/gmail"
 import { registerOrRenewWatch } from "../lib/gmailWatch"
 import { createSessionId, deleteSession, readSession, SESSION_COOKIE, writeSession } from "../lib/session"
 
-const STATE_COOKIE = "roost_oauth_state"
-
 const auth = new Hono<{ Bindings: Env }>()
 
 function sessionCookieOptions(url: string) {
@@ -21,15 +19,9 @@ function sessionCookieOptions(url: string) {
   }
 }
 
-auth.get("/gmail/login", (c) => {
+auth.get("/gmail/login", async (c) => {
   const state = crypto.randomUUID()
-  setCookie(c, STATE_COOKIE, state, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "None",
-    path: "/",
-    maxAge: 600,
-  })
+  await c.env.TOKENS.put(`oauth_state:${state}`, "1", { expirationTtl: 600 })
   const redirectUri = new URL("/auth/gmail/callback", c.req.url).toString()
   const authUrl = buildAuthUrl(c.env.GOOGLE_CLIENT_ID, redirectUri, state)
   return c.redirect(authUrl)
@@ -38,10 +30,12 @@ auth.get("/gmail/login", (c) => {
 auth.get("/gmail/callback", async (c) => {
   const code = c.req.query("code")
   const state = c.req.query("state")
-  const expectedState = readRawCookie(c.req.header("Cookie"), STATE_COOKIE)
-  deleteCookie(c, STATE_COOKIE, { path: "/" })
 
-  if (!code || !state || !expectedState || state !== expectedState) {
+  const stateKey = `oauth_state:${state}`
+  const validState = state ? await c.env.TOKENS.get(stateKey) : null
+  if (validState) await c.env.TOKENS.delete(stateKey)
+
+  if (!code || !validState) {
     return c.text("OAuth 상태 검증에 실패했습니다. 다시 시도해주세요.", 400)
   }
 
