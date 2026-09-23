@@ -25,8 +25,8 @@ auth.get("/gmail/login", (c) => {
   const state = crypto.randomUUID()
   setCookie(c, STATE_COOKIE, state, {
     httpOnly: true,
-    secure: isHttps(c.req.url),
-    sameSite: "Lax",
+    secure: true,
+    sameSite: "None",
     path: "/",
     maxAge: 600,
   })
