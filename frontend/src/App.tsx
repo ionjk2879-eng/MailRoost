@@ -1180,7 +1180,7 @@ function App() {
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            className="flex min-w-0 items-center gap-2 rounded-full border bg-background py-1.5 pr-3 pl-1.5 text-left shadow-sm transition hover:bg-accent"
+            className="flex min-w-0 items-center gap-2 rounded-full border bg-background py-1.5 pl-1.5 pr-1.5 sm:pr-3 text-left shadow-sm transition hover:bg-accent"
             title={`현재 로그인: ${currentUser.email}`}
           >
             <ProviderIcon provider="gmail" label={currentUser.email} className="size-7 rounded-full" />
