@@ -13,12 +13,17 @@ function includesCI(haystack: string, needle: string): boolean {
   return haystack.toLowerCase().includes(needle.toLowerCase())
 }
 
+function splitTerms(s: string): string[] {
+  return s.split(",").map((t) => t.trim()).filter(Boolean)
+}
+
 // 조건은 전부 AND — 비어있는 조건("")은 따지지 않는다. include는 만족해야, exclude는 안 만족해야 통과.
+// from/excludeFrom은 쉼표로 여러 값을 넣을 수 있고, include는 OR, exclude도 OR (하나라도 걸리면 제외).
 export function matchRule(rule: RuleConditions, mail: MatchableMail): boolean {
   const fromHaystack = `${mail.fromName} ${mail.fromEmail}`
-  if (rule.from && !includesCI(fromHaystack, rule.from)) return false
+  if (rule.from && !splitTerms(rule.from).some((t) => includesCI(fromHaystack, t))) return false
   if (rule.subject && !includesCI(mail.subject, rule.subject)) return false
-  if (rule.excludeFrom && includesCI(fromHaystack, rule.excludeFrom)) return false
+  if (rule.excludeFrom && splitTerms(rule.excludeFrom).some((t) => includesCI(fromHaystack, t))) return false
   if (rule.excludeSubject && includesCI(mail.subject, rule.excludeSubject)) return false
   return true
 }

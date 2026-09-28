@@ -13,6 +13,113 @@ const CATEGORY_LABELS: Record<MailCategory, string> = {
 }
 
 type RulePatch = Partial<Omit<AutoClassifyRule, "id" | "createdAt">>
+type Chip = { label: string; value: string }
+
+function strToChips(s: string): Chip[] {
+  return s.split(",").map((v) => v.trim()).filter(Boolean).map((v) => ({ label: v, value: v }))
+}
+
+function chipsToStr(chips: Chip[]): string {
+  return chips.map((c) => c.value).join(",")
+}
+
+function EmailChipInput({
+  chips,
+  onChipsChange,
+  suggestions,
+  placeholder,
+}: {
+  chips: Chip[]
+  onChipsChange: (chips: Chip[]) => void
+  suggestions: Chip[]
+  placeholder?: string
+}) {
+  const [input, setInput] = useState("")
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [open])
+
+  const filtered = useMemo(() => {
+    const q = input.trim().toLowerCase()
+    const list = q
+      ? suggestions.filter((s) => s.label.toLowerCase().includes(q) || s.value.toLowerCase().includes(q))
+      : suggestions.slice(0, 10)
+    return list.filter((s) => !chips.some((c) => c.value === s.value))
+  }, [input, suggestions, chips])
+
+  const addChip = (chip: Chip) => {
+    const v = chip.value.trim()
+    if (!v || chips.some((c) => c.value === v)) return
+    onChipsChange([...chips, { label: chip.label, value: v }])
+    setInput("")
+    setOpen(false)
+  }
+
+  const commitInput = () => {
+    const v = input.trim().replace(/,$/, "").trim()
+    if (v) addChip({ label: v, value: v })
+  }
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <div
+        className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-3 py-2 text-sm ring-offset-background focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 cursor-text"
+        onClick={() => (wrapRef.current?.querySelector("input") as HTMLInputElement | null)?.focus()}
+      >
+        {chips.map((chip) => (
+          <span key={chip.value} className="flex max-w-[200px] items-center gap-1 rounded-md border bg-muted px-2 py-0.5 text-xs">
+            <span className="truncate">{chip.label}</span>
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); onChipsChange(chips.filter((c) => c.value !== chip.value)) }}
+              className="ml-0.5 shrink-0 rounded-sm opacity-60 hover:opacity-100"
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          className="flex-1 min-w-[80px] bg-transparent outline-none placeholder:text-muted-foreground"
+          value={input}
+          placeholder={chips.length === 0 ? placeholder : "입력 후 Enter"}
+          onChange={(e) => { setInput(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault()
+              if (input.trim() === "" && filtered.length > 0) addChip(filtered[0])
+              else commitInput()
+            } else if (e.key === "Backspace" && !input && chips.length > 0) {
+              onChipsChange(chips.slice(0, -1))
+            }
+          }}
+        />
+      </div>
+      {open && filtered.length > 0 && (
+        <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-background py-1 shadow-lg">
+          {filtered.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); addChip(s) }}
+              className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-muted"
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface AutoRulesViewProps {
   mails: Mail[]
@@ -25,12 +132,17 @@ interface AutoRulesViewProps {
   onApplyRuleToExisting: (ruleId: string) => Promise<{ ok: boolean; error?: string; count?: number; alreadyClassified?: number }>
 }
 
-// 조건 중 비어있지 않은 것들만 사람이 읽을 수 있는 문구로 이어붙인다 (이름을 직접 안 지었을 때 기본값으로도 쓴다).
 function ruleConditionParts(conditions: RuleConditions): string[] {
   const parts: string[] = []
-  if (conditions.from) parts.push(`발신자에 ${conditions.from} 포함`)
+  if (conditions.from) {
+    const froms = conditions.from.split(",").map((s) => s.trim()).filter(Boolean)
+    parts.push(`발신자에 ${froms.join(" 또는 ")} 포함`)
+  }
   if (conditions.subject) parts.push(`제목에 ${conditions.subject} 포함`)
-  if (conditions.excludeFrom) parts.push(`발신자에 ${conditions.excludeFrom} 제외`)
+  if (conditions.excludeFrom) {
+    const excl = conditions.excludeFrom.split(",").map((s) => s.trim()).filter(Boolean)
+    parts.push(`발신자에 ${excl.join(" 또는 ")} 제외`)
+  }
   if (conditions.excludeSubject) parts.push(`제목에 ${conditions.excludeSubject} 제외`)
   return parts
 }
@@ -40,9 +152,9 @@ export function AutoRulesView({ mails, folders, rules, onCreateRule, onUpdateRul
   const [panelOpen, setPanelOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [name, setName] = useState("")
-  const [from, setFrom] = useState("")
+  const [fromChips, setFromChips] = useState<Chip[]>([])
+  const [excludeFromChips, setExcludeFromChips] = useState<Chip[]>([])
   const [subject, setSubject] = useState("")
-  const [excludeFrom, setExcludeFrom] = useState("")
   const [excludeSubject, setExcludeSubject] = useState("")
   const [destination, setDestination] = useState(`folder:${ARCHIVE_FOLDER_ID}`)
   const [applyExisting, setApplyExisting] = useState(true)
@@ -52,10 +164,7 @@ export function AutoRulesView({ mails, folders, rules, onCreateRule, onUpdateRul
   const [message, setMessage] = useState<string | null>(null)
   const [menuId, setMenuId] = useState<string | null>(null)
 
-  // 현재 로드된 메일에서 발신자 후보를 뽑아 "발신자 포함" 입력 시 선택할 수 있게 한다 — 직접 입력도 그대로 가능하다.
-  const [suggestOpen, setSuggestOpen] = useState(false)
-  const suggestRef = useRef<HTMLDivElement>(null)
-  const senderOptions = useMemo(() => {
+  const senderOptions: Chip[] = useMemo(() => {
     const seen = new Map<string, string>()
     for (const m of mails) {
       if (!m.fromEmail || seen.has(m.fromEmail)) continue
@@ -63,42 +172,29 @@ export function AutoRulesView({ mails, folders, rules, onCreateRule, onUpdateRul
     }
     return [...seen.entries()].map(([value, label]) => ({ value, label }))
   }, [mails])
-  const filteredSenderOptions = useMemo(() => {
-    const q = from.trim().toLowerCase()
-    const matches = q ? senderOptions.filter((o) => o.label.toLowerCase().includes(q)) : senderOptions
-    return matches.slice(0, 20)
-  }, [senderOptions, from])
-
-  useEffect(() => {
-    if (!suggestOpen) return
-    const handler = (e: MouseEvent) => {
-      if (suggestRef.current && !suggestRef.current.contains(e.target as Node)) setSuggestOpen(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [suggestOpen])
 
   const folderName = (id: string) => destinations.find((folder) => folder.id === id)?.name ?? "삭제된 폴더"
   const ruleDisplayName = (rule: AutoClassifyRule) => rule.name || ruleConditionParts(rule).join(", ") || "새 규칙"
 
-  const resetConditions = () => { setFrom(""); setSubject(""); setExcludeFrom(""); setExcludeSubject("") }
+  const resetConditions = () => { setFromChips([]); setSubject(""); setExcludeFromChips([]); setExcludeSubject("") }
   const openCreate = () => {
     setEditingId(null); setName(""); resetConditions(); setDestination(`folder:${ARCHIVE_FOLDER_ID}`)
-    setApplyExisting(true); setEnabled(true); setMessage(null); setSuggestOpen(false); setPanelOpen(true)
+    setApplyExisting(true); setEnabled(true); setMessage(null); setPanelOpen(true)
   }
   const openEdit = (rule: AutoClassifyRule) => {
     setEditingId(rule.id); setName(rule.name || ruleConditionParts(rule).join(", "))
-    setFrom(rule.from); setSubject(rule.subject); setExcludeFrom(rule.excludeFrom); setExcludeSubject(rule.excludeSubject)
+    setFromChips(strToChips(rule.from)); setSubject(rule.subject)
+    setExcludeFromChips(strToChips(rule.excludeFrom)); setExcludeSubject(rule.excludeSubject)
     setDestination(rule.targetFolderId ? `folder:${rule.targetFolderId}` : `category:${rule.category ?? "primary"}`)
-    setApplyExisting(false); setEnabled(rule.enabled); setMessage(null); setMenuId(null); setSuggestOpen(false); setPanelOpen(true)
+    setApplyExisting(false); setEnabled(rule.enabled); setMessage(null); setMenuId(null); setPanelOpen(true)
   }
 
-  const hasCondition = from.trim() !== "" || subject.trim() !== ""
+  const hasCondition = fromChips.length > 0 || subject.trim() !== ""
 
   const save = async () => {
     if (!name.trim() || !hasCondition) return
     const [kind, value] = destination.split(":") as ["folder" | "category", string]
-    const conditions: RuleConditions = { from: from.trim(), subject: subject.trim(), excludeFrom: excludeFrom.trim(), excludeSubject: excludeSubject.trim() }
+    const conditions: RuleConditions = { from: chipsToStr(fromChips), subject: subject.trim(), excludeFrom: chipsToStr(excludeFromChips), excludeSubject: excludeSubject.trim() }
     const patch: RulePatch = {
       name: name.trim(), ...conditions, enabled,
       targetFolderId: kind === "folder" ? value : null,
@@ -170,33 +266,26 @@ export function AutoRulesView({ mails, folders, rules, onCreateRule, onUpdateRul
             <p className="text-sm font-medium">조건</p>
             <p className="text-sm text-muted-foreground">다음 조건을 모두 만족할 때 (발신자·제목 포함 조건 중 하나는 입력)</p>
 
-            <label className="block space-y-1.5">
+            <div className="space-y-1.5">
               <span className="text-xs text-muted-foreground">발신자 포함</span>
-              <div className="relative" ref={suggestRef}>
-                <Input
-                  value={from}
-                  onChange={(event) => { setFrom(event.target.value); setSuggestOpen(true) }}
-                  onFocus={() => setSuggestOpen(true)}
-                  placeholder="예: pay (아래 목록에서 선택도 가능)"
-                />
-                {suggestOpen && filteredSenderOptions.length > 0 && (
-                  <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-background py-1 shadow-lg">
-                    {filteredSenderOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => { setFrom(option.value); setSuggestOpen(false) }}
-                        className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-muted"
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </label>
+              <EmailChipInput
+                chips={fromChips}
+                onChipsChange={setFromChips}
+                suggestions={senderOptions}
+                placeholder="이메일 입력 후 Enter, 또는 목록에서 선택"
+              />
+            </div>
 
-            <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">발신자 제외</span><Input value={excludeFrom} onChange={(event) => setExcludeFrom(event.target.value)} placeholder="예: noreply" /></label>
+            <div className="space-y-1.5">
+              <span className="text-xs text-muted-foreground">발신자 제외</span>
+              <EmailChipInput
+                chips={excludeFromChips}
+                onChipsChange={setExcludeFromChips}
+                suggestions={senderOptions}
+                placeholder="예: noreply"
+              />
+            </div>
+
             <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">제목 포함</span><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="예: 이벤트" /></label>
             <label className="block space-y-1.5"><span className="text-xs text-muted-foreground">제목 제외</span><Input value={excludeSubject} onChange={(event) => setExcludeSubject(event.target.value)} placeholder="예: 구독 취소" /></label>
           </div>
