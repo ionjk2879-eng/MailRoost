@@ -60,6 +60,8 @@ function MailDetailBody({
     })
   }
 
+  const newestId = thread[thread.length - 1].id
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {onBack && (
@@ -70,7 +72,11 @@ function MailDetailBody({
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {thread.map((mail) => {
           const expanded = expandedIds.has(mail.id)
+          const isNewest = mail.id === newestId
           if (!expanded) {
+            const d = new Date(mail.receivedAt)
+            const timeStr = d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+            const dateStr = d.toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })
             return (
               <button
                 key={mail.id}
@@ -82,14 +88,19 @@ function MailDetailBody({
                   <span className="font-medium">{mail.fromName}</span>{" "}
                   <span className="text-muted-foreground">{mail.snippet}</span>
                 </span>
-                <span className="text-muted-foreground shrink-0 text-xs">
-                  {new Date(mail.receivedAt).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {isNewest && (
+                    <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-600 dark:bg-orange-500/20 dark:text-orange-400">
+                      최신
+                    </span>
+                  )}
+                  <span className="text-muted-foreground text-xs">{dateStr} {timeStr}</span>
                 </span>
               </button>
             )
           }
           return (
-            <div key={mail.id} className="flex min-h-[400px] flex-1 flex-col border-b last:border-b-0">
+            <div key={mail.id} className="flex-1 border-b last:border-b-0">
               <MessageCard mail={mail} isMuted={mutedSet?.has(mail.fromEmail)} {...rest} />
             </div>
           )
