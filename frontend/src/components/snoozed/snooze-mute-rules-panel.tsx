@@ -1,5 +1,5 @@
 import { AlarmClock, Loader2, MoreVertical, Pencil, Plus, Trash2, VolumeX, X } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { AutoSnoozeMuteAction, AutoSnoozeMuteRule, Mail } from "@/types/mail"
@@ -59,14 +59,6 @@ export function SnoozeMuteRulesPanel({ mails, rules, onCreateRule, onUpdateRule,
     return matches.slice(0, 20)
   }, [senderOptions, from])
 
-  useEffect(() => {
-    if (!suggestOpen) return
-    const handler = (e: MouseEvent) => {
-      if (suggestRef.current && !suggestRef.current.contains(e.target as Node)) setSuggestOpen(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [suggestOpen])
 
   const ruleDisplayName = (rule: AutoSnoozeMuteRule) => rule.name || ruleConditionParts(rule).join(", ") || "새 규칙"
   const actionLabel = (action: AutoSnoozeMuteAction) => (action.type === "snooze" ? `${action.days}일 뒤 다시 알림` : "뮤트")
@@ -166,7 +158,11 @@ export function SnoozeMuteRulesPanel({ mails, rules, onCreateRule, onUpdateRule,
 
                 <label className="block space-y-1.5">
                   <span className="text-xs text-muted-foreground">발신자 포함</span>
-                  <div className="relative" ref={suggestRef}>
+                  <div
+                    className="relative"
+                    ref={suggestRef}
+                    onBlur={(e) => { if (!suggestRef.current?.contains(e.relatedTarget as Node)) setSuggestOpen(false) }}
+                  >
                     <Input
                       value={from}
                       onChange={(event) => { setFrom(event.target.value); setSuggestOpen(true) }}
@@ -176,7 +172,7 @@ export function SnoozeMuteRulesPanel({ mails, rules, onCreateRule, onUpdateRule,
                     {suggestOpen && filteredSenderOptions.length > 0 && (
                       <div className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-background py-1 shadow-lg">
                         {filteredSenderOptions.map((option) => (
-                          <button key={option.value} type="button" onClick={() => { setFrom(option.value); setSuggestOpen(false) }} className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-muted">
+                          <button key={option.value} type="button" tabIndex={-1} onMouseDown={(e) => { e.preventDefault(); setFrom(option.value); setSuggestOpen(false) }} className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-muted">
                             {option.label}
                           </button>
                         ))}
