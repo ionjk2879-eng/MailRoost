@@ -1,5 +1,5 @@
 import { Pencil, X } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 
 export interface RecipientOption {
   email: string
@@ -46,22 +46,15 @@ export function RecipientInput({ id, value, onChange, options, placeholder, requ
     onChange(serialized)
   }
 
-  useEffect(() => {
-    if (value === lastEmittedRef.current) return
+  // sync external value changes (e.g. draft load)
+  const prevValueRef = useRef(value)
+  if (value !== lastEmittedRef.current && value !== prevValueRef.current) {
     const parsed = parseValue(value)
     setRecipients(parsed.recipients)
     setDraft(parsed.draft)
     lastEmittedRef.current = value
-  }, [value])
-
-  useEffect(() => {
-    if (!open) return
-    const handler = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [open])
+  }
+  prevValueRef.current = value
 
   const filtered = useMemo(() => {
     const query = draft.trim().toLowerCase()
@@ -76,6 +69,7 @@ export function RecipientInput({ id, value, onChange, options, placeholder, requ
     if (!normalized || recipients.some((item) => item.toLowerCase() === normalized.toLowerCase())) {
       setDraft("")
       emit(recipients, "")
+      setOpen(false)
       return
     }
     const next = [...recipients, normalized]
@@ -102,13 +96,19 @@ export function RecipientInput({ id, value, onChange, options, placeholder, requ
   }
 
   return (
-    <div ref={rootRef} className="relative">
+    <div
+      ref={rootRef}
+      className="relative"
+      onBlur={(e) => {
+        if (!rootRef.current?.contains(e.relatedTarget as Node)) setOpen(false)
+      }}
+    >
       <div className="border-input bg-background focus-within:border-orange-300 focus-within:ring-orange-100 flex min-h-10 w-full flex-wrap items-center gap-1.5 rounded-md border px-2 py-1.5 text-sm transition focus-within:ring-2">
         {recipients.map((email, index) => (
           <span key={`${email}-${index}`} className="flex max-w-full items-center gap-1 rounded-full bg-blue-50 py-1 pr-1 pl-2.5 text-xs text-blue-900 dark:bg-blue-500/15 dark:text-blue-200">
             <span className="max-w-56 truncate">{labelFor(email, options)}{labelFor(email, options) !== email && ` <${email}>`}</span>
-            <button type="button" onClick={() => editRecipient(index)} className="flex size-5 items-center justify-center rounded-full text-blue-500 hover:bg-blue-100" aria-label={`${email} 수정`}><Pencil className="size-3" /></button>
-            <button type="button" onClick={() => removeRecipient(index)} className="flex size-5 items-center justify-center rounded-full text-blue-400 hover:bg-blue-100 hover:text-blue-700" aria-label={`${email} 삭제`}><X className="size-3" /></button>
+            <button type="button" tabIndex={-1} onMouseDown={(e) => { e.preventDefault(); editRecipient(index) }} className="flex size-5 items-center justify-center rounded-full text-blue-500 hover:bg-blue-100" aria-label={`${email} 수정`}><Pencil className="size-3" /></button>
+            <button type="button" tabIndex={-1} onMouseDown={(e) => { e.preventDefault(); removeRecipient(index) }} className="flex size-5 items-center justify-center rounded-full text-blue-400 hover:bg-blue-100 hover:text-blue-700" aria-label={`${email} 삭제`}><X className="size-3" /></button>
           </span>
         ))}
         <input
@@ -141,7 +141,7 @@ export function RecipientInput({ id, value, onChange, options, placeholder, requ
           {filtered.map((option, index) => (
             <div key={option.email}>
               {(index === 0 || filtered[index - 1]?.source !== option.source) && <p className="bg-muted/50 rounded-md px-3 py-1.5 text-[10px] font-semibold text-muted-foreground">{option.source === "contact" ? "주소록" : "최근 받은 주소"}</p>}
-              <button type="button" onClick={() => addRecipient(option.email)} className="hover:bg-accent flex w-full flex-col items-start rounded-lg px-3 py-2 text-left">
+              <button type="button" tabIndex={-1} onMouseDown={(e) => { e.preventDefault(); addRecipient(option.email) }} className="hover:bg-accent flex w-full flex-col items-start rounded-lg px-3 py-2 text-left">
                 <span className="w-full truncate text-sm">{option.name || option.email}</span>
                 {option.name && option.name !== option.email && <span className="text-muted-foreground w-full truncate text-xs">{option.email}</span>}
               </button>
