@@ -1,5 +1,5 @@
 import { Check, Folder, GripVertical, Loader2, MoreVertical, Pencil, Plus, Trash2, X } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
@@ -37,15 +37,13 @@ function EmailChipInput({
   const [input, setInput] = useState("")
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [open])
+  // onBlur bubbles — fires when focus leaves the entire wrapper subtree.
+  // e.relatedTarget is null or outside → close dropdown. No document listener needed.
+  const handleBlur = (e: React.FocusEvent) => {
+    if (!wrapRef.current?.contains(e.relatedTarget as Node)) setOpen(false)
+  }
 
   const filtered = useMemo(() => {
     const q = input.trim().toLowerCase()
@@ -68,25 +66,42 @@ function EmailChipInput({
     if (v) addChip({ label: v, value: v })
   }
 
+  const editChip = (chip: Chip) => {
+    onChipsChange(chips.filter((c) => c.value !== chip.value))
+    setInput(chip.value)
+    setOpen(true)
+    setTimeout(() => inputRef.current?.focus(), 0)
+  }
+
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className="relative" onBlur={handleBlur}>
       <div
         className="flex min-h-10 flex-wrap items-center gap-1.5 rounded-md border bg-transparent px-3 py-2 text-sm ring-offset-background focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 cursor-text"
-        onClick={() => (wrapRef.current?.querySelector("input") as HTMLInputElement | null)?.focus()}
+        onClick={() => inputRef.current?.focus()}
       >
         {chips.map((chip) => (
-          <span key={chip.value} className="flex max-w-[200px] items-center gap-1 rounded-md border bg-muted px-2 py-0.5 text-xs">
-            <span className="truncate">{chip.label}</span>
+          <span key={chip.value} className="flex max-w-[220px] items-center gap-0.5 rounded-md border bg-muted pl-2 pr-1 py-0.5 text-xs">
+            <span className="truncate mr-0.5">{chip.label}</span>
             <button
               type="button"
+              tabIndex={-1}
+              onMouseDown={(e) => { e.preventDefault(); editChip(chip) }}
+              className="shrink-0 rounded-sm p-0.5 opacity-50 hover:opacity-100"
+            >
+              <Pencil className="size-2.5" />
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
               onMouseDown={(e) => { e.preventDefault(); onChipsChange(chips.filter((c) => c.value !== chip.value)) }}
-              className="ml-0.5 shrink-0 rounded-sm opacity-60 hover:opacity-100"
+              className="shrink-0 rounded-sm p-0.5 opacity-50 hover:opacity-100"
             >
               <X className="size-3" />
             </button>
           </span>
         ))}
         <input
+          ref={inputRef}
           className="flex-1 min-w-[80px] bg-transparent outline-none placeholder:text-muted-foreground"
           value={input}
           placeholder={chips.length === 0 ? placeholder : "입력 후 Enter"}
@@ -109,6 +124,7 @@ function EmailChipInput({
             <button
               key={s.value}
               type="button"
+              tabIndex={-1}
               onMouseDown={(e) => { e.preventDefault(); addChip(s) }}
               className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-muted"
             >
