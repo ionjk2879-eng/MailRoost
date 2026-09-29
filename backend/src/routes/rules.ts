@@ -7,7 +7,7 @@ import { readRawCookie } from "../lib/cookies"
 import { searchImapMails } from "../lib/mailFetch"
 import { mutateMailOrg, resolveMailOrg } from "../lib/mailOrg"
 import { type ApplyRuleMatchesResult, type CreateRuleResult, type UpdateRuleResult, VALID_CATEGORIES } from "../lib/mailOrgOps"
-import { matchRule } from "../lib/rules"
+import { matchRule, splitTerms } from "../lib/rules"
 import { readSession, SESSION_COOKIE } from "../lib/session"
 
 const rules = new Hono<{ Bindings: Env }>()
@@ -142,8 +142,14 @@ rules.post("/rules/:id/apply", async (c) => {
   // (from/subject/excludeFrom/excludeSubject 전부) 정확히 걸러낸다. from이 있으면 from으로,
   // 없으면(제목 조건만 있는 규칙) subject로 검색한다 — 조건이 전부 AND라 이 검색으로 진짜 매치를
   // 놓치는 경우는 없다(참인 매치는 반드시 이 검색에도 걸린다).
+  // from에 여러 값이 있으면 각 term을 따로 검색해 합친다(서버는 쉼표 구분 쿼리를 이해하지 못함).
   const searchField: "from" | "subject" = rule.from ? "from" : "subject"
-  const searchKeyword = searchField === "from" ? rule.from : rule.subject
+  const searchTerms: string[] = searchField === "from" ? splitTerms(rule.from) : [rule.subject]
+
+  function dedupeById(lists: Mail[][]): Mail[] {
+    const seen = new Set<string>()
+    return lists.flat().filter((m) => (seen.has(m.id) ? false : (seen.add(m.id), true)))
+  }
 
   const perAccountMatches = await Promise.all(
     accountIds.map(async (accountId): Promise<Mail[]> => {
@@ -155,16 +161,23 @@ rules.post("/rules/:id/apply", async (c) => {
           if (fresh.accessToken !== record.accessToken) {
             accountPatch[accountId] = gmailTokenPatchOf(fresh)
           }
-          const mails = await gmailSearchMails(fresh.accessToken, accountId, `${searchField}:"${searchKeyword}"`, RULE_APPLY_SEARCH_LIMIT)
+          // Gmail supports OR natively: from:"a" OR from:"b"
+          const query = searchTerms.map((t) => `${searchField}:"${t}"`).join(" OR ")
+          const mails = await gmailSearchMails(fresh.accessToken, accountId, query, RULE_APPLY_SEARCH_LIMIT)
           return mails.filter((mail) => matchRule(rule, mail))
         }
         // 삼중 OR+TEXT 구조는 네이버 등 일부 서버에서 결과가 비어있는 문제가 있어 단일 기준으로 검색한다.
+        // term이 여럿이면 각각 따로 검색해 중복 제거 후 합친다.
         if (record.provider === "naver") {
-          const mails = await naverSearchInbox(record.email, record.appPassword, accountId, searchKeyword, RULE_APPLY_SEARCH_LIMIT, searchField)
-          return mails.filter((mail) => matchRule(rule, mail))
+          const perTerm = await Promise.all(
+            searchTerms.map((t) => naverSearchInbox(record.email, record.appPassword, accountId, t, RULE_APPLY_SEARCH_LIMIT, searchField)),
+          )
+          return dedupeById(perTerm).filter((mail) => matchRule(rule, mail))
         }
-        const mails = await searchImapMails(accountId, record, searchKeyword, RULE_APPLY_SEARCH_LIMIT, searchField)
-        return mails.filter((mail) => matchRule(rule, mail))
+        const perTerm = await Promise.all(
+          searchTerms.map((t) => searchImapMails(accountId, record, t, RULE_APPLY_SEARCH_LIMIT, searchField)),
+        )
+        return dedupeById(perTerm).filter((mail) => matchRule(rule, mail))
       } catch (err) {
         console.error(`[rules-apply] account ${accountId} failed, skipping:`, err)
         return []

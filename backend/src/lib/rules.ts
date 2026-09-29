@@ -13,7 +13,7 @@ function includesCI(haystack: string, needle: string): boolean {
   return haystack.toLowerCase().includes(needle.toLowerCase())
 }
 
-function splitTerms(s: string): string[] {
+export function splitTerms(s: string): string[] {
   return s.split(",").map((t) => t.trim()).filter(Boolean)
 }
 
