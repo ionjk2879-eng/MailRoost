@@ -248,7 +248,7 @@ export function AutoRulesView({ mails, folders, rules, onCreateRule, onUpdateRul
             {rules.map((rule) => {
               const conditionText = ruleConditionParts(rule).join(", ") || "-"
               return (
-                <div key={rule.id} className={cn("relative grid items-start gap-4 rounded-xl border bg-background px-4 py-5 shadow-sm md:grid-cols-[1.1fr_1.35fr_1fr_.75fr_.7fr]", !rule.enabled && "opacity-55")}>
+                <div key={rule.id} className={cn("relative grid items-center gap-4 rounded-xl border bg-background px-4 py-5 shadow-sm md:grid-cols-[1.1fr_1.35fr_1fr_.75fr_.7fr]", !rule.enabled && "opacity-55")}>
                   <div className="flex min-w-0 items-center gap-2"><GripVertical className="size-4 shrink-0 text-muted-foreground" /><strong className="truncate">{ruleDisplayName(rule)}</strong></div>
                   <div className="min-w-0">
                     <Tooltip>
