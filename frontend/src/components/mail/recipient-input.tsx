@@ -76,8 +76,7 @@ export function RecipientInput({ id, value, onChange, options, placeholder, requ
     setRecipients(next)
     setDraft("")
     emit(next, "")
-    setOpen(false)
-    inputRef.current?.focus()
+    setOpen(true)
   }
 
   const removeRecipient = (index: number) => {

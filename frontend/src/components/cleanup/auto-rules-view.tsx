@@ -58,7 +58,7 @@ function EmailChipInput({
     if (!v || chips.some((c) => c.value === v)) return
     onChipsChange([...chips, { label: chip.label, value: v }])
     setInput("")
-    setOpen(false)
+    setOpen(true)
   }
 
   const commitInput = () => {
