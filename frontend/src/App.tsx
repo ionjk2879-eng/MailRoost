@@ -1051,7 +1051,7 @@ function App() {
           <X className="size-4" />
         </button>
       </div>
-      <div className="min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {referenceMailDetail ? (
           <MessageCard mail={referenceMailDetail} accounts={accounts} readOnly />
         ) : (
