@@ -98,7 +98,7 @@ export function HomeView({
 
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-[#fffdfb] dark:bg-background">
-      <div className="mx-auto flex max-w-[1440px] flex-col gap-5 px-4 py-5 sm:px-7 lg:px-10 lg:py-8">
+      <div className="flex flex-col gap-5 px-4 py-5 sm:px-7 lg:px-10 lg:py-8 min-[1920px]:[zoom:1.25] min-[2400px]:[zoom:1.5]">
         <section className="relative min-h-[245px] overflow-hidden rounded-[28px] border border-orange-100 bg-[#fff7ef] shadow-[0_18px_55px_-35px_rgba(235,100,20,.55)] sm:min-h-[285px]">
           <img
             src="/mailroost-autumn-hero.png"
