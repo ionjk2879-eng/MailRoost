@@ -1,8 +1,12 @@
 # CLAUDE.md
 
-## 인수인계 문서
+## 세션 시작 시 필수 작업
 
-새 대화가 시작될 때 반드시 [`docs/handover.md`](docs/handover.md)를 읽는다. 이 파일에는 최근 구현 현황, 미해결 이슈, 핵심 패턴, 다음 작업 후보가 정리되어 있다. 대화 로그 없이도 작업을 이어갈 수 있도록 최신 상태를 유지한다.
+새 대화가 시작될 때 아래 세 가지를 순서대로 실행한다.
+
+1. `/i-have-adhd:i-have-adhd` 스킬 실행 — ADHD 친화적 응답 형식 활성화
+2. `/andrej-karpathy-skills:karpathy-guidelines` 스킬 실행 — 코딩 가이드라인 활성화
+3. [`docs/handover.md`](docs/handover.md) 읽기 — 최근 구현 현황, 미해결 이슈, 핵심 패턴, 다음 작업 후보 파악
 
 ## 언어 / 말투
 
