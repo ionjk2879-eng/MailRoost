@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import type { ComponentType } from "react"
 import { Button } from "@/components/ui/button"
+import { ConnectGuideDialog } from "@/components/home/connect-guide-dialog"
 import { ProviderIcon } from "@/components/mail/provider-icon"
 import { cn } from "@/lib/utils"
 import type { Account, Mail } from "@/types/mail"
@@ -97,7 +98,7 @@ export function HomeView({
 
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-[#fffdfb] dark:bg-background">
-      <div className="mx-auto flex max-w-[1440px] flex-col gap-5 px-4 py-5 sm:px-7 lg:px-10 lg:py-8">
+      <div className="mx-auto flex max-w-[1800px] flex-col gap-5 px-4 py-5 sm:px-7 lg:px-10 lg:py-8">
         <section className="relative min-h-[245px] overflow-hidden rounded-[28px] border border-orange-100 bg-[#fff7ef] shadow-[0_18px_55px_-35px_rgba(235,100,20,.55)] sm:min-h-[285px]">
           <img
             src="/mailroost-autumn-hero.png"
@@ -128,7 +129,10 @@ export function HomeView({
         <section className="rounded-2xl border bg-white p-5 shadow-sm dark:bg-card">
           <div className="mb-4 flex items-center justify-between">
             <div><h2 className="font-semibold">연결된 계정</h2><p className="mt-1 text-xs text-muted-foreground">{accounts.length}개의 계정이 연결되어 있습니다.</p></div>
-            <Button variant="outline" size="sm" className="gap-2 rounded-lg" onClick={onOpenSettings}><Settings className="size-3.5" /> 계정 관리</Button>
+            <div className="flex items-center gap-2">
+              <ConnectGuideDialog />
+              <Button variant="outline" size="sm" className="gap-2 rounded-lg" onClick={onOpenSettings}><Settings className="size-3.5" /> 계정 관리</Button>
+            </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {accounts.map((account) => {

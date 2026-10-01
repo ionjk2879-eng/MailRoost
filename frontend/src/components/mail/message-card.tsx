@@ -174,7 +174,7 @@ export function MessageCard({
   const account = accounts.find((a) => a.id === mail.accountId)
 
   return (
-    <div ref={cardRef} tabIndex={-1} className="flex min-h-0 flex-col outline-none">
+    <div ref={cardRef} tabIndex={-1} className="flex flex-1 flex-col outline-none">
       <div className="flex shrink-0 flex-col gap-4 border-b bg-background px-7 py-5">
         <div className="flex min-w-0 items-start gap-3">
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -370,7 +370,7 @@ export function MessageCard({
           <AttachmentPreview mail={mail} attachment={previewAttachment} onClose={() => setPreviewAttachment(null)} />
         )}
       </div>
-      <div>
+      <div className="flex flex-1 flex-col">
         {mail.bodyHtml ? (
           <iframe
             ref={iframeRef}
@@ -378,7 +378,7 @@ export function MessageCard({
             title={mail.subject}
             srcDoc={buildIframeDoc(mail)}
             sandbox="allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
-            className="w-full min-h-[520px] border-0 block"
+            className="w-full min-h-[520px] flex-1 border-0 block"
           />
         ) : (
           <div className="px-8 py-7">
