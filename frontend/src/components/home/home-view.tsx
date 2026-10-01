@@ -15,6 +15,7 @@ import {
   StickyNote,
   Trash2,
 } from "lucide-react"
+import { useLayoutEffect, useRef } from "react"
 import type { ComponentType } from "react"
 import { Button } from "@/components/ui/button"
 import { ConnectGuideDialog } from "@/components/home/connect-guide-dialog"
@@ -69,6 +70,25 @@ export function HomeView({
   onOpenSettings,
   onOpenShortcuts,
 }: HomeViewProps) {
+  // 화면 크기에 맞춰 홈 전체를 키우되, 세로로 넘쳐 스크롤이 생기지 않는 배율까지만 키운다.
+  // 배율 1에서 내용 높이를 재고, 영역 높이/너비 비율로 계산한다 (너비 1500px 미만으로는 줄이지 않아 레이아웃 단계가 안 바뀜).
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const outer = scrollRef.current
+    const inner = contentRef.current
+    if (!outer || !inner) return
+    const fit = () => {
+      inner.style.zoom = "1"
+      const zoom = Math.min(outer.clientHeight / (inner.offsetHeight * 1.03), outer.clientWidth / 1500, 1.5)
+      inner.style.zoom = String(Math.max(1, zoom))
+    }
+    fit()
+    const observer = new ResizeObserver(fit)
+    observer.observe(outer)
+    return () => observer.disconnect()
+  }, [accounts.length, mails.length])
+
   const totalUnread = Object.values(unreadCountByAccount).reduce((sum, n) => sum + n, 0)
   const starredCount = mails.filter((mail) => mail.isStarred).length
   const name = displayNameFromEmail(currentUserEmail)
@@ -97,8 +117,8 @@ export function HomeView({
   ]
 
   return (
-    <div className="min-h-0 flex-1 overflow-auto bg-[#fffdfb] dark:bg-background">
-      <div className="flex flex-col gap-5 px-4 py-5 sm:px-7 lg:px-10 lg:py-8 min-[1920px]:[zoom:1.25] min-[2400px]:[zoom:1.5]">
+    <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto bg-[#fffdfb] dark:bg-background">
+      <div ref={contentRef} className="flex flex-col gap-5 px-4 py-5 sm:px-7 lg:px-10 lg:py-8">
         <section className="relative min-h-[245px] overflow-hidden rounded-[28px] border border-orange-100 bg-[#fff7ef] shadow-[0_18px_55px_-35px_rgba(235,100,20,.55)] sm:min-h-[285px]">
           <img
             src="/mailroost-autumn-hero.png"
