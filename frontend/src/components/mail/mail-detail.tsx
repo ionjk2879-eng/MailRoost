@@ -100,7 +100,7 @@ function MailDetailBody({
             )
           }
           return (
-            <div key={mail.id} className="flex-1 border-b last:border-b-0">
+            <div key={mail.id} className="border-b last:border-b-0">
               <MessageCard mail={mail} isMuted={mutedSet?.has(mail.fromEmail)} {...rest} />
             </div>
           )
