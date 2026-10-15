@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mailroost.ionjk2879.workers.dev/sitemap.xml
