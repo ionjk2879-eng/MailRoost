@@ -1,5 +1,6 @@
 import { Filter, Keyboard, Loader2, Pencil, RefreshCw, Search, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useLocation, useMatch, useNavigate } from "react-router-dom"
 import type { GroupImperativeHandle, Layout } from "react-resizable-panels"
 import { AccountSidebar } from "@/components/mail/account-sidebar"
 import { CategoryTabs } from "@/components/mail/category-tabs"
@@ -42,18 +43,15 @@ import { applyTheme, getStoredTheme, watchSystemTheme } from "@/lib/theme"
 const SNAP_SIZE = 45
 const SNAP_ZONE = 3
 
-interface MailRoostHistoryState {
-  mailRoost: true
-  view: AppView
-  accountId: string | null
-  folderId: string | null
-  mailId: string | null
-}
-
-function readInitialHistoryState(): MailRoostHistoryState | null {
-  const state = window.history.state as Partial<MailRoostHistoryState> | null
-  if (!state?.mailRoost || typeof state.view !== "string") return null
-  return state as MailRoostHistoryState
+function pathToView(pathname: string): AppView {
+  const seg = pathname === "/" ? "" : pathname.slice(1).split("/")[0]
+  const map: Record<string, AppView> = {
+    "": "home", inbox: "inbox", starred: "starred", cleanup: "cleanup",
+    trash: "trash", archive: "archive", folder: "folder", drafts: "drafts",
+    snoozed: "snoozed", muted: "muted", memo: "memo", attachments: "attachments",
+    scheduled: "scheduled", "auto-reply": "auto-reply",
+  }
+  return map[seg] ?? "home"
 }
 
 function useSnapPanel() {
@@ -85,17 +83,16 @@ function matchesSavedFilter(mail: Mail, filter: SavedFilter): boolean {
 }
 
 function App() {
-  const initialHistoryStateRef = useRef<MailRoostHistoryState | null>(readInitialHistoryState())
+  const navigate = useNavigate()
+  const location = useLocation()
+  const folderMatch = useMatch("/folder/:folderId")
+  const view = pathToView(location.pathname)
+  const selectedFolderId = folderMatch?.params.folderId ?? (view === "archive" ? ARCHIVE_FOLDER_ID : null)
   const isMobile = useIsMobile()
   const mailSnap = useSnapPanel()
   const folderSnap = useSnapPanel()
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string } | null>(null)
-  const [view, setView] = useState<AppView>(() => initialHistoryStateRef.current?.view ?? "home")
-  const historyInitializedRef = useRef(false)
-  const restoringHistoryRef = useRef(false)
-  const historyWrittenSynchronouslyRef = useRef(false)
-  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(() => initialHistoryStateRef.current?.folderId ?? null)
   const pendingSendTimers = useRef<Record<string, number>>({})
   const [composeState, setComposeState] = useState<{
     accountId?: string
@@ -115,7 +112,7 @@ function App() {
     setReferenceMail({ mailId, accountId })
     setMobilePane("reference")
   }, [])
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(() => initialHistoryStateRef.current?.accountId ?? null)
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -135,7 +132,7 @@ function App() {
 
   // 홈으로 이동 — mailOrg가 "분류 메일함 삭제 시 지금 보고 있던 메일함이면 홈으로" 판단에 쓴다.
   const goHome = () => {
-    setView("home")
+    navigate("/")
     setSelectedAccountId(null)
     setSelectedCategory(null)
     workspace.setSelectedMailId(null)
@@ -175,16 +172,12 @@ function App() {
       .then((user) => {
         setCurrentUser(user)
         if (user) {
-          const saved = initialHistoryStateRef.current
-          if (saved?.mailId) workspace.setSelectedMailId(saved.mailId)
           const loads: Promise<unknown>[] = [workspace.loadAccountsAndMails(), mailOrg.loadInitialData()]
-          if ((saved?.view === "folder" || saved?.view === "archive") && saved.folderId) {
-            loads.push(workspace.loadFolderMails(saved.folderId))
-          } else if (saved?.view === "trash") {
+          if ((view === "folder" || view === "archive") && selectedFolderId) {
+            loads.push(workspace.loadFolderMails(selectedFolderId))
+          } else if (view === "trash") {
             loads.push(workspace.loadTrash())
           }
-          // Render as soon as authentication is known; mailbox providers can
-          // continue loading in parallel behind the list skeleton.
           void Promise.allSettled(loads)
         }
       })
@@ -346,26 +339,6 @@ function App() {
   // view/selectedAccountId/selectedFolderId 같은 App.tsx의 네비게이션 상태와 히스토리 ref에
   // 의존하므로 여기서 감싼다.
   const handleSelectMail = (mailId: string | null) => {
-    if (currentUser && mailId && mailId !== workspace.selectedMailId) {
-      const listState: MailRoostHistoryState = {
-        mailRoost: true,
-        view,
-        accountId: selectedAccountId,
-        folderId: selectedFolderId,
-        mailId: workspace.selectedMailId,
-      }
-      const detailState: MailRoostHistoryState = { ...listState, mailId }
-
-      if (!historyInitializedRef.current) {
-        window.history.replaceState(listState, "")
-        historyInitializedRef.current = true
-      }
-      // 목록에서 상세를 처음 열 때만 새 기록을 만든다. 상세가 열린 채 다른
-      // 메일을 고르면 현재 상세 기록만 교체해 첫 뒤로가기가 항상 목록으로 간다.
-      if (workspace.selectedMailId === null) window.history.pushState(detailState, "")
-      else window.history.replaceState(detailState, "")
-      historyWrittenSynchronouslyRef.current = true
-    }
     setComposeState(null)
     workspace.handleSelectMail(mailId)
   }
@@ -381,7 +354,7 @@ function App() {
   const handleBulkMoveFromInbox = (folderId: string | null) => workspace.bulkMoveFromInbox(visibleMails, folderId)
 
   const goToInbox = (accountId: string | null) => {
-    setView("inbox")
+    navigate("/inbox")
     setSelectedAccountId(accountId)
     setSelectedCategory(null)
     workspace.setSelectedMailId(null)
@@ -393,7 +366,7 @@ function App() {
   }
 
   const handleApplyFilter = (filter: SavedFilter) => {
-    setView("inbox")
+    navigate("/inbox")
     setSelectedAccountId(filter.accountId)
     setSelectedCategory(null)
     workspace.setSelectedMailId(null)
@@ -405,7 +378,7 @@ function App() {
   }
 
   const goToCleanup = () => {
-    setView("cleanup")
+    navigate("/cleanup")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -413,7 +386,7 @@ function App() {
   }
 
   const goToMemo = () => {
-    setView("memo")
+    navigate("/memo")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -421,7 +394,7 @@ function App() {
   }
 
   const goToDrafts = () => {
-    setView("drafts")
+    navigate("/drafts")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -429,7 +402,7 @@ function App() {
   }
 
   const goToAttachments = () => {
-    setView("attachments")
+    navigate("/attachments")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -437,7 +410,7 @@ function App() {
   }
 
   const goToSnooze = () => {
-    setView("snoozed")
+    navigate("/snoozed")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -445,7 +418,7 @@ function App() {
   }
 
   const goToMuted = () => {
-    setView("muted")
+    navigate("/muted")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -453,7 +426,7 @@ function App() {
   }
 
   const goToScheduled = () => {
-    setView("scheduled")
+    navigate("/scheduled")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -461,7 +434,7 @@ function App() {
   }
 
   const goToAutoReply = () => {
-    setView("auto-reply")
+    navigate("/auto-reply")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -489,7 +462,7 @@ function App() {
   }
 
   const goToTrash = () => {
-    setView("trash")
+    navigate("/trash")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -498,8 +471,7 @@ function App() {
   }
 
   const goToFolder = (folderId: string) => {
-    setView("folder")
-    setSelectedFolderId(folderId)
+    navigate(`/folder/${folderId}`)
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -510,8 +482,7 @@ function App() {
   // 보관함은 사용자 정의 분류와 동일한 배정 메커니즘을 쓰는 예약된 가상 폴더라서
   // folderMails/selectedFolderId 상태를 그대로 재사용한다.
   const goToArchive = () => {
-    setView("archive")
-    setSelectedFolderId(ARCHIVE_FOLDER_ID)
+    navigate("/archive")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -520,7 +491,7 @@ function App() {
   }
 
   const goToStarred = () => {
-    setView("starred")
+    navigate("/starred")
     setSelectedAccountId(null)
     setSelectedCategory(null)
     workspace.setSelectedMailId(null)
@@ -531,63 +502,8 @@ function App() {
     mailOrg.setActiveFilter(null)
   }
 
-  // 앱 내부 화면 전환을 브라우저 히스토리와 동기화한다. 데스크톱 PWA에서도
-  // 마우스 사이드 버튼과 Alt+Left/Alt+Right가 일반 웹페이지처럼 동작한다.
-  useEffect(() => {
-    if (!currentUser) {
-      historyInitializedRef.current = false
-      return
-    }
-
-    const state: MailRoostHistoryState = {
-      mailRoost: true,
-      view,
-      accountId: selectedAccountId,
-      folderId: selectedFolderId,
-      mailId: workspace.selectedMailId,
-    }
-
-    if (!historyInitializedRef.current) {
-      window.history.replaceState(state, "")
-      historyInitializedRef.current = true
-      return
-    }
-    if (restoringHistoryRef.current) {
-      restoringHistoryRef.current = false
-      return
-    }
-    if (historyWrittenSynchronouslyRef.current) {
-      historyWrittenSynchronouslyRef.current = false
-      return
-    }
-    window.history.pushState(state, "")
-  }, [currentUser, view, selectedAccountId, selectedFolderId, workspace.selectedMailId])
-
-  useEffect(() => {
-    if (!currentUser) return
-    const restore = (event: PopStateEvent) => {
-      const state = event.state as MailRoostHistoryState | null
-      if (!state?.mailRoost) return
-      restoringHistoryRef.current = true
-      setView(state.view)
-      setSelectedAccountId(state.accountId)
-      setSelectedFolderId(state.folderId)
-      workspace.setSelectedMailId(state.mailId)
-      workspace.setFocusedMailId(null)
-      workspace.setCheckedMailIds(new Set())
-      setComposeState(null)
-      workspace.setSearchQuery("")
-      mailOrg.setActiveFilter(null)
-      if ((state.view === "folder" || state.view === "archive") && state.folderId) workspace.loadFolderMails(state.folderId)
-      if (state.view === "trash") workspace.loadTrash()
-    }
-    window.addEventListener("popstate", restore)
-    return () => window.removeEventListener("popstate", restore)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser])
-
   const handleOpenCompose = () => {
-    setView("inbox")
+    navigate("/inbox")
     setSelectedCategory(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -828,7 +744,6 @@ function App() {
     await logout()
     setCurrentUser(null)
     workspace.reset()
-    setSelectedFolderId(null)
     mailOrg.reset()
     for (const timer of Object.values(pendingSendTimers.current)) window.clearTimeout(timer)
     pendingSendTimers.current = {}
