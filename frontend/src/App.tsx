@@ -1370,6 +1370,7 @@ function App() {
         onAccountConnected={workspace.loadAccountsAndMails}
         onAccountDeleted={handleDeleteAccount}
         onBackupImported={() => { void mailOrg.loadInitialData(); void workspace.loadAccountsAndMails() }}
+        onUpdateSignature={workspace.handleUpdateSignature}
       />
     </SidebarProvider>
   )

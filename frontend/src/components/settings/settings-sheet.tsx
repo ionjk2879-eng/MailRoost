@@ -28,6 +28,7 @@ interface SettingsSheetProps {
   onAccountConnected: () => void
   onAccountDeleted: (accountId: string) => void
   onBackupImported: () => void
+  onUpdateSignature: (accountId: string, signature: string) => Promise<{ ok: boolean; error?: string }>
 }
 
 const SOUND_OPTIONS: { value: NotificationSound; label: string; description: string }[] = [
@@ -42,7 +43,7 @@ const THEME_OPTIONS: { value: Theme; label: string; icon: React.ReactNode }[] = 
   { value: "system", label: "시스템", icon: <SunMoon className="size-3.5" /> },
 ]
 
-export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onAccountDeleted, onBackupImported }: SettingsSheetProps) {
+export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onAccountDeleted, onBackupImported, onUpdateSignature }: SettingsSheetProps) {
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushLoading, setPushLoading] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
@@ -55,6 +56,9 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
   const [pendingImport, setPendingImport] = useState<unknown>(null)
   const [isImporting, setIsImporting] = useState(false)
   const [backupError, setBackupError] = useState<string | null>(null)
+  const [sigs, setSigs] = useState<Record<string, string>>({})
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [sigError, setSigError] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const connectedAccounts = accounts.filter((account) => account.id.includes(":"))
 
@@ -70,7 +74,11 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
     else setPushUnsupportedReason(null)
     setThemeState(getStoredTheme())
     setPushError(null)
-  }, [open])
+    const map: Record<string, string> = {}
+    for (const a of accounts) map[a.id] = a.signature ?? ""
+    setSigs(map)
+    setSigError(null)
+  }, [open, accounts])
 
   const handleTogglePush = useCallback(async () => {
     setPushLoading(true)
@@ -145,6 +153,14 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
     }
   }
 
+  const handleSaveSignature = async (accountId: string) => {
+    setSavingId(accountId)
+    setSigError(null)
+    const result = await onUpdateSignature(accountId, sigs[accountId] ?? "")
+    setSavingId(null)
+    if (!result.ok) setSigError(result.error ?? "서명 저장에 실패했습니다.")
+  }
+
   const handleConfirmImport = async () => {
     setIsImporting(true)
     const result = await importMailOrgBackup(pendingImport)
@@ -211,6 +227,47 @@ export function SettingsSheet({ open, onClose, accounts, onAccountConnected, onA
             <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
               <LockKeyhole className="size-3.5" /> 인증 정보는 안전하게 암호화됩니다.
             </p>
+          </section>
+
+          <div className="border-t" />
+          {/* 서명 */}
+          <section className="flex flex-col gap-4">
+            <div>
+              <h3 className="text-base font-semibold">서명</h3>
+              <p className="text-muted-foreground mt-1 text-xs">메일 작성 시 보내는 계정에 맞는 서명이 자동으로 삽입됩니다.</p>
+            </div>
+            {connectedAccounts.length === 0 ? (
+              <p className="text-muted-foreground text-sm">연결된 계정이 없습니다.</p>
+            ) : (
+              <div className="flex flex-col gap-5">
+                {connectedAccounts.map((account) => (
+                  <div key={account.id} className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <ProviderIcon provider={account.provider} className="size-5" label={account.email} />
+                      <span className="text-sm font-medium truncate">{account.email}</span>
+                    </div>
+                    <textarea
+                      rows={4}
+                      className="w-full resize-y rounded-lg border bg-background px-3 py-2 text-sm outline-none transition-all placeholder:text-muted-foreground focus:border-border focus:ring-2 focus:ring-ring/40"
+                      placeholder="서명을 입력하세요 (선택 사항)"
+                      value={sigs[account.id] ?? ""}
+                      onChange={(e) => setSigs((prev) => ({ ...prev, [account.id]: e.target.value }))}
+                    />
+                    <div className="flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={savingId === account.id}
+                        onClick={() => handleSaveSignature(account.id)}
+                      >
+                        {savingId === account.id ? "저장 중..." : "저장"}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {sigError && <p className="text-destructive text-xs">{sigError}</p>}
+              </div>
+            )}
           </section>
 
           <div className="border-t" />
