@@ -15,6 +15,8 @@ import notifications from "./notifications"
 import snooze from "./snooze"
 import push from "./push"
 import contacts from "./contacts"
+import scheduledMail from "./scheduled-mail"
+import autoReply from "./auto-reply"
 
 const api = new Hono<{ Bindings: Env }>()
 
@@ -33,5 +35,7 @@ api.route("/", notifications)
 api.route("/", snooze)
 api.route("/", push)
 api.route("/", contacts)
+api.route("/", scheduledMail)
+api.route("/", autoReply)
 
 export default api

@@ -1,4 +1,4 @@
-import type { AutoClassifyRule, AutoSnoozeMuteAction, AutoSnoozeMuteRule, MailCategory, MailFolder, MailOrgState, SavedFilter } from "../types"
+import type { AutoClassifyRule, AutoReplyRule, AutoSnoozeMuteAction, AutoSnoozeMuteRule, MailCategory, MailFolder, MailOrgState, SavedFilter } from "../types"
 import { ARCHIVE_FOLDER_ID, applyOrder, assignmentKey, folderIdsOf, isArchived, normalizeMailOrgState, toggleFolderAssignment } from "./mailOrg"
 import { applyCategoryRules, matchRule } from "./rules"
 
@@ -96,6 +96,10 @@ export type MailOrgOp =
   | { type: "muteSender"; email: string }
   | { type: "unmuteSender"; email: string }
   | { type: "replaceState"; state: Partial<MailOrgState> }
+  | { type: "createAutoReplyRule"; rule: AutoReplyRule }
+  | { type: "updateAutoReplyRule"; ruleId: string; patch: Partial<Omit<AutoReplyRule, "id" | "createdAt">> }
+  | { type: "deleteAutoReplyRule"; ruleId: string }
+  | { type: "recordAutoReplySent"; key: string; timestamp: number }
 
 // applyMailOrgOp 결과 타입 모음. applyMailOrgOp 자체는 unknown을 반환하므로(각 case의 반환 타입이
 // 서로 다른 큰 switch라 제네릭으로 정확히 좁히기 번거로움), 호출부(mutateMailOrg<T>(...))에서
@@ -111,6 +115,8 @@ export type CreateSavedFilterResult = { ok: true; filter: SavedFilter } | { ok: 
 export type MoveMailResult = { ok: true } | { ok: false; error: string }
 export type ToggleMailFolderResult = { ok: true } | { ok: false; error: string }
 export type ClassifyMailsResult = { archived: boolean; folderIds: string[]; category: MailCategory }[]
+export type CreateAutoReplyRuleResult = { ok: true; rule: AutoReplyRule } | { ok: false; error: string }
+export type UpdateAutoReplyRuleResult = { ok: true; rule: AutoReplyRule } | { ok: false; status: 404; error: string }
 
 export function applyMailOrgOp(org: MailOrgState, op: MailOrgOp): unknown {
   switch (op.type) {
@@ -444,7 +450,35 @@ export function applyMailOrgOp(org: MailOrgState, op: MailOrgOp): unknown {
       org.snoozed = next.snoozed
       org.muted = next.muted
       org.savedFilters = next.savedFilters
+      org.autoReplies = next.autoReplies
+      org.autoReplySentTo = next.autoReplySentTo
       return next
+    }
+
+    case "createAutoReplyRule": {
+      if (!org.autoReplies) org.autoReplies = []
+      org.autoReplies.push(op.rule)
+      return { ok: true as const, rule: op.rule }
+    }
+
+    case "updateAutoReplyRule": {
+      if (!org.autoReplies) org.autoReplies = []
+      const idx = org.autoReplies.findIndex((r) => r.id === op.ruleId)
+      if (idx === -1) return { ok: false as const, status: 404 as const, error: "규칙을 찾을 수 없습니다." }
+      const rule = { ...org.autoReplies[idx], ...op.patch }
+      org.autoReplies[idx] = rule
+      return { ok: true as const, rule }
+    }
+
+    case "deleteAutoReplyRule": {
+      if (org.autoReplies) org.autoReplies = org.autoReplies.filter((r) => r.id !== op.ruleId)
+      return undefined
+    }
+
+    case "recordAutoReplySent": {
+      if (!org.autoReplySentTo) org.autoReplySentTo = {}
+      org.autoReplySentTo[op.key] = op.timestamp
+      return undefined
     }
   }
 }

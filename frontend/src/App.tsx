@@ -14,6 +14,8 @@ import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
 import { DraftsView } from "@/components/drafts/drafts-view"
 import { SnoozeMuteView } from "@/components/snoozed/snooze-mute-view"
+import { ScheduledView } from "@/components/scheduled/scheduled-view"
+import { AutoReplyView } from "@/components/auto-reply/auto-reply-view"
 import { NotificationBell } from "@/components/notifications/notification-bell"
 import { ProviderIcon } from "@/components/mail/provider-icon"
 import { SettingsSheet } from "@/components/settings/settings-sheet"
@@ -444,6 +446,22 @@ function App() {
 
   const goToMuted = () => {
     setView("muted")
+    workspace.setSelectedMailId(null)
+    workspace.setFocusedMailId(null)
+    workspace.setCheckedMailIds(new Set())
+    setComposeState(null)
+  }
+
+  const goToScheduled = () => {
+    setView("scheduled")
+    workspace.setSelectedMailId(null)
+    workspace.setFocusedMailId(null)
+    workspace.setCheckedMailIds(new Set())
+    setComposeState(null)
+  }
+
+  const goToAutoReply = () => {
+    setView("auto-reply")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -1081,6 +1099,8 @@ function App() {
         draftCount={mailOrg.drafts.length}
         isSnoozeMuteView={view === "snoozed" || view === "muted"}
         snoozeCount={Object.values(mailOrg.snoozed).filter((until) => until > Date.now()).length}
+        isScheduledView={view === "scheduled"}
+        isAutoReplyView={view === "auto-reply"}
         folders={mailOrg.folders}
         selectedFolderId={selectedFolderId}
         isFolderView={view === "folder"}
@@ -1094,6 +1114,8 @@ function App() {
         onGoMemo={goToMemo}
         onGoDrafts={goToDrafts}
         onGoSnoozeMute={goToSnooze}
+        onGoScheduled={goToScheduled}
+        onGoAutoReply={goToAutoReply}
         onSelectFolder={goToFolder}
         onCreateFolder={mailOrg.handleCreateFolder}
         onRenameFolder={mailOrg.handleRenameFolder}
@@ -1274,6 +1296,10 @@ function App() {
               onDeleteDraft={mailOrg.handleDeleteDraft}
             />
           )
+        ) : view === "scheduled" ? (
+          <ScheduledView accounts={accounts} />
+        ) : view === "auto-reply" ? (
+          <AutoReplyView />
         ) : view === "snoozed" || view === "muted" ? (
           <SnoozeMuteView
             activeTab={view}

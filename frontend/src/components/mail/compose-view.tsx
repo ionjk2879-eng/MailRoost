@@ -1,4 +1,4 @@
-import { BookUser, ChevronLeft, Download, Eye, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, Pencil, Plus, Save, Send, Trash2, UploadCloud, UserRound, X } from "lucide-react"
+import { BookUser, CalendarClock, ChevronLeft, Download, Eye, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, Pencil, Plus, Save, Send, Trash2, UploadCloud, UserRound, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label"
 import { RecipientInput, type RecipientOption } from "@/components/mail/recipient-input"
 import { ProviderIcon } from "@/components/mail/provider-icon"
 import { RichTextEditor } from "@/components/mail/rich-text-editor"
-import { createDraft, deleteDraft, sendMail, updateDraft } from "@/lib/api"
+import { createDraft, deleteDraft, scheduleMailSend, sendMail, updateDraft } from "@/lib/api"
 import type { Account, Contact, Draft, ForwardedAttachmentRef, Mail, QuickReply } from "@/types/mail"
 
 export const COMPOSE_SUPPORTED: Array<Account["provider"]> = ["gmail", "naver", "daum", "imap"]
@@ -88,6 +88,10 @@ export function ComposeView({
   const [previewAttachment, setPreviewAttachment] = useState<LocalAttachment | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
+  const [undoCountdown, setUndoCountdown] = useState<number | null>(null)
+  const undoCancelRef = useRef<(() => void) | null>(null)
+  const [scheduledAt, setScheduledAt] = useState("")
+  const [showSchedule, setShowSchedule] = useState(false)
   const [quickReplyOpen, setQuickReplyOpen] = useState(false)
   const [addressBookOpen, setAddressBookOpen] = useState(false)
   const [contactName, setContactName] = useState("")
@@ -209,13 +213,7 @@ export function ComposeView({
     onDraftDeleted?.(id)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!accountId) {
-      setError("보내는 계정을 선택해주세요.")
-      return
-    }
-    setError(null)
+  const doSend = async () => {
     setIsSending(true)
     const result = await sendMail(
       accountId,
@@ -234,6 +232,55 @@ export function ComposeView({
       setError(result.error ?? "전송에 실패했습니다.")
       return
     }
+    discardDraftAfterSend()
+    onSent()
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!accountId) { setError("보내는 계정을 선택해주세요."); return }
+    setError(null)
+
+    // 보내기 취소: 5초 카운트다운 후 실제 발송
+    let cancelled = false
+    undoCancelRef.current = () => { cancelled = true; setUndoCountdown(null) }
+    setUndoCountdown(5)
+
+    let remaining = 5
+    const tick = window.setInterval(() => {
+      remaining -= 1
+      if (remaining <= 0 || cancelled) {
+        window.clearInterval(tick)
+        setUndoCountdown(null)
+        if (!cancelled) doSend()
+      } else {
+        setUndoCountdown(remaining)
+      }
+    }, 1000)
+
+    return () => window.clearInterval(tick)
+  }
+
+  const handleScheduledSend = async () => {
+    if (!accountId) { setError("보내는 계정을 선택해주세요."); return }
+    if (!scheduledAt) { setError("예약 발송 시간을 선택해주세요."); return }
+    const ts = new Date(scheduledAt).getTime()
+    if (isNaN(ts) || ts <= Date.now()) { setError("예약 시간은 현재 시각 이후여야 합니다."); return }
+    setError(null)
+    setIsSending(true)
+    const result = await scheduleMailSend({
+      accountId,
+      fromName: senderName || undefined,
+      to: to.trim(),
+      cc: cc.trim() || undefined,
+      bcc: bcc.trim() || undefined,
+      subject: subject.trim(),
+      body: htmlToText(body),
+      htmlBody: body,
+      scheduledAt: ts,
+    })
+    setIsSending(false)
+    if (!result.ok) { setError(result.error ?? "예약 등록에 실패했습니다."); return }
     discardDraftAfterSend()
     onSent()
   }
@@ -284,12 +331,44 @@ export function ComposeView({
       ) : (
         <div className="grid min-h-0 flex-1 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_280px]">
           <div className="flex min-w-0 flex-col gap-5 px-4 py-5 sm:px-7 xl:border-r">
+          {undoCountdown !== null && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm dark:border-orange-500/20 dark:bg-orange-500/10">
+              <span className="text-orange-700 dark:text-orange-300"><Send className="mr-1.5 inline size-3.5" /> {undoCountdown}초 후 전송됩니다...</span>
+              <button type="button" onClick={() => undoCancelRef.current?.()} className="rounded-lg border border-orange-300 bg-background px-3 py-1 text-xs font-semibold text-orange-700 hover:bg-orange-100 dark:text-orange-300">취소</button>
+            </div>
+          )}
           <div className="hidden items-center justify-end gap-2 sm:flex">
-            <Button type="button" variant="outline" className="gap-2 rounded-xl" disabled={isSending} onClick={() => saveDraft()}><Save className="size-4" /> 임시보관</Button>
-            <Button type="submit" className="min-w-28 gap-2 rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20 hover:bg-orange-600" disabled={isSending}>
-              {isSending ? <><Loader2 className="size-4 animate-spin" /> 전송 중...</> : <><Send className="size-4" /> 보내기</>}
-            </Button>
+            <Button type="button" variant="outline" className="gap-2 rounded-xl" disabled={isSending || undoCountdown !== null} onClick={() => saveDraft()}><Save className="size-4" /> 임시보관</Button>
+            <div className="flex items-center">
+              <Button type="submit" className="gap-2 rounded-l-xl rounded-r-none bg-orange-500 shadow-lg shadow-orange-500/20 hover:bg-orange-600" disabled={isSending || undoCountdown !== null}>
+                {isSending ? <><Loader2 className="size-4 animate-spin" /> 전송 중...</> : <><Send className="size-4" /> 보내기</>}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setShowSchedule((v) => !v)}
+                disabled={isSending || undoCountdown !== null}
+                className="flex h-9 items-center rounded-l-none rounded-r-xl border-l border-orange-400 bg-orange-500 px-2.5 text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-50"
+                aria-label="예약 발송"
+                title="예약 발송"
+              >
+                <CalendarClock className="size-4" />
+              </button>
+            </div>
           </div>
+          {showSchedule && (
+            <div className="flex items-center gap-2 rounded-xl border bg-background p-3 shadow-sm">
+              <CalendarClock className="size-4 shrink-0 text-orange-500" />
+              <input
+                type="datetime-local"
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                className="h-9 flex-1 rounded-lg border bg-muted/50 px-3 text-sm outline-none focus:border-orange-200 focus:ring-2 focus:ring-orange-100"
+              />
+              <Button type="button" size="sm" className="bg-orange-500 hover:bg-orange-600" disabled={isSending || !scheduledAt} onClick={handleScheduledSend}>예약</Button>
+              <button type="button" onClick={() => { setShowSchedule(false); setScheduledAt("") }} className="text-muted-foreground hover:text-foreground"><X className="size-4" /></button>
+            </div>
+          )}
           <section className="overflow-visible rounded-2xl border bg-background shadow-sm">
           <div className="grid items-center gap-2 border-b px-4 py-3 sm:grid-cols-[100px_1fr] sm:px-5">
             <Label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><UserRound className="size-3.5" /> 보내는 사람</Label>
@@ -562,13 +641,21 @@ export function ComposeView({
         </div>
       )}
       {sendableAccounts.length > 0 && (
-        <div className="flex shrink-0 items-center gap-3 border-t bg-background/95 px-4 py-3 shadow-[0_-8px_24px_-20px_rgba(0,0,0,.35)] backdrop-blur sm:hidden">
-          <Button type="submit" className="min-w-28 gap-2 rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20 hover:bg-orange-600" disabled={isSending}>
-            {isSending ? <><Loader2 className="size-4 animate-spin" /> 전송 중...</> : <><Send className="size-4" /> 보내기</>}
-          </Button>
-          <Button type="button" variant="outline" className="gap-2 rounded-xl" disabled={isSending} onClick={() => saveDraft()}><Save className="size-4" /> 임시보관</Button>
-          <div className="flex-1" />
-          <Button type="button" variant="ghost" className="rounded-xl" disabled={isSending} onClick={onCancel}>취소</Button>
+        <div className="flex shrink-0 flex-col gap-2 border-t bg-background/95 px-4 py-3 shadow-[0_-8px_24px_-20px_rgba(0,0,0,.35)] backdrop-blur sm:hidden">
+          {undoCountdown !== null && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs dark:border-orange-500/20 dark:bg-orange-500/10">
+              <span className="text-orange-700 dark:text-orange-300">{undoCountdown}초 후 전송됩니다...</span>
+              <button type="button" onClick={() => undoCancelRef.current?.()} className="rounded-lg border border-orange-300 bg-background px-2 py-0.5 font-semibold text-orange-700 hover:bg-orange-100 dark:text-orange-300">취소</button>
+            </div>
+          )}
+          <div className="flex items-center gap-3">
+            <Button type="submit" className="gap-2 rounded-xl bg-orange-500 shadow-lg shadow-orange-500/20 hover:bg-orange-600" disabled={isSending || undoCountdown !== null}>
+              {isSending ? <><Loader2 className="size-4 animate-spin" /> 전송 중...</> : <><Send className="size-4" /> 보내기</>}
+            </Button>
+            <Button type="button" variant="outline" className="gap-2 rounded-xl" disabled={isSending || undoCountdown !== null} onClick={() => saveDraft()}><Save className="size-4" /> 임시보관</Button>
+            <div className="flex-1" />
+            <Button type="button" variant="ghost" className="rounded-xl" disabled={isSending} onClick={onCancel}>취소</Button>
+          </div>
         </div>
       )}
       {previewAttachment && (

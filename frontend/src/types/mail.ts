@@ -136,6 +136,38 @@ export interface QuickReply {
   createdAt: number
 }
 
+export interface ScheduledMail {
+  id: string
+  accountId: string
+  fromName?: string
+  to: string
+  cc?: string
+  bcc?: string
+  subject: string
+  body: string
+  htmlBody?: string
+  scheduledAt: number
+  createdAt: number
+  status: "pending" | "sent" | "failed"
+  error?: string
+}
+
+export interface AutoReplyRule {
+  id: string
+  name: string
+  enabled: boolean
+  fromFilter: string
+  rangeType: "date" | "recurring" | "both"
+  startDate?: string
+  endDate?: string
+  daysOfWeek?: number[]
+  startTime?: string
+  endTime?: string
+  replySubject: string
+  replyBody: string
+  createdAt: number
+}
+
 export interface ForwardedAttachmentRef {
   accountId: string
   mailId: string

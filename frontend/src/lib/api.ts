@@ -1,4 +1,4 @@
-import type { Account, AppNotification, AttachmentListItem, AutoClassifyRule, AutoSnoozeMuteAction, AutoSnoozeMuteRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, MemoLinkedMail, QuickReply, SavedFilter } from "@/types/mail"
+import type { Account, AppNotification, AttachmentListItem, AutoClassifyRule, AutoReplyRule, AutoSnoozeMuteAction, AutoSnoozeMuteRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, MemoLinkedMail, QuickReply, SavedFilter, ScheduledMail } from "@/types/mail"
 
 const AUTH_BASE = import.meta.env.DEV ? "http://localhost:8787" : ""
 
@@ -872,6 +872,80 @@ export async function unmuteSender(email: string): Promise<boolean> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
   })
+  return res.ok
+}
+
+// --- 예약 발송 ---
+
+export async function fetchScheduledMails(): Promise<ScheduledMail[]> {
+  const res = await fetch("/api/scheduled-mails")
+  if (!res.ok) return []
+  return ((await res.json()) as { mails: ScheduledMail[] }).mails
+}
+
+export async function scheduleMailSend(params: {
+  accountId: string
+  fromName?: string
+  to: string
+  cc?: string
+  bcc?: string
+  subject: string
+  body: string
+  htmlBody?: string
+  scheduledAt: number
+}): Promise<{ ok: true; mail: ScheduledMail } | { ok: false; error: string }> {
+  const res = await fetch("/api/scheduled-mails", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  })
+  const data = (await res.json().catch(() => ({}))) as { mail?: ScheduledMail; error?: string }
+  if (!res.ok) return { ok: false, error: data.error ?? "예약 발송 등록에 실패했습니다." }
+  return { ok: true, mail: data.mail! }
+}
+
+export async function cancelScheduledMailSend(id: string): Promise<boolean> {
+  const res = await fetch(`/api/scheduled-mails/${encodeURIComponent(id)}`, { method: "DELETE" })
+  return res.ok
+}
+
+// --- 자동 응답 ---
+
+export async function fetchAutoReplyRules(): Promise<AutoReplyRule[]> {
+  const res = await fetch("/api/auto-reply-rules")
+  if (!res.ok) return []
+  return ((await res.json()) as { rules: AutoReplyRule[] }).rules
+}
+
+export async function createAutoReplyRule(
+  rule: Omit<AutoReplyRule, "id" | "createdAt">,
+): Promise<{ ok: true; rule: AutoReplyRule } | { ok: false; error: string }> {
+  const res = await fetch("/api/auto-reply-rules", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(rule),
+  })
+  const data = (await res.json().catch(() => ({}))) as { rule?: AutoReplyRule; error?: string }
+  if (!res.ok) return { ok: false, error: data.error ?? "규칙 생성에 실패했습니다." }
+  return { ok: true, rule: data.rule! }
+}
+
+export async function updateAutoReplyRule(
+  id: string,
+  patch: Partial<Omit<AutoReplyRule, "id" | "createdAt">>,
+): Promise<{ ok: true; rule: AutoReplyRule } | { ok: false; error: string }> {
+  const res = await fetch(`/api/auto-reply-rules/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  })
+  const data = (await res.json().catch(() => ({}))) as { rule?: AutoReplyRule; error?: string }
+  if (!res.ok) return { ok: false, error: data.error ?? "규칙 수정에 실패했습니다." }
+  return { ok: true, rule: data.rule! }
+}
+
+export async function deleteAutoReplyRule(id: string): Promise<boolean> {
+  const res = await fetch(`/api/auto-reply-rules/${encodeURIComponent(id)}`, { method: "DELETE" })
   return res.ok
 }
 

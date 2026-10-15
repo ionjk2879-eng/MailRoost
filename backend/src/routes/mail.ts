@@ -60,8 +60,10 @@ import { readRawCookie } from "../lib/cookies"
 import { type CursorMap, decodeCursor, encodeCursor } from "../lib/cursor"
 import { fetchImapMails, searchImapMails } from "../lib/mailFetch"
 import { fetchAttachmentForAccount, resolveForwardedAttachments, sendViaRecord } from "../lib/mailSend"
-import { folderIdsOf, isArchived, mutateMailOrg, resolveMailOrg } from "../lib/mailOrg"
+import { assignmentKey, folderIdsOf, isArchived, mutateMailOrg, resolveMailOrg } from "../lib/mailOrg"
 import type { ClassifyMailsResult, MoveMailResult, ToggleMailFolderResult } from "../lib/mailOrgOps"
+import { sendDueScheduledMails } from "../lib/scheduledMail"
+import { triggerAutoReplies } from "../lib/autoReply"
 import { sanitizeHtml, type OutgoingAttachment } from "../lib/mime"
 import { readSession, SESSION_COOKIE } from "../lib/session"
 
@@ -246,6 +248,25 @@ mail.get("/mail", async (c) => {
   }
 
   if (Object.keys(accountPatch).length > 0) await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, accountPatch)
+
+  // 예약 발송 처리 (크론 없이 20초 폴링에 편승, fire-and-forget)
+  if (session.userId) c.executionCtx.waitUntil(sendDueScheduledMails(c.env, session, accountMap))
+
+  // 자동 응답 처리 (새 메일에만, classified 기준으로 필터링)
+  if (session.userId && org.autoReplies?.some((r) => r.enabled)) {
+    const autoReplyItems: { accountId: string; fromEmail: string }[] = []
+    for (const result of perAccountResults) {
+      if (!result || result.failed) continue
+      for (const m of result.mails) {
+        if (!org.classified[assignmentKey(result.accountId, m.id)]) {
+          autoReplyItems.push({ accountId: result.accountId, fromEmail: m.fromEmail })
+        }
+      }
+    }
+    if (autoReplyItems.length > 0) {
+      c.executionCtx.waitUntil(triggerAutoReplies(c.env, session, sessionId, accountMap, autoReplyItems, org))
+    }
+  }
 
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   const nextCursor = Object.keys(nextCursorMap).length > 0 ? encodeCursor(nextCursorMap) : null

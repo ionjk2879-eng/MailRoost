@@ -224,6 +224,44 @@ export interface QuickReply {
   createdAt: number
 }
 
+// 예약 발송 메일. KV 키 "user:scheduled_mails:<userId>"에 배열로 저장된다.
+export interface ScheduledMail {
+  id: string
+  accountId: string
+  fromName?: string
+  to: string
+  cc?: string
+  bcc?: string
+  subject: string
+  body: string
+  htmlBody?: string
+  scheduledAt: number
+  createdAt: number
+  status: "pending" | "sent" | "failed"
+  error?: string
+}
+
+// 자동 응답 규칙. 옵션 C: 날짜 범위(휴가 모드)와 반복 요일/시간 범위를 동시에 지원.
+// rangeType === "date": startDate/endDate로만 판단.
+// rangeType === "recurring": daysOfWeek/startTime/endTime으로만 판단.
+// rangeType === "both": 두 조건 모두 충족해야 응답.
+export interface AutoReplyRule {
+  id: string
+  name: string
+  enabled: boolean
+  // 비어있으면 모든 발신자에게 적용. 발신자 이메일 주소에 대한 부분 일치.
+  fromFilter: string
+  rangeType: "date" | "recurring" | "both"
+  startDate?: string    // "YYYY-MM-DD"
+  endDate?: string      // "YYYY-MM-DD"
+  daysOfWeek?: number[] // 0=Sun..6=Sat, 비어있거나 undefined면 매일
+  startTime?: string    // "HH:mm"
+  endTime?: string      // "HH:mm"
+  replySubject: string
+  replyBody: string
+  createdAt: number
+}
+
 export interface MailOrgState {
   folders: MailFolder[]
   // key: assignmentKey(accountId, mailId) in lib/mailOrg.ts -> 배정된 분류 메일함 id 목록.
@@ -246,6 +284,9 @@ export interface MailOrgState {
   savedFilters: SavedFilter[]
   // 새로 도착한 메일에 자동으로 스누즈/뮤트를 걸어주는 규칙. classifyMails에서 rules와 별개로 평가된다.
   snoozeMuteRules: AutoSnoozeMuteRule[]
+  autoReplies: AutoReplyRule[]
+  // key: "<ruleId>:<senderEmail>" -> 마지막으로 자동 응답을 보낸 시각(Unix ms). 24시간 루프 방지용.
+  autoReplySentTo: Record<string, number>
 }
 
 // 전달(forward)로 보낼 때 원본 첨부를 다시 첨부하기 위한 참조. filename/mimeType은

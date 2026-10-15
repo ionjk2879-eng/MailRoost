@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Paperclip, Pencil, Plus, Settings, Sparkles, Star, StickyNote, Trash2 } from "lucide-react"
+import { AlarmClock, Archive, Bot, CalendarClock, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Paperclip, Pencil, Plus, Settings, Sparkles, Star, StickyNote, Trash2 } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -103,6 +103,8 @@ interface AccountSidebarProps {
   draftCount: number
   isSnoozeMuteView: boolean
   snoozeCount: number
+  isScheduledView: boolean
+  isAutoReplyView: boolean
   folders: MailFolder[]
   selectedFolderId: string | null
   isFolderView: boolean
@@ -116,6 +118,8 @@ interface AccountSidebarProps {
   onGoMemo: () => void
   onGoDrafts: () => void
   onGoSnoozeMute: () => void
+  onGoScheduled: () => void
+  onGoAutoReply: () => void
   onSelectFolder: (folderId: string) => void
   onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
   onRenameFolder: (folderId: string, name: string, color: string) => Promise<{ ok: boolean; error?: string }>
@@ -143,6 +147,8 @@ export function AccountSidebar({
   draftCount,
   isSnoozeMuteView,
   snoozeCount,
+  isScheduledView,
+  isAutoReplyView,
   folders,
   selectedFolderId,
   isFolderView,
@@ -156,6 +162,8 @@ export function AccountSidebar({
   onGoMemo,
   onGoDrafts,
   onGoSnoozeMute,
+  onGoScheduled,
+  onGoAutoReply,
   onSelectFolder,
   onCreateFolder,
   onRenameFolder,
@@ -281,6 +289,24 @@ export function AccountSidebar({
                   <span>스누즈 / 뮤트</span>
                 </SidebarMenuButton>
                 {snoozeCount > 0 && <SidebarMenuBadge>{snoozeCount}</SidebarMenuBadge>}
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isScheduledView}
+                  onClick={() => { onGoScheduled(); closeOnMobile() }}
+                >
+                  <CalendarClock />
+                  <span>예약 발송</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isAutoReplyView}
+                  onClick={() => { onGoAutoReply(); closeOnMobile() }}
+                >
+                  <Bot />
+                  <span>자동 응답</span>
+                </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton

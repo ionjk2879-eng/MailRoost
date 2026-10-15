@@ -1,7 +1,7 @@
 # MailRoost 인수인계 문서
 
 > 이 문서는 대화 로그 없이도 작업을 이어갈 수 있도록 프로젝트의 현재 상태를 기록한다.
-> 마지막 업데이트: 2026-10-02 (커밋 `c539022`)
+> 마지막 업데이트: 2026-10-15 (세션 작업 반영)
 
 ---
 
@@ -17,6 +17,12 @@ Cloudflare Workers(백엔드) + React 19 + Vite(프런트)로 구성. 배포는 
 ### 2026-10 (현 세션)
 | 커밋 | 내용 |
 |------|------|
+| (미커밋) | **보내기 취소 (Undo Send)**: 보내기 클릭 후 5초 카운트다운 배너 표시, 취소 버튼으로 중단 가능. compose-view.tsx 전용 프런트엔드 기능 |
+| (미커밋) | **예약 발송 (Scheduled Send)**: 작성 화면에 CalendarClock 버튼 → datetime-local 피커 → KV 저장 (`user:scheduled_mails:<userId>`). GET /api/mail 20초 폴링에 `waitUntil`로 피기백하여 예약 시각이 지나면 자동 발송. `/api/scheduled-mails` GET/POST/DELETE 라우트. 사이드바 "예약 발송" 뷰 |
+| (미커밋) | **자동 응답 (Auto Reply)**: `MailOrgState.autoReplies` + `autoReplySentTo`에 규칙 저장. 날짜범위/반복요일·시간/둘다 세 가지 모드. 동일 발신자 24시간 루프 방지. GET /mail 폴링에서 새 메일 감지 후 `waitUntil`로 자동 발송. CRUD `/api/auto-reply-rules`. 사이드바 "자동 응답" 뷰 |
+| (미커밋) | **보내는 사람 이름 칩 UI**: 이름 편집/초기화 버튼이 달린 오렌지색 태그로 표시. RFC 2047 인코딩 적용 |
+| (미커밋) | **첨부파일 크기 확대**: Gmail 25MB 유지, 네이버/다음/IMAP 50MB로 증가. 인라인 이미지 삽입 버튼 제거 |
+| (미커밋) | **robots.txt 추가** (`frontend/public/robots.txt`) — Google 색인 허용 |
 | `c539022` | **홈 뷰 자동 zoom 제거 + max-width 1800px 확대** |
 | `2235756` | 홈 뷰 zoom을 뷰포트 높이 기준 동적 계산으로 변경 (이후 `c539022`에서 제거됨) |
 | `120724c` | 홈 뷰 와이드 스크린 꽉 채우기 + 대형 모니터 scale-up |
