@@ -1,7 +1,7 @@
 # MailRoost 인수인계 문서
 
 > 이 문서는 대화 로그 없이도 작업을 이어갈 수 있도록 프로젝트의 현재 상태를 기록한다.
-> 마지막 업데이트: 2026-10-15 (세션 작업 반영)
+> 마지막 업데이트: 2026-10-15
 
 ---
 
@@ -14,28 +14,20 @@ Cloudflare Workers(백엔드) + React 19 + Vite(프런트)로 구성. 배포는 
 
 ## 구현 완료된 주요 기능 (최신순)
 
-### 2026-10 (현 세션)
+### 2026-10
 | 커밋 | 내용 |
 |------|------|
-| (미커밋) | **보내기 취소 (Undo Send)**: 보내기 클릭 후 5초 카운트다운 배너 표시, 취소 버튼으로 중단 가능. compose-view.tsx 전용 프런트엔드 기능 |
-| (미커밋) | **예약 발송 (Scheduled Send)**: 작성 화면에 CalendarClock 버튼 → datetime-local 피커 → KV 저장 (`user:scheduled_mails:<userId>`). GET /api/mail 20초 폴링에 `waitUntil`로 피기백하여 예약 시각이 지나면 자동 발송. `/api/scheduled-mails` GET/POST/DELETE 라우트. 사이드바 "예약 발송" 뷰 |
-| (미커밋) | **자동 응답 (Auto Reply)**: `MailOrgState.autoReplies` + `autoReplySentTo`에 규칙 저장. 날짜범위/반복요일·시간/둘다 세 가지 모드. 동일 발신자 24시간 루프 방지. GET /mail 폴링에서 새 메일 감지 후 `waitUntil`로 자동 발송. CRUD `/api/auto-reply-rules`. 사이드바 "자동 응답" 뷰 |
-| (미커밋) | **보내는 사람 이름 칩 UI**: 이름 편집/초기화 버튼이 달린 오렌지색 태그로 표시. RFC 2047 인코딩 적용 |
-| (미커밋) | **첨부파일 크기 확대**: Gmail 25MB 유지, 네이버/다음/IMAP 50MB로 증가. 인라인 이미지 삽입 버튼 제거 |
-| (미커밋) | **robots.txt 추가** (`frontend/public/robots.txt`) — Google 색인 허용 |
-| `c539022` | **홈 뷰 자동 zoom 제거 + max-width 1800px 확대** |
-| `2235756` | 홈 뷰 zoom을 뷰포트 높이 기준 동적 계산으로 변경 (이후 `c539022`에서 제거됨) |
-| `120724c` | 홈 뷰 와이드 스크린 꽉 채우기 + 대형 모니터 scale-up |
-| `c102d9b` | **계정 연결 가이드 다이얼로그 추가** (`ConnectGuideDialog`): 홈 뷰 "연결된 계정" 섹션에 "계정 연결 방법" 버튼 추가, Gmail/네이버/다음/기타 IMAP 단계별 안내 |
-| `e8eeaa9` | 레퍼런스 패널 메일 본문이 패널 높이를 꽉 채우도록 수정 (`flex flex-1 flex-col`) |
-| `40c80d9` | **chip 드롭다운 순차 선택 버그 수정**: 이메일 선택 후 드롭다운이 닫히던 문제 → `setOpen(false)` → `setOpen(true)` (auto-rules-view, recipient-input 모두 적용) |
-| `bf492bc` | **스레드 뷰 개선**: 최신 메일 "최신" 배지, 접힌 메일에 날짜+시간 표시, iframe 높이 `min-h-[520px]` 고정, URL 링크 렌더링 |
-| `8624630` | snooze-mute-rules-panel 드롭다운 깜빡임 버그 수정 (document mousedown → onBlur) |
-| `0b957a4` | RecipientInput 드롭다운 깜빡임 버그 수정 |
-| `e50b479` | 자동분류 규칙 목록 행 세로 중앙 정렬 |
-| `f4c27d5` | "기존 메일에 적용" 0건 버그 수정: 다중 이메일 주소를 각각 별도로 검색 |
-| `2c911da` | EmailChipInput 깜빡임 버그 + 수정 버튼 추가 |
-| `9d67825` | **자동분류 규칙 편집기에 이메일 chip 태그 UI 도입** (발신자 포함/제외 필드) |
+| `31548d2` | **React Router URL 기반 네비게이션**: 각 뷰가 실제 URL을 가짐 (`/inbox`, `/folder/:id`, `/archive`, `/trash`, `/drafts`, `/scheduled`, `/auto-reply` 등). `window.history` 수동 관리 제거, `BrowserRouter` + `useLocation`/`useMatch`/`useNavigate`로 교체 |
+| `5983ac4` | **보내기 취소 (Undo Send)**: 5초 카운트다운 배너, 취소 버튼으로 중단 가능 (프런트 전용) |
+| `5983ac4` | **예약 발송 (Scheduled Send)**: CalendarClock 버튼 → datetime-local 피커 → KV 저장. GET /api/mail 20초 폴링에 `waitUntil` 피기백, `/api/scheduled-mails` GET/POST/DELETE 라우트, 사이드바 "예약 발송" 뷰 |
+| `5983ac4` | **자동 응답 (Auto Reply)**: 날짜범위/반복요일·시간/둘다 3가지 모드, 발신자 필터, 24시간 루프 방지. `MailOrgState.autoReplies` + `autoReplySentTo` 저장. CRUD `/api/auto-reply-rules`, 사이드바 "자동 응답" 뷰 |
+| `852d808` | **보내는 사람 이름 칩 UI**: 이름 편집/초기화 버튼, RFC 2047 인코딩 적용 |
+| `852d808` | **첨부파일 크기 확대**: Gmail 25MB 유지, 네이버/다음/IMAP 50MB. 인라인 이미지 삽입 버튼 제거 |
+| `e4826e5` | **robots.txt 추가** (`frontend/public/robots.txt`) — Google 색인 허용 |
+| `c539022` | 홈 뷰 자동 zoom 제거 + max-width 1800px 확대 |
+| `c102d9b` | 계정 연결 가이드 다이얼로그 (`ConnectGuideDialog`) |
+| `40c80d9` | chip 드롭다운 순차 선택 버그 수정 |
+| `bf492bc` | 스레드 뷰 개선 (최신 배지, 날짜 표시, iframe 높이, URL 링크) |
 
 ### 2026-09
 | 커밋 범위 | 내용 |
@@ -48,8 +40,8 @@ Cloudflare Workers(백엔드) + React 19 + Vite(프런트)로 구성. 배포는 
 ### 2026-08
 | 커밋 범위 | 내용 |
 |-----------|------|
-| `e520b9a`~`7745519` | **스레드 뷰 구현** (PR #1): Gmail threadId, IMAP Message-ID/References/In-Reply-To, 프런트 그룹핑 알고리즘, MailList 그룹 렌더링, MailDetail 아코디언 |
-| `6ea2a46`~`c5b38aa` | **통합 첨부함 구현**: Gmail `has:attachment` + IMAP bounded scan, `/api/attachments` 라우트, `AttachmentsView` 컴포넌트 |
+| `e520b9a`~`7745519` | 스레드 뷰 구현 (PR #1) |
+| `6ea2a46`~`c5b38aa` | 통합 첨부함 구현 |
 | `ec4dfb7` | 자동분류 규칙 AND/제외 조건 확장 |
 | `4b9dc35` | .eml 내보내기 |
 | `2e77cd3` | 백업 내보내기/가져오기 |
@@ -62,40 +54,48 @@ Cloudflare Workers(백엔드) + React 19 + Vite(프런트)로 구성. 배포는 
 ### 프런트엔드
 ```
 frontend/src/
-  App.tsx                          # 전체 라우팅, workspace 훅 연결
+  App.tsx                          # React Router 기반 뷰 라우팅, workspace 훅 연결
+  main.tsx                         # BrowserRouter 래핑
   hooks/use-mail-workspace.ts      # 메일 상태 중앙 관리 (AppView 타입 포함)
-  types/mail.ts                    # Mail, Account, MailFolder 등 공통 타입
+  types/mail.ts                    # Mail, Account, MailFolder, ScheduledMail, AutoReplyRule 등
   lib/
-    api.ts                         # 백엔드 API 호출 함수
+    api.ts                         # 백엔드 API 호출 함수 (scheduled, auto-reply 포함)
     threading.ts                   # 스레드 그룹핑 알고리즘 (union-find)
   components/
     mail/
       mail-list.tsx                # 메일 목록 (스레드 그룹 단위 렌더링)
       mail-detail.tsx              # 스레드 아코디언 래퍼
       message-card.tsx             # 메일 1통 상세 뷰 (헤더+본문+첨부)
+      compose-view.tsx             # 메일 작성 (보내기 취소, 예약발송 포함)
       recipient-input.tsx          # 작성창 To/CC/BCC chip 입력
     cleanup/
-      auto-rules-view.tsx          # 자동분류 규칙 편집 (EmailChipInput 포함)
+      auto-rules-view.tsx          # 자동분류 규칙 편집
     snoozed/
       snooze-mute-rules-panel.tsx  # 스누즈/뮤트 자동 규칙 패널
     attachments/
       attachments-view.tsx         # 통합 첨부함 화면
+    scheduled/
+      scheduled-view.tsx           # 예약발송 목록/취소
+    auto-reply/
+      auto-reply-view.tsx          # 자동응답 규칙 CRUD
 ```
 
 ### 백엔드
 ```
 backend/src/
   lib/
-    mailOrg.ts          # MailOrgState KV blob 읽기/쓰기 (레이스 패턴 주의)
-    rules.ts            # 자동분류 규칙 매칭 (splitTerms OR 매칭 포함)
-    gmail.ts            # Gmail API (listAttachmentsForAccount 포함)
-    imap.ts             # IMAP (naverListAttachments, daumListAttachments 포함)
-    imap-parse.ts       # IMAP FETCH 파싱 순수 함수 (vitest 가능)
-    threading.ts        # (없음 — 그룹핑은 프런트에서만 함)
+    mailOrg.ts          # MailOrgState KV blob (레이스 패턴 주의 — CLAUDE.md 참고)
+    mailOrgOps.ts       # MailOrgOp union 타입 + applyMailOrgOp (auto-reply ops 포함)
+    scheduledMail.ts    # KV 기반 예약발송 CRUD + sendDueScheduledMails
+    autoReply.ts        # 자동응답 트리거 로직 (시간 윈도우, 루프 방지)
+    rules.ts            # 자동분류 규칙 매칭
+    gmail.ts / imap.ts  # 계정별 메일 가져오기
   routes/
-    rules.ts            # /rules/:id/apply (다중 검색어 개별 검색)
+    mail.ts             # 메인 메일 라우트 (classifyIfNew, waitUntil 피기백 포함)
+    scheduled-mail.ts   # GET/POST/DELETE /api/scheduled-mails
+    auto-reply.ts       # GET/POST/PATCH/DELETE /api/auto-reply-rules
+    rules.ts            # /rules/:id/apply
     attachments.ts      # GET /api/attachments
-    mail.ts             # 메인 메일 라우트 (classifyIfNew 포함)
 ```
 
 ---
@@ -105,7 +105,6 @@ backend/src/
 깜빡임 버그 방지를 위해 아래 패턴을 사용한다. `document mousedown` + `onFocus` 조합은 쓰지 않는다.
 
 ```tsx
-// 래퍼 div에 onBlur로 외부 클릭 감지
 <div
   ref={rootRef}
   onBlur={(e) => {
@@ -113,12 +112,11 @@ backend/src/
   }}
 >
   <input onFocus={() => setOpen(true)} ... />
-  
   {open && (
-    <div /* 드롭다운 */>
+    <div>
       <button
-        tabIndex={-1}                          // focus가 input에서 안 빠져나가도록
-        onMouseDown={(e) => e.preventDefault()} // blur 방지
+        tabIndex={-1}
+        onMouseDown={(e) => e.preventDefault()}
         onClick={() => { /* 선택 처리 */ }}
       />
     </div>
@@ -132,18 +130,52 @@ chip 추가 후 드롭다운은 `setOpen(true)`로 유지해야 연속 선택이
 
 ## 알려진 미해결 이슈
 
-없음. 현재 알려진 버그 없음.
+없음.
 
 ---
 
-## 다음에 할 수 있는 작업 (미완성/미착수)
+## 다음 작업 목록
 
-기능 계획이 있는 것:
-- `docs/superpowers/plans/2026-08-29-thread-view.md` — 구현 완료 (PR #1 머지됨), 계획 파일의 체크박스는 업데이트 안 됨
-- `docs/superpowers/plans/2026-08-29-attachment-library.md` — 구현 완료 (2026-08 커밋), 체크박스 업데이트 안 됨
+Gmail·네이버 대비 기능 비교 + 기술 부채 기준으로 우선순위를 분류했다.
 
-사용자가 언급한 개선 아이디어 (아직 구현 안 됨):
-- 없음 (최근 대화에서 새로 요청된 미완성 기능 없음)
+### 🔴 높음 — 기본 메일 사용에 영향
+
+| # | 항목 | 설명 |
+|---|------|------|
+| H1 | **메일 서명** | 계정별 고정 서명 설정 → 작성창에 자동 삽입. Gmail/네이버 모두 기본 제공 |
+| H2 | **폴더 간 메일 이동** | 지금은 "배정/해제"만 가능, 드래그·이동 메뉴 없음. 네이버 메일 핵심 기능 |
+| H3 | **예약발송 실패 재시도** | 현재 `status:"failed"` 기록만 하고 재시도 없음. 사용자 알림도 없음 |
+| H4 | **브라우저 탭 배지** | 읽지 않은 메일 수를 탭 타이틀/파비콘에 표시 (`document.title = "(3) MailRoost"`) |
+
+### 🟡 중간 — 자주 쓰는 기능이지만 없어도 동작은 함
+
+| # | 항목 | 설명 |
+|---|------|------|
+| M1 | **임시저장 자동 저장** | 작성 중 일정 간격으로 자동 저장. Gmail은 매 변경 시 저장 |
+| M2 | **첨부파일 인라인 미리보기** | 이미지·PDF 클릭 시 새 탭 대신 오버레이 미리보기 |
+| M3 | **고급 검색 필터** | 날짜범위, 첨부유무, 읽음여부를 검색창에서 조합. Gmail `has:attachment after:2024/1/1` 스타일 |
+| M4 | **메일 인쇄** | 브라우저 인쇄 최적화 (`@media print`) + 인쇄 버튼 |
+| M5 | **단축키 확장** | `c` = 새 메일 작성, `a` = 보관, `e` = 스누즈, `#` = 삭제, `!` = 스팸 — Gmail 표준 기반 |
+| M6 | **외부 링크 삽입** | 작성창 툴바에 링크 삽입 버튼 (`<a href>`) |
+| M7 | **스레드 단위 뮤트** | 지금은 발신자 이메일 기준 뮤트만 가능. 특정 스레드만 조용히 하는 기능 |
+
+### 🟢 낮음 — 있으면 좋지만 후순위
+
+| # | 항목 | 설명 |
+|---|------|------|
+| L1 | **브라우저 Push 알림** | 새 메일 도착 시 OS 알림. Service Worker 권한 요청 필요 |
+| L2 | **메일 라벨/태그** | 폴더와 별개로 복수 태그 부착 (Gmail Labels 유사). 현재 폴더는 단일 배정 |
+| L3 | **모바일 스와이프 제스처** | 좌스와이프 = 삭제, 우스와이프 = 스누즈 (네이버 앱 스타일) |
+| L4 | **검색 결과 하이라이팅** | 검색어 매칭 부분을 `<mark>`로 강조 |
+| L5 | **빠른 인라인 답장** | 메일 목록에서 상세 열지 않고 바로 답장 입력창 펼치기 |
+| L6 | **연락처 자동완성 개선** | 과거 수신자 기록 기반 이메일 주소 제안 (현재는 계정 목록만) |
+
+### 🔧 기술 부채
+
+| # | 항목 | 설명 |
+|---|------|------|
+| T1 | **계획 파일 체크박스 업데이트** | `docs/superpowers/plans/2026-08-29-thread-view.md`, `attachment-library.md` — 구현 완료됐지만 체크박스 미업데이트 |
+| T2 | **`assignmentKey` 코드 주석** | CLAUDE.md에 경위가 있지만 실제 함수 위에 한 줄 경고 주석 없음 |
 
 ---
 
