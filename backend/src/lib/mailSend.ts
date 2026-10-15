@@ -2,7 +2,7 @@ import type { ConnectedAccountRecord, Env, ForwardedAttachmentRef, GmailAccountR
 import { type GmailTokenPatch, gmailTokenPatchOf } from "./auth"
 import { ensureFreshToken, getAttachment as gmailGetAttachment, sendGmailMessage } from "./gmail"
 import { daumGetAttachment, imapGetAttachment, naverGetAttachment } from "./imap"
-import type { OutgoingAttachment } from "./mime"
+import { encodeRfc2047Header, type OutgoingAttachment } from "./mime"
 import { daumSendMail, naverSendMail, sendSmtp } from "./smtp"
 
 // 첨부파일 다운로드 라우트와 전달(forward) 발송 양쪽에서 쓰는 provider별 분기.
@@ -78,24 +78,28 @@ export async function sendViaRecord(
   bcc?: string,
   attachments?: OutgoingAttachment[],
   htmlBody?: string,
+  fromName?: string,
 ): Promise<{ updatedRecord?: GmailAccountRecord }> {
+  const fromHeader = fromName
+    ? `${encodeRfc2047Header(fromName)} <${record.email}>`
+    : record.email
   if (record.provider === "naver") {
-    await naverSendMail(record.email, record.appPassword, to, subject, body, cc, bcc, attachments, htmlBody)
+    await naverSendMail(record.email, record.appPassword, to, subject, body, cc, bcc, attachments, htmlBody, fromHeader)
     return {}
   }
   if (record.provider === "daum") {
-    await daumSendMail(record.email, record.password, to, subject, body, cc, bcc, attachments, htmlBody)
+    await daumSendMail(record.email, record.password, to, subject, body, cc, bcc, attachments, htmlBody, fromHeader)
     return {}
   }
   if (record.provider === "imap") {
     // 예전에 연결한 계정에는 smtpHost/smtpPort가 없을 수 있어 IMAP 호스트에서 다시 추측한다.
     const smtpHost = record.smtpHost || (record.host.startsWith("imap.") ? record.host.replace(/^imap\./, "smtp.") : `smtp.${record.host}`)
     const smtpPort = record.smtpPort || 465
-    await sendSmtp(smtpHost, smtpPort, record.email, record.password, to, subject, body, cc, bcc, attachments, htmlBody)
+    await sendSmtp(smtpHost, smtpPort, record.email, record.password, to, subject, body, cc, bcc, attachments, htmlBody, fromHeader)
     return {}
   }
 
   const fresh = await ensureFreshToken(env, record)
-  await sendGmailMessage(fresh.accessToken, record.email, to, subject, body, cc, bcc, attachments, htmlBody)
+  await sendGmailMessage(fresh.accessToken, fromHeader, to, subject, body, cc, bcc, attachments, htmlBody)
   return fresh.accessToken !== record.accessToken ? { updatedRecord: fresh } : {}
 }

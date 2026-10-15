@@ -83,6 +83,7 @@ export async function sendSmtp(
   bcc?: string,
   attachments?: OutgoingAttachment[],
   htmlBody?: string,
+  from?: string,
 ): Promise<void> {
   const socket = connect({ hostname: host, port }, { secureTransport: "on", allowHalfOpen: false })
   const smtp = new SmtpSocket(socket)
@@ -125,7 +126,7 @@ export async function sendSmtp(
 
     // bcc는 절대 넘기지 않는다 — SMTP는 헤더 내용을 수신자 전원에게 그대로 릴레이하므로,
     // 헤더에 Bcc를 쓰면 숨은참조가 노출된다 (수신자 지정은 위 RCPT TO로 이미 끝났다).
-    const msg = buildMimeMessage({ from: email, to, cc, subject, textBody: body, htmlBody, attachments })
+    const msg = buildMimeMessage({ from: from ?? email, to, cc, subject, textBody: body, htmlBody, attachments })
     await smtp.write(`${dotStuff(msg)}\r\n.\r\n`)
     const sent = await smtp.readResponse()
     if (sent.code !== 250) throw new Error(`메일 전송 실패: ${sent.code}`)
@@ -147,8 +148,9 @@ export async function naverSendMail(
   bcc?: string,
   attachments?: OutgoingAttachment[],
   htmlBody?: string,
+  from?: string,
 ): Promise<void> {
-  await sendSmtp("smtp.naver.com", 465, email, appPassword, to, subject, body, cc, bcc, attachments, htmlBody)
+  await sendSmtp("smtp.naver.com", 465, email, appPassword, to, subject, body, cc, bcc, attachments, htmlBody, from)
 }
 
 export async function daumSendMail(
@@ -161,6 +163,7 @@ export async function daumSendMail(
   bcc?: string,
   attachments?: OutgoingAttachment[],
   htmlBody?: string,
+  from?: string,
 ): Promise<void> {
-  await sendSmtp("smtp.daum.net", 465, email, password, to, subject, body, cc, bcc, attachments, htmlBody)
+  await sendSmtp("smtp.daum.net", 465, email, password, to, subject, body, cc, bcc, attachments, htmlBody, from)
 }

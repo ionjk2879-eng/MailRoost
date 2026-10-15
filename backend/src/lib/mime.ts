@@ -342,7 +342,7 @@ function wrapBase64Lines(base64: string): string {
   return lines.join("\r\n")
 }
 
-function encodeRfc2047Header(str: string): string {
+export function encodeRfc2047Header(str: string): string {
   if (!/[^\x00-\x7F]/.test(str)) return str
   return `=?UTF-8?B?${bytesToBase64(new TextEncoder().encode(str))}?=`
 }

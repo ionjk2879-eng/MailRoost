@@ -1,4 +1,4 @@
-import { BookUser, ChevronLeft, Download, Eye, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, Plus, Save, Send, Trash2, UploadCloud, UserRound, X } from "lucide-react"
+import { BookUser, ChevronLeft, Download, Eye, FileText, Lightbulb, Loader2, MessageSquarePlus, Paperclip, Pencil, Plus, Save, Send, Trash2, UploadCloud, UserRound, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -96,6 +96,11 @@ export function ComposeView({
   const quickReplyRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const selectedAccount = sendableAccounts.find((account) => account.id === accountId)
+  const [senderName, setSenderName] = useState(selectedAccount?.label ?? "")
+  const [senderInput, setSenderInput] = useState(selectedAccount?.label ?? "")
+  const [editingFrom, setEditingFrom] = useState(false)
+  const fromInputRef = useRef<HTMLInputElement>(null)
+  const maxAttachmentMB = selectedAccount?.provider === "gmail" ? 25 : 50
 
   const recipientOptions = useMemo<RecipientOption[]>(() => {
     const seen = new Map<string, RecipientOption>()
@@ -171,12 +176,17 @@ export function ComposeView({
   }, [quickReplyOpen])
 
   useEffect(() => {
-    const signature = accounts.find((a) => a.id === accountId)?.signature?.trim()
+    const account = accounts.find((a) => a.id === accountId)
+    const signature = account?.signature?.trim()
     setBody((prev) => {
       const markerIndex = prev.indexOf(SIGNATURE_MARKER)
       const withoutSignature = markerIndex === -1 ? prev : prev.slice(0, markerIndex)
       return signature ? `${withoutSignature}${SIGNATURE_MARKER}<br><br>--<br>${escapeHtml(signature).replace(/\n/g, "<br>")}` : withoutSignature
     })
+    const label = account?.label ?? ""
+    setSenderName(label)
+    setSenderInput(label)
+    setEditingFrom(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId])
 
@@ -217,6 +227,7 @@ export function ComposeView({
       forwardedAttachments.length > 0 ? forwardedAttachments : undefined,
       body,
       localAttachments.length > 0 ? localAttachments.map(({ filename, mimeType, size, dataBase64 }) => ({ filename, mimeType, size, dataBase64 })) : undefined,
+      senderName || undefined,
     )
     setIsSending(false)
     if (!result.ok) {
@@ -230,7 +241,7 @@ export function ComposeView({
   const addFiles = async (files: FileList | File[]) => {
     const picked = Array.from(files)
     const total = localAttachments.reduce((sum, item) => sum + item.size, 0) + picked.reduce((sum, file) => sum + file.size, 0)
-    if (total > 25 * 1024 * 1024) { setError("첨부파일은 총 25MB까지 추가할 수 있습니다."); return }
+    if (total > maxAttachmentMB * 1024 * 1024) { setError(`첨부파일은 총 ${maxAttachmentMB}MB까지 추가할 수 있습니다.`); return }
     const encoded = await Promise.all(picked.map((file) => new Promise<LocalAttachment>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve({ id: crypto.randomUUID(), filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size, dataBase64: String(reader.result).split(",")[1] ?? "" })
@@ -281,20 +292,77 @@ export function ComposeView({
           </div>
           <section className="overflow-visible rounded-2xl border bg-background shadow-sm">
           <div className="grid items-center gap-2 border-b px-4 py-3 sm:grid-cols-[100px_1fr] sm:px-5">
-            <Label htmlFor="compose-from" className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><UserRound className="size-3.5" /> 보내는 사람</Label>
-            <select
-              id="compose-from"
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              required
-              className="h-10 w-full rounded-xl border border-transparent bg-muted/50 px-3 text-sm font-medium outline-none transition focus:border-orange-200 focus:bg-background focus:ring-2 focus:ring-orange-100"
-            >
-              {sendableAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.email}
-                </option>
-              ))}
-            </select>
+            <Label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><UserRound className="size-3.5" /> 보내는 사람</Label>
+            {editingFrom ? (
+              <div className="flex flex-col gap-1.5">
+                <input
+                  ref={fromInputRef}
+                  value={senderInput}
+                  onChange={(e) => setSenderInput(e.target.value)}
+                  onBlur={() => { setSenderName(senderInput.trim() || selectedAccount?.label || ""); setEditingFrom(false) }}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Tab") { setSenderName(senderInput.trim() || selectedAccount?.label || ""); setEditingFrom(false); e.preventDefault() } }}
+                  placeholder="보내는 사람 이름"
+                  autoFocus
+                  className="h-10 w-full rounded-xl border border-transparent bg-muted/50 px-3 text-sm font-medium outline-none transition focus:border-orange-200 focus:bg-background focus:ring-2 focus:ring-orange-100"
+                />
+                {sendableAccounts.length > 1 && (
+                  <select
+                    value={accountId}
+                    onChange={(e) => {
+                      setAccountId(e.target.value)
+                      const label = sendableAccounts.find((a) => a.id === e.target.value)?.label ?? ""
+                      setSenderInput(label)
+                      setSenderName(label)
+                    }}
+                    className="h-8 w-full rounded-lg border border-transparent bg-muted/30 px-2 text-xs outline-none focus:border-orange-200 focus:ring-1 focus:ring-orange-100"
+                  >
+                    {sendableAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.email}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex max-w-full items-center gap-1 rounded-full border border-orange-200 bg-orange-50 py-1 pr-1 pl-2.5 text-xs text-orange-900 dark:border-orange-500/20 dark:bg-orange-500/10 dark:text-orange-200">
+                  <span className="truncate">{senderName} {"<"}{selectedAccount?.email}{">"}</span>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onMouseDown={(e) => { e.preventDefault(); setSenderInput(senderName); setEditingFrom(true) }}
+                    className="flex size-5 items-center justify-center rounded-full text-orange-500 hover:bg-orange-100 dark:hover:bg-orange-500/20"
+                    aria-label="보내는 사람 이름 수정"
+                  >
+                    <Pencil className="size-3" />
+                  </button>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onMouseDown={(e) => { e.preventDefault(); setSenderInput(""); setEditingFrom(true) }}
+                    className="flex size-5 items-center justify-center rounded-full text-orange-400 hover:bg-orange-100 hover:text-orange-700 dark:hover:bg-orange-500/20"
+                    aria-label="보내는 사람 초기화"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </span>
+                {sendableAccounts.length > 1 && (
+                  <select
+                    value={accountId}
+                    onChange={(e) => {
+                      setAccountId(e.target.value)
+                      const label = sendableAccounts.find((a) => a.id === e.target.value)?.label ?? ""
+                      setSenderName(label)
+                      setSenderInput(label)
+                    }}
+                    className="h-7 rounded-lg border border-transparent bg-muted/30 px-2 text-xs outline-none focus:border-orange-200 focus:ring-1 focus:ring-orange-100"
+                  >
+                    {sendableAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>{a.email}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
           </div>
           <div className="grid gap-2 border-b px-4 py-3 sm:grid-cols-[100px_1fr] sm:px-5">
             <Label htmlFor="compose-to" className="flex items-center gap-2 pt-3 text-xs font-semibold text-muted-foreground"><Send className="size-3.5" /> 받는 사람</Label>
@@ -460,7 +528,7 @@ export function ComposeView({
               <div className="flex items-center justify-between"><h3 className="text-sm font-bold">파일 첨부</h3><Paperclip className="size-4 text-orange-500" /></div>
               <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.target.value = "" }} />
               <button type="button" onClick={() => fileInputRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addFiles(event.dataTransfer.files) }} className="mt-3 flex w-full flex-col items-center rounded-xl border border-dashed p-4 text-center transition hover:border-orange-300 hover:bg-orange-50/50">
-                <UploadCloud className="size-5 text-orange-500" /><span className="mt-1 text-xs font-semibold">파일 선택 또는 드롭</span><span className="mt-0.5 text-[10px] text-muted-foreground">총 25MB까지</span>
+                <UploadCloud className="size-5 text-orange-500" /><span className="mt-1 text-xs font-semibold">파일 선택 또는 드롭</span><span className="mt-0.5 text-[10px] text-muted-foreground">총 {maxAttachmentMB}MB까지 · 이미지, 영상 포함 모든 파일</span>
               </button>
               <div className="mt-2 space-y-1.5">
                 {localAttachments.map((file) => <div key={file.id} className="group flex items-center gap-2 rounded-lg border bg-muted/30 p-1.5">

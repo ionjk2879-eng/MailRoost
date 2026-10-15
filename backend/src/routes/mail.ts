@@ -753,6 +753,7 @@ mail.post("/mail/send", async (c) => {
   const body = await c.req
     .json<{
       accountId?: string
+      fromName?: string
       to?: string
       cc?: string
       bcc?: string
@@ -763,7 +764,7 @@ mail.post("/mail/send", async (c) => {
       attachments?: Array<{ filename: string; mimeType: string; size: number; dataBase64: string }>
     }>()
     .catch(() => null)
-  const { accountId, to, cc, bcc, subject, body: mailBody, htmlBody, forwardedAttachments, attachments: uploadedAttachments } = body ?? {}
+  const { accountId, fromName, to, cc, bcc, subject, body: mailBody, htmlBody, forwardedAttachments, attachments: uploadedAttachments } = body ?? {}
   if (!accountId || !to || !subject || !mailBody) return c.json({ error: "필수 항목이 누락되었습니다." }, 400)
 
   const session = await readSession(c.env, sessionId)
@@ -781,14 +782,15 @@ mail.post("/mail/send", async (c) => {
   }
 
   const totalUploadSize = (uploadedAttachments ?? []).reduce((sum, item) => sum + (item.size || 0), 0)
-  if (totalUploadSize > 25 * 1024 * 1024) return c.json({ error: "첨부파일은 총 25MB까지 추가할 수 있습니다." }, 413)
+  const maxUploadBytes = record.provider === "gmail" ? 25 * 1024 * 1024 : 50 * 1024 * 1024
+  if (totalUploadSize > maxUploadBytes) return c.json({ error: `첨부파일은 총 ${record.provider === "gmail" ? "25" : "50"}MB까지 추가할 수 있습니다.` }, 413)
   for (const item of uploadedAttachments ?? []) {
     if (!item.filename || !item.dataBase64) continue
     const binary = atob(item.dataBase64)
     attachments.push({ filename: item.filename, mimeType: item.mimeType || "application/octet-stream", bytes: Uint8Array.from(binary, (char) => char.charCodeAt(0)) })
   }
 
-  const { updatedRecord } = await sendViaRecord(c.env, record, to, subject, mailBody, cc, bcc, attachments, htmlBody ? sanitizeHtml(htmlBody) : undefined)
+  const { updatedRecord } = await sendViaRecord(c.env, record, to, subject, mailBody, cc, bcc, attachments, htmlBody ? sanitizeHtml(htmlBody) : undefined, fromName)
   if (updatedRecord) {
     await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
       [accountId]: gmailTokenPatchOf(updatedRecord),

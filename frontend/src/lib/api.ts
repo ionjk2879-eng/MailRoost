@@ -547,11 +547,12 @@ export async function sendMail(
   forwardedAttachments?: ForwardedAttachmentRef[],
   htmlBody?: string,
   attachments?: Array<{ filename: string; mimeType: string; size: number; dataBase64: string }>,
+  fromName?: string,
 ): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch("/api/mail/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ accountId, to, cc, bcc, subject, body, htmlBody, forwardedAttachments, attachments }),
+    body: JSON.stringify({ accountId, fromName, to, cc, bcc, subject, body, htmlBody, forwardedAttachments, attachments }),
   })
   const data = (await res.json().catch(() => ({}))) as { error?: string }
   if (!res.ok) return { ok: false, error: data.error ?? "메일 전송에 실패했습니다." }
