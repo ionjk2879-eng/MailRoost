@@ -1,7 +1,7 @@
 # MailRoost 인수인계 문서
 
 > 이 문서는 대화 로그 없이도 작업을 이어갈 수 있도록 프로젝트의 현재 상태를 기록한다.
-> 마지막 업데이트: 2026-10-15
+> 마지막 업데이트: 2026-10-15 (오후 세션 반영)
 
 ---
 
@@ -17,7 +17,9 @@ Cloudflare Workers(백엔드) + React 19 + Vite(프런트)로 구성. 배포는 
 ### 2026-10
 | 커밋 | 내용 |
 |------|------|
-| `31548d2` | **React Router URL 기반 네비게이션**: 각 뷰가 실제 URL을 가짐 (`/inbox`, `/folder/:id`, `/archive`, `/trash`, `/drafts`, `/scheduled`, `/auto-reply` 등). `window.history` 수동 관리 제거, `BrowserRouter` + `useLocation`/`useMatch`/`useNavigate`로 교체 |
+| `99afb32` | **분류 메일함 간 메일 이동 (H2)**: 분류 메일함 뷰에서 FolderInput 드롭다운이 이동 모드로 전환 (기존 체크박스 → 단독 이동). "받은편지함으로 꺼내기" 추가. 백엔드 `moveMail` op 버그 수정 (폴더A→폴더B 이동 시 폴더A에서 안 빠지던 문제). `applyMove` 프론트 버그도 수정 (이동 후 현재 목록에서 안 사라지던 문제) |
+| `fea2064` | **계정별 메일 서명 (H1)**: 설정 시트 > 서명 섹션 추가. 계정마다 textarea로 편집, "저장" 버튼 → `PATCH /api/accounts/:id/signature`. 작성창에서 계정 전환 시 서명 자동 교체. 백엔드·API·compose 로직은 이미 구현돼 있었고 설정 UI만 추가 |
+| `31548d2` | **React Router URL 기반 네비게이션**: 각 뷰가 실제 URL을 가짐 (`/inbox`, `/folder/:id`, `/archive`, `/trash`, `/drafts`, `/scheduled`, `/auto-reply` 등). `window.history` 수동 관리 제거, `BrowserRouter` + `useLocation`/`useMatch`/`useNavigate`로 교체. 브라우저 캐시로 인해 강제 새로고침(Ctrl+Shift+R) 필요할 수 있음 |
 | `5983ac4` | **보내기 취소 (Undo Send)**: 5초 카운트다운 배너, 취소 버튼으로 중단 가능 (프런트 전용) |
 | `5983ac4` | **예약 발송 (Scheduled Send)**: CalendarClock 버튼 → datetime-local 피커 → KV 저장. GET /api/mail 20초 폴링에 `waitUntil` 피기백, `/api/scheduled-mails` GET/POST/DELETE 라우트, 사이드바 "예약 발송" 뷰 |
 | `5983ac4` | **자동 응답 (Auto Reply)**: 날짜범위/반복요일·시간/둘다 3가지 모드, 발신자 필터, 24시간 루프 방지. `MailOrgState.autoReplies` + `autoReplySentTo` 저장. CRUD `/api/auto-reply-rules`, 사이드바 "자동 응답" 뷰 |
@@ -140,12 +142,12 @@ Gmail·네이버 대비 기능 비교 + 기술 부채 기준으로 우선순위�
 
 ### 🔴 높음 — 기본 메일 사용에 영향
 
-| # | 항목 | 설명 |
-|---|------|------|
-| H1 | **메일 서명** | 계정별 고정 서명 설정 → 작성창에 자동 삽입. Gmail/네이버 모두 기본 제공 |
-| H2 | **폴더 간 메일 이동** | 지금은 "배정/해제"만 가능, 드래그·이동 메뉴 없음. 네이버 메일 핵심 기능 |
-| H3 | **예약발송 실패 재시도** | 현재 `status:"failed"` 기록만 하고 재시도 없음. 사용자 알림도 없음 |
-| H4 | **브라우저 탭 배지** | 읽지 않은 메일 수를 탭 타이틀/파비콘에 표시 (`document.title = "(3) MailRoost"`) |
+| # | 항목 | 상태 | 설명 |
+|---|------|------|------|
+| H1 | **메일 서명** | ✅ 완료 `fea2064` | 계정별 고정 서명, 설정 UI + 작성창 자동 삽입 |
+| H2 | **폴더 간 메일 이동** | ✅ 완료 `99afb32` | 분류 메일함 뷰에서 단독 이동, 백엔드 버그도 수정 |
+| H3 | **예약발송 실패 재시도** | 미착수 | 현재 `status:"failed"` 기록만 하고 재시도·알림 없음 |
+| H4 | **브라우저 탭 배지** | 미착수 | 읽지 않은 메일 수를 탭 타이틀/파비콘에 표시 |
 
 ### 🟡 중간 — 자주 쓰는 기능이지만 없어도 동작은 함
 
