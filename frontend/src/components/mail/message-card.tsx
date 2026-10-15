@@ -231,37 +231,62 @@ export function MessageCard({
             )}
             {(onMove || onToggleFolder) && (
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" title="분류 메일함으로 이동" />}>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" title={currentFolderId && currentFolderId !== ARCHIVE_FOLDER_ID ? "이동" : "분류 메일함으로 이동"} />}>
                   <FolderInput className="size-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="min-w-[160px]">
-                  {currentFolderId === ARCHIVE_FOLDER_ID && (
+                  {currentFolderId && currentFolderId !== ARCHIVE_FOLDER_ID ? (
+                    /* 폴더 뷰: 이동 모드 (배정이 아니라 단독 이동) */
                     <>
                       <DropdownMenuItem onClick={() => onMove?.(mail.id, mail.accountId, null)}>
                         <Inbox className="text-muted-foreground size-3.5" />
-                        보관함에서 꺼내기
+                        받은편지함으로 꺼내기
                       </DropdownMenuItem>
-                      <div className="my-1 border-t" />
+                      {(folders ?? []).filter((f) => f.id !== currentFolderId).length > 0 && (
+                        <div className="my-1 border-t" />
+                      )}
+                      {(folders ?? []).filter((f) => f.id !== currentFolderId).map((folder) => (
+                        <DropdownMenuItem
+                          key={folder.id}
+                          onClick={() => onMove?.(mail.id, mail.accountId, folder.id)}
+                        >
+                          <Folder className="size-3.5 shrink-0" style={{ color: folder.color, fill: folder.color, fillOpacity: 0.25 }} />
+                          <span className="truncate">{folder.name}</span>
+                        </DropdownMenuItem>
+                      ))}
                     </>
-                  )}
-                  {(folders ?? []).map((folder) => {
-                    const checked = mail.folderIds?.includes(folder.id) ?? false
-                    return (
-                      <DropdownMenuItem
-                        key={folder.id}
-                        closeOnClick={false}
-                        onClick={() => onToggleFolder?.(mail.id, mail.accountId, folder.id, !checked)}
-                      >
-                        <span className="border-input flex size-3.5 shrink-0 items-center justify-center rounded-sm border">
-                          {checked && <Check className="size-2.5" />}
-                        </span>
-                        <Folder className="size-3.5 shrink-0" style={{ color: folder.color, fill: folder.color, fillOpacity: 0.25 }} />
-                        <span className="truncate">{folder.name}</span>
-                      </DropdownMenuItem>
-                    )
-                  })}
-                  {(!folders || folders.length === 0) && currentFolderId !== ARCHIVE_FOLDER_ID && (
-                    <p className="text-muted-foreground px-3 py-1.5 text-xs">분류 메일함이 없습니다.</p>
+                  ) : (
+                    /* 받은편지함 / 보관함: 기존 태그 방식 */
+                    <>
+                      {currentFolderId === ARCHIVE_FOLDER_ID && (
+                        <>
+                          <DropdownMenuItem onClick={() => onMove?.(mail.id, mail.accountId, null)}>
+                            <Inbox className="text-muted-foreground size-3.5" />
+                            보관함에서 꺼내기
+                          </DropdownMenuItem>
+                          <div className="my-1 border-t" />
+                        </>
+                      )}
+                      {(folders ?? []).map((folder) => {
+                        const checked = mail.folderIds?.includes(folder.id) ?? false
+                        return (
+                          <DropdownMenuItem
+                            key={folder.id}
+                            closeOnClick={false}
+                            onClick={() => onToggleFolder?.(mail.id, mail.accountId, folder.id, !checked)}
+                          >
+                            <span className="border-input flex size-3.5 shrink-0 items-center justify-center rounded-sm border">
+                              {checked && <Check className="size-2.5" />}
+                            </span>
+                            <Folder className="size-3.5 shrink-0" style={{ color: folder.color, fill: folder.color, fillOpacity: 0.25 }} />
+                            <span className="truncate">{folder.name}</span>
+                          </DropdownMenuItem>
+                        )
+                      })}
+                      {(!folders || folders.length === 0) && currentFolderId !== ARCHIVE_FOLDER_ID && (
+                        <p className="text-muted-foreground px-3 py-1.5 text-xs">분류 메일함이 없습니다.</p>
+                      )}
+                    </>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>

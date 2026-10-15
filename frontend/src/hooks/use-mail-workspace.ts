@@ -450,7 +450,7 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     fromFolderId?: string | null,
   ) => {
     if (targets.length === 0) return
-    const removeFromView = origin === "inbox" ? folderId === ARCHIVE_FOLDER_ID : folderId === null
+    const removeFromView = origin === "inbox" ? folderId === ARCHIVE_FOLDER_ID : true
     const setList = origin === "folder" ? setFolderMails : setRealMails
     const ids = new Set(targets.map((m) => m.id))
 

@@ -335,15 +335,19 @@ export function applyMailOrgOp(org: MailOrgState, op: MailOrgOp): unknown {
       }
       for (const { accountId, mailId } of op.items) {
         const key = assignmentKey(accountId, mailId)
+        // Step 1: add to target
         if (op.folderId === ARCHIVE_FOLDER_ID) {
           org.archived[key] = true
         } else if (op.folderId !== null) {
           toggleFolderAssignment(org, accountId, mailId, op.folderId, true)
-        } else if (op.fromFolderId === ARCHIVE_FOLDER_ID) {
+        }
+        // Step 2: remove from source
+        if (op.fromFolderId === ARCHIVE_FOLDER_ID) {
           delete org.archived[key]
         } else if (op.fromFolderId) {
           toggleFolderAssignment(org, accountId, mailId, op.fromFolderId, false)
-        } else {
+        } else if (op.folderId === null) {
+          // 출처 미지정으로 받은편지함으로 이동 → 모든 배정 초기화
           delete org.archived[key]
           delete org.assignments[key]
         }
