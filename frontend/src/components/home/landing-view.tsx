@@ -1,4 +1,5 @@
 import { Check, ShieldCheck } from "lucide-react"
+import { Link } from "react-router-dom"
 import { BrandMark } from "@/components/brand-mark"
 import { ProviderIcon } from "@/components/mail/provider-icon"
 import { Button } from "@/components/ui/button"
@@ -111,6 +112,15 @@ export function LandingView() {
           <div className="pointer-events-none absolute -bottom-4 left-12 right-12 -z-10 h-12 rounded-full bg-orange-400/25 blur-2xl" />
         </section>
       </main>
+      <footer className="relative z-10 border-t border-zinc-200/60 py-5 dark:border-zinc-800">
+        <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-5 sm:px-8 lg:px-12">
+          <span className="text-xs text-zinc-400">© 2026 MailRoost</span>
+          <nav className="flex gap-4 text-xs text-zinc-400">
+            <Link to="/privacy" className="hover:text-zinc-700 dark:hover:text-zinc-200">개인정보처리방침</Link>
+            <Link to="/terms" className="hover:text-zinc-700 dark:hover:text-zinc-200">이용약관</Link>
+          </nav>
+        </div>
+      </footer>
     </div>
   )
 }

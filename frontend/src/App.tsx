@@ -35,6 +35,8 @@ import { useMailOrg } from "@/hooks/use-mail-org"
 import { cn } from "@/lib/utils"
 import { HomeView } from "@/components/home/home-view"
 import { LandingView } from "@/components/home/landing-view"
+import { PrivacyView } from "@/components/home/privacy-view"
+import { TermsView } from "@/components/home/terms-view"
 import { fetchCurrentUser, fetchMailDetail, inlineAttachmentUrl, logout, snoozeKey } from "@/lib/api"
 import { groupIntoThreads } from "@/lib/threading"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
@@ -791,6 +793,9 @@ function App() {
     pendingSendTimers.current = {}
     goHome()
   }
+
+  if (location.pathname === "/privacy") return <PrivacyView />
+  if (location.pathname === "/terms") return <TermsView />
 
   if (isBootstrapping) {
     return (
