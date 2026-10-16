@@ -909,6 +909,12 @@ export async function cancelScheduledMailSend(id: string): Promise<boolean> {
   return res.ok
 }
 
+export async function retryScheduledMailSend(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`/api/scheduled-mails/${encodeURIComponent(id)}/retry`, { method: "POST" })
+  const data = (await res.json().catch(() => ({}))) as { error?: string }
+  return res.ok ? { ok: true } : { ok: false, error: data.error ?? "재시도에 실패했습니다." }
+}
+
 // --- 자동 응답 ---
 
 export async function fetchAutoReplyRules(): Promise<AutoReplyRule[]> {

@@ -1,6 +1,6 @@
-import { CalendarClock, Loader2, Trash2 } from "lucide-react"
+import { CalendarClock, Loader2, RefreshCw, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
-import { cancelScheduledMailSend, fetchScheduledMails } from "@/lib/api"
+import { cancelScheduledMailSend, fetchScheduledMails, retryScheduledMailSend } from "@/lib/api"
 import type { Account, ScheduledMail } from "@/types/mail"
 
 function formatDateTime(ts: number): string {
@@ -23,6 +23,19 @@ export function ScheduledView({ accounts }: ScheduledViewProps) {
     if (!confirm("예약 발송을 취소하시겠습니까?")) return
     const ok = await cancelScheduledMailSend(id)
     if (ok) setMails((prev) => prev.filter((m) => m.id !== id))
+  }
+
+  const [retrying, setRetrying] = useState<string | null>(null)
+
+  const handleRetry = async (id: string) => {
+    setRetrying(id)
+    const result = await retryScheduledMailSend(id)
+    if (result.ok) {
+      setMails((prev) => prev.map((m) => m.id === id ? { ...m, status: "sent" as const, error: undefined } : m))
+    } else {
+      setMails((prev) => prev.map((m) => m.id === id ? { ...m, error: result.error } : m))
+    }
+    setRetrying(null)
   }
 
   const accountLabel = (id: string) => accounts.find((a) => a.id === id)?.email ?? id
@@ -84,9 +97,19 @@ export function ScheduledView({ accounts }: ScheduledViewProps) {
                         <p className="mt-0.5 text-xs text-muted-foreground">받는 사람: {mail.to}</p>
                         {mail.status === "failed" && <p className="mt-0.5 text-xs text-destructive">{mail.error}</p>}
                       </div>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${mail.status === "sent" ? "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400" : "bg-destructive/10 text-destructive"}`}>
-                        {mail.status === "sent" ? "전송됨" : "실패"}
-                      </span>
+                      {mail.status === "failed" ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRetry(mail.id)}
+                          disabled={retrying === mail.id}
+                          className="flex shrink-0 items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive hover:bg-destructive/20 disabled:opacity-50"
+                        >
+                          {retrying === mail.id ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+                          다시 시도
+                        </button>
+                      ) : (
+                        <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-500/20 dark:text-green-400">전송됨</span>
+                      )}
                     </div>
                   ))}
                 </div>

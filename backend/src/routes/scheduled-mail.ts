@@ -2,7 +2,8 @@ import { Hono } from "hono"
 import type { Env } from "../types"
 import { readRawCookie } from "../lib/cookies"
 import { readSession, SESSION_COOKIE } from "../lib/session"
-import { addScheduledMail, cancelScheduledMail, getScheduledMails } from "../lib/scheduledMail"
+import { addScheduledMail, cancelScheduledMail, getScheduledMails, retryScheduledMail } from "../lib/scheduledMail"
+import { resolveAccounts } from "../lib/auth"
 
 const router = new Hono<{ Bindings: Env }>()
 
@@ -63,6 +64,17 @@ router.delete("/scheduled-mails/:id", async (c) => {
   if (!session.userId) return c.json({ error: "unauthorized" }, 401)
   const ok = await cancelScheduledMail(c.env, session.userId, c.req.param("id"))
   if (!ok) return c.json({ error: "찾을 수 없습니다." }, 404)
+  return c.json({ ok: true })
+})
+
+router.post("/scheduled-mails/:id/retry", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+  const session = await readSession(c.env, sessionId)
+  if (!session.userId) return c.json({ error: "unauthorized" }, 401)
+  const accountMap = await resolveAccounts(c.env, session)
+  const result = await retryScheduledMail(c.env, session.userId, c.req.param("id"), accountMap)
+  if (!result.ok) return c.json({ error: result.error }, result.error === "찾을 수 없습니다." ? 404 : 400)
   return c.json({ ok: true })
 })
 

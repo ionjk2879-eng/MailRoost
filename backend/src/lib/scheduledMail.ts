@@ -34,6 +34,33 @@ export async function cancelScheduledMail(env: Env, userId: string, id: string):
   return true
 }
 
+export async function retryScheduledMail(
+  env: Env,
+  userId: string,
+  id: string,
+  accountMap: Record<string, ConnectedAccountRecord>,
+): Promise<{ ok: boolean; error?: string }> {
+  const mails = await getScheduledMails(env, userId)
+  const idx = mails.findIndex((m) => m.id === id)
+  if (idx === -1) return { ok: false, error: "찾을 수 없습니다." }
+  const mail = mails[idx]
+  if (mail.status !== "failed") return { ok: false, error: "실패 상태인 메일만 재시도할 수 있습니다." }
+  const record = accountMap[mail.accountId]
+  if (!record) {
+    return { ok: false, error: "계정을 찾을 수 없습니다." }
+  }
+  try {
+    await sendViaRecord(env, record, mail.to, mail.subject, mail.body, mail.cc, mail.bcc, undefined, mail.htmlBody, mail.fromName)
+    mails[idx] = { ...mail, status: "sent", error: undefined }
+    await putScheduledMails(env, userId, mails)
+    return { ok: true }
+  } catch (err) {
+    mails[idx] = { ...mail, status: "failed", error: err instanceof Error ? err.message : "전송 실패" }
+    await putScheduledMails(env, userId, mails)
+    return { ok: false, error: mails[idx].error }
+  }
+}
+
 export async function sendDueScheduledMails(
   env: Env,
   session: StoredSession,
