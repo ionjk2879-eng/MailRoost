@@ -123,6 +123,7 @@ export function RecipientInput({ id, value, onChange, options, placeholder, requ
           onChange={(event) => {
             const nextDraft = event.target.value
             if (nextDraft.includes(",")) addRecipient(nextDraft.split(",")[0])
+            else if (nextDraft.endsWith(" ") && nextDraft.trim().includes("@")) addRecipient(nextDraft.trim())
             else { setDraft(nextDraft); emit(recipients, nextDraft); setOpen(true) }
           }}
           onKeyDown={(event) => {
