@@ -62,6 +62,8 @@ export interface SavedFilter {
   isStarred: boolean | null
   hasAttachment: boolean | null
   folderId: string | null
+  dateFrom?: string
+  dateTo?: string
   createdAt: number
 }
 

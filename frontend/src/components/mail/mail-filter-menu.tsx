@@ -28,6 +28,8 @@ export function MailFilterMenu({ accounts, folders, savedFilters, activeFilterId
   const [starred, setStarred] = useState(false)
   const [hasAttachment, setHasAttachment] = useState(false)
   const [folderId, setFolderId] = useState("all")
+  const [dateFrom, setDateFrom] = useState("")
+  const [dateTo, setDateTo] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -50,6 +52,8 @@ export function MailFilterMenu({ accounts, folders, savedFilters, activeFilterId
     setStarred(false)
     setHasAttachment(false)
     setFolderId("all")
+    setDateFrom("")
+    setDateTo("")
     setError(null)
   }
 
@@ -67,6 +71,8 @@ export function MailFilterMenu({ accounts, folders, savedFilters, activeFilterId
       isStarred: starred ? true : null,
       hasAttachment: hasAttachment ? true : null,
       folderId: folderId === "all" ? null : folderId,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
     })
     setSaving(false)
     if (!result.ok) {
@@ -129,6 +135,8 @@ export function MailFilterMenu({ accounts, folders, savedFilters, activeFilterId
               <div><Label htmlFor="saved-filter-from">보낸사람 포함</Label><Input id="saved-filter-from" className="mt-1.5" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
               <div><Label htmlFor="saved-filter-subject">제목 포함</Label><Input id="saved-filter-subject" className="mt-1.5" value={subject} onChange={(e) => setSubject(e.target.value)} /></div>
               {folders.length > 0 && <div className="sm:col-span-2"><Label htmlFor="saved-filter-folder">분류 메일함</Label><select id="saved-filter-folder" value={folderId} onChange={(e) => setFolderId(e.target.value)} className="border-input bg-background mt-1.5 h-9 w-full rounded-md border px-3 text-sm"><option value="all">전체</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></div>}
+              <div><Label htmlFor="saved-filter-date-from">날짜 (이후)</Label><Input id="saved-filter-date-from" type="date" className="mt-1.5" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></div>
+              <div><Label htmlFor="saved-filter-date-to">날짜 (이전)</Label><Input id="saved-filter-date-to" type="date" className="mt-1.5" value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></div>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={starred} onChange={(e) => setStarred(e.target.checked)} />별표 메일만</label>
               <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={hasAttachment} onChange={(e) => setHasAttachment(e.target.checked)} />첨부파일 있음</label>
               {error && <p className="text-destructive sm:col-span-2 text-sm">{error}</p>}

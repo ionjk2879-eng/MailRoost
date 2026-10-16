@@ -80,6 +80,8 @@ function matchesSavedFilter(mail: Mail, filter: SavedFilter): boolean {
   if (filter.isStarred === true && !mail.isStarred) return false
   if (filter.hasAttachment === true && !(mail.attachments && mail.attachments.length > 0)) return false
   if (filter.folderId && !(mail.folderIds ?? []).includes(filter.folderId)) return false
+  if (filter.dateFrom && mail.receivedAt < filter.dateFrom) return false
+  if (filter.dateTo && mail.receivedAt > `${filter.dateTo}T23:59:59`) return false
   return true
 }
 
@@ -725,7 +727,7 @@ function App() {
       const relevant = selectedMail ?? (workspace.focusedMailId ? activeList.find((m) => m.id === workspace.focusedMailId) ?? null : null)
       if (!relevant) return
 
-      if (e.key === "Backspace") {
+      if (e.key === "Backspace" || e.key === "#") {
         e.preventDefault()
         workspace.handleDeleteMail(relevant.id, relevant.accountId)
       } else if (e.key === "r" || e.key === "R") {
@@ -736,11 +738,37 @@ function App() {
         workspace.handleMarkAsUnread(relevant.id, relevant.accountId)
       } else if (e.key === "p" || e.key === "P") {
         openReferenceMail(relevant.id, relevant.accountId)
+      } else if (e.key === "a" || e.key === "A") {
+        if (view === "folder" || view === "archive") {
+          workspace.handleMoveMailFromFolder(relevant.id, relevant.accountId, ARCHIVE_FOLDER_ID)
+        } else {
+          workspace.handleMoveMailFromInbox(relevant.id, relevant.accountId, ARCHIVE_FOLDER_ID)
+        }
+      } else if (e.key === "e" || e.key === "E") {
+        const now = new Date()
+        const tomorrow9am = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 9, 0, 0, 0)
+        handleSnooze(relevant.id, relevant.accountId, tomorrow9am.getTime())
       }
     }
 
+    const globalHandler = (e: KeyboardEvent) => {
+      if (composeState) return
+      const target = e.target
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) return
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      if (e.key === "c" || e.key === "C") setComposeState({})
+    }
+    window.addEventListener("keydown", globalHandler)
+
     window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
+    window.addEventListener("keydown", globalHandler)
+    return () => {
+      window.removeEventListener("keydown", handler)
+      window.removeEventListener("keydown", globalHandler)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composeState, view, visibleMails, workspace.folderMails, workspace.selectedMailId, selectedMail, workspace.focusedMailId, workspace.checkedMailIds, shortcutsHelpOpen])
 
