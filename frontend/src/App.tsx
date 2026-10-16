@@ -15,6 +15,7 @@ import { TrashView } from "@/components/trash/trash-view"
 import { MemoView } from "@/components/memo/memo-view"
 import { DraftsView } from "@/components/drafts/drafts-view"
 import { SnoozeMuteView } from "@/components/snoozed/snooze-mute-view"
+import { SpamView } from "@/components/spam/spam-view"
 import { ScheduledView } from "@/components/scheduled/scheduled-view"
 import { AutoReplyView } from "@/components/auto-reply/auto-reply-view"
 import { NotificationBell } from "@/components/notifications/notification-bell"
@@ -50,7 +51,7 @@ function pathToView(pathname: string): AppView {
     "": "home", inbox: "inbox", starred: "starred", cleanup: "cleanup",
     trash: "trash", archive: "archive", folder: "folder", drafts: "drafts",
     snoozed: "snoozed", muted: "muted", memo: "memo", attachments: "attachments",
-    scheduled: "scheduled", "auto-reply": "auto-reply",
+    scheduled: "scheduled", "auto-reply": "auto-reply", spam: "spam",
   }
   return map[seg] ?? "home"
 }
@@ -425,6 +426,14 @@ function App() {
 
   const goToMuted = () => {
     navigate("/muted")
+    workspace.setSelectedMailId(null)
+    workspace.setFocusedMailId(null)
+    workspace.setCheckedMailIds(new Set())
+    setComposeState(null)
+  }
+
+  const goToSpam = () => {
+    navigate("/spam")
     workspace.setSelectedMailId(null)
     workspace.setFocusedMailId(null)
     workspace.setCheckedMailIds(new Set())
@@ -1052,6 +1061,7 @@ function App() {
         snoozeCount={Object.values(mailOrg.snoozed).filter((until) => until > Date.now()).length}
         isScheduledView={view === "scheduled"}
         isAutoReplyView={view === "auto-reply"}
+        isSpamView={view === "spam"}
         folders={mailOrg.folders}
         selectedFolderId={selectedFolderId}
         isFolderView={view === "folder"}
@@ -1067,6 +1077,7 @@ function App() {
         onGoSnoozeMute={goToSnooze}
         onGoScheduled={goToScheduled}
         onGoAutoReply={goToAutoReply}
+        onGoSpam={goToSpam}
         onSelectFolder={goToFolder}
         onCreateFolder={mailOrg.handleCreateFolder}
         onRenameFolder={mailOrg.handleRenameFolder}
@@ -1105,6 +1116,8 @@ function App() {
                       ? "스누즈"
                       : view === "muted"
                       ? "뮤트"
+                      : view === "spam"
+                      ? "스팸 보관함"
                       : view === "folder"
                       ? (mailOrg.folders.find((f) => f.id === selectedFolderId)?.name ?? "분류 메일함")
                       : selectedAccountId
@@ -1267,6 +1280,12 @@ function App() {
             onUpdateSnoozeMuteRule={mailOrg.handleUpdateSnoozeMuteRule}
             onToggleSnoozeMuteRule={mailOrg.handleToggleSnoozeMuteRule}
             onDeleteSnoozeMuteRule={mailOrg.handleDeleteSnoozeMuteRule}
+          />
+        ) : view === "spam" ? (
+          <SpamView
+            mails={allMails}
+            muted={mailOrg.muted}
+            onSelectMail={handleSnoozedMailSelect}
           />
         ) : view === "folder" || view === "archive" ? (
           workspace.isFolderLoading && workspace.folderMails.length === 0 ? (

@@ -1,4 +1,4 @@
-import { AlarmClock, Archive, Bot, CalendarClock, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Paperclip, Pencil, Plus, Settings, Sparkles, Star, StickyNote, Trash2 } from "lucide-react"
+import { AlarmClock, Archive, Bot, CalendarClock, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Paperclip, Pencil, Plus, Settings, ShieldX, Sparkles, Star, StickyNote, Trash2 } from "lucide-react"
 import { useState } from "react"
 import type { DragEvent } from "react"
 import { Button } from "@/components/ui/button"
@@ -105,6 +105,7 @@ interface AccountSidebarProps {
   snoozeCount: number
   isScheduledView: boolean
   isAutoReplyView: boolean
+  isSpamView: boolean
   folders: MailFolder[]
   selectedFolderId: string | null
   isFolderView: boolean
@@ -120,6 +121,7 @@ interface AccountSidebarProps {
   onGoSnoozeMute: () => void
   onGoScheduled: () => void
   onGoAutoReply: () => void
+  onGoSpam: () => void
   onSelectFolder: (folderId: string) => void
   onCreateFolder: (name: string) => Promise<{ ok: boolean; error?: string }>
   onRenameFolder: (folderId: string, name: string, color: string) => Promise<{ ok: boolean; error?: string }>
@@ -149,6 +151,7 @@ export function AccountSidebar({
   snoozeCount,
   isScheduledView,
   isAutoReplyView,
+  isSpamView,
   folders,
   selectedFolderId,
   isFolderView,
@@ -164,6 +167,7 @@ export function AccountSidebar({
   onGoSnoozeMute,
   onGoScheduled,
   onGoAutoReply,
+  onGoSpam,
   onSelectFolder,
   onCreateFolder,
   onRenameFolder,
@@ -381,6 +385,15 @@ export function AccountSidebar({
                 >
                   <StickyNote />
                   <span>메모</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isSpamView}
+                  onClick={() => { onGoSpam(); closeOnMobile() }}
+                >
+                  <ShieldX />
+                  <span>스팸 보관함</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
