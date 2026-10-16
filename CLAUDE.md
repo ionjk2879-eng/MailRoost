@@ -32,6 +32,15 @@ MailRoost — 여러 메일 계정(Gmail/네이버/다음/범용 IMAP)을 한 �
 
 **절대 하지 말 것**: 이 키에 구분자를 넣고 싶어도 문자열 리터럴에 눈에 안 보이는 제어문자(U+0001 같은)를 직접 박아넣지 말 것. 예전에 정확히 이걸 하다가 편집 과정에서 그 문자가 빈 문자열로 조용히 깎여나가서(`KEY_DELIMITER = ""`), `"x".indexOf("")`가 항상 `0`을 반환하는 JS 특성 때문에 분류 메일함 조회와 스누즈 기능이 몇 달째 아무 에러 로그도 없이 항상 빈 결과를 반환하는 버그로 이어졌다. 자세한 경위는 [`docs/incidents/2026-08-13-folder-and-snooze-lookup-broken.md`](docs/incidents/2026-08-13-folder-and-snooze-lookup-broken.md) 참고. 구분자가 꼭 필요하면 `String.fromCharCode(n)`처럼 명시적으로 만들고, 비교도 `charCodeAt`처럼 눈에 보이는 방식으로 할 것.
 
+## 뮤트 구조
+
+발신자 뮤트는 두 가지 뷰로 나뉜다:
+
+- **`/muted`** — `SnoozeMuteView`의 "뮤트" 탭. 뮤트된 발신자 목록 + 뮤트 해제 버튼. 발신자 관리 전용.
+- **`/spam`** — `SpamView`. 뮤트된 발신자의 실제 메일을 발신자별 구분선(`─── email ───`)으로 그룹핑해 보여줌. 사이드바 관리 섹션의 "스팸 보관함".
+
+뮤트 상태는 `MailOrgState.muted: string[]`(발신자 이메일 배열)에 저장된다. 뮤트된 발신자의 메일은 받은편지함에서는 필터링되어 안 보이고, `/spam`에서만 볼 수 있다.
+
 ## 디버깅 팁
 
 - 이 앱의 실패 모드는 대부분 **에러 없이 조용히 빈 배열/빈 객체를 반환**하는 형태다 (계정 매핑 실패, 파싱 실패 등을 전부 `if (!x) return []`류로 처리해서). 증상만 봐서 원인을 못 찾겠으면:
@@ -42,7 +51,7 @@ MailRoost — 여러 메일 계정(Gmail/네이버/다음/범용 IMAP)을 한 �
 
 ## 커밋 / 배포 습관
 
-- 서로 다른 기능/수정은 별도 커밋으로 나눈다 (한 파일 안에 여러 논리적 변경이 섞여도 `git add`로 필요한 부분만 골라 커밋). 커밋 메시지는 영어, `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>` 트레일러 포함.
+- 서로 다른 기능/수정은 별도 커밋으로 나눈다 (한 파일 안에 여러 논리적 변경이 섞여도 `git add`로 필요한 부분만 골라 커밋). 커밋 메시지는 영어, `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>` 트레일러 포함.
 - 커밋/push는 명시적으로 요청받았을 때만 한다.
 
 ## Agent skills
