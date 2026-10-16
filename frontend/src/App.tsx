@@ -39,6 +39,7 @@ import { groupIntoThreads } from "@/lib/threading"
 import { ARCHIVE_FOLDER_ID } from "@/types/mail"
 import type { Draft, ForwardedAttachmentRef, Mail, MailCategory, SavedFilter } from "@/types/mail"
 import { applyTheme, getStoredTheme, watchSystemTheme } from "@/lib/theme"
+import { useTabBadge } from "@/hooks/use-tab-badge"
 
 const SNAP_SIZE = 45
 const SNAP_ZONE = 3
@@ -208,6 +209,9 @@ function App() {
     }
     return counts
   }, [allMails, mailOrg.mutedSet])
+
+  const totalUnread = useMemo(() => Object.values(unreadCountByAccount).reduce((a, b) => a + b, 0), [unreadCountByAccount])
+  useTabBadge(totalUnread)
 
   const unreadCountByFolder = useMemo(() => {
     const counts: Record<string, number> = {}
