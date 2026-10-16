@@ -1097,7 +1097,7 @@ function App() {
               folderId,
               null,
               false,
-              folderName ? `${fromEmail} → ${folderName}` : fromEmail,
+              folderName || fromEmail,
             )
           }
         }}

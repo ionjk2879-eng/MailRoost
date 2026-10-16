@@ -493,7 +493,7 @@ export function AccountSidebar({
                   className={cn(
                     "group/item cursor-grab active:cursor-grabbing",
                     folderDrag.draggingId === folder.id && "opacity-40",
-                    folderDrag.overId === folder.id && "border-primary border-t-2",
+                    folderDrag.draggingId !== null && folderDrag.overId === folder.id && "border-primary border-t-2",
                   )}
                   draggable
                   onDragStart={folderDrag.handleDragStart(folder.id)}
