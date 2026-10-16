@@ -129,6 +129,8 @@ interface AccountSidebarProps {
   onReorderFolders: (order: string[]) => void
   onReorderAccounts: (order: string[]) => void
   onDropMailToFolder?: (folderId: string, mailId: string, accountId: string, fromEmail: string, fromName: string) => void
+  onDropMailToStarred?: (mailId: string, accountId: string) => void
+  onDropMailToArchive?: (mailId: string, accountId: string) => void
   onLogout: () => void
   onCompose?: () => void
   onOpenSettings: () => void
@@ -176,6 +178,8 @@ export function AccountSidebar({
   onReorderFolders,
   onReorderAccounts,
   onDropMailToFolder,
+  onDropMailToStarred,
+  onDropMailToArchive,
   onLogout,
   onCompose,
   onOpenSettings,
@@ -314,7 +318,15 @@ export function AccountSidebar({
                   <span>자동 응답</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
+              <SidebarMenuItem
+                onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-mailroost-mail")) e.preventDefault() }}
+                onDrop={(e) => {
+                  const raw = e.dataTransfer.getData("application/x-mailroost-mail")
+                  if (!raw) return
+                  const { mailId, accountId } = JSON.parse(raw) as { mailId: string; accountId: string }
+                  onDropMailToStarred?.(mailId, accountId)
+                }}
+              >
                 <SidebarMenuButton
                   isActive={isStarredView}
                   onClick={() => {
@@ -326,7 +338,15 @@ export function AccountSidebar({
                   <span>중요 메일</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              <SidebarMenuItem>
+              <SidebarMenuItem
+                onDragOver={(e) => { if (e.dataTransfer.types.includes("application/x-mailroost-mail")) e.preventDefault() }}
+                onDrop={(e) => {
+                  const raw = e.dataTransfer.getData("application/x-mailroost-mail")
+                  if (!raw) return
+                  const { mailId, accountId } = JSON.parse(raw) as { mailId: string; accountId: string }
+                  onDropMailToArchive?.(mailId, accountId)
+                }}
+              >
                 <SidebarMenuButton
                   isActive={isArchiveView}
                   onClick={() => {
