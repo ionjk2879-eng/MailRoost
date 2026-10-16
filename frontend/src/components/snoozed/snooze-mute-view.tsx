@@ -1,4 +1,5 @@
-import { AlarmClock, ChevronDown, Inbox, VolumeX } from "lucide-react"
+import { AlarmClock, ChevronDown, ChevronRight, Inbox, VolumeX } from "lucide-react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { SnoozeMuteRulesPanel } from "@/components/snoozed/snooze-mute-rules-panel"
@@ -78,11 +79,13 @@ export function SnoozeMuteView({
     .filter((item): item is NonNullable<typeof item> => item !== null)
     .sort((a, b) => a.until - b.until)
 
+  const [expandedEmail, setExpandedEmail] = useState<string | null>(null)
+
   const mutedSenders = muted.map((email) => {
     const senderMails = mails
       .filter((mail) => mail.fromEmail === email)
       .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
-    return { email, latestMail: senderMails[0], count: senderMails.length }
+    return { email, latestMail: senderMails[0], count: senderMails.length, senderMails }
   })
 
   return (
@@ -181,20 +184,62 @@ export function SnoozeMuteView({
             <ScrollArea className="h-[calc(100%-78px)]">
               <div className="flex min-h-[calc(100vh-250px)] flex-col">
                 <div>
-                  {mutedSenders.map(({ email, latestMail }, index) => (
-                    <div key={email} className="flex min-h-28 items-center gap-3 border-b px-5 py-4">
-                      <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-full text-lg", avatarColors[(index + 3) % avatarColors.length])}>
-                        {initials(latestMail?.fromName || email)}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{email}</p>
-                        <p className="mt-2 truncate text-sm text-muted-foreground">{latestMail?.fromName || "뮤트한 발신자"}</p>
+                  {mutedSenders.map(({ email, latestMail, count, senderMails }, index) => {
+                    const isExpanded = expandedEmail === email
+                    return (
+                      <div key={email} className="border-b">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedEmail(isExpanded ? null : email)}
+                          className="flex w-full min-h-20 items-center gap-3 px-5 py-4 text-left hover:bg-muted/20 transition-colors"
+                        >
+                          <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-full text-lg", avatarColors[(index + 3) % avatarColors.length])}>
+                            {initials(latestMail?.fromName || email)}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{latestMail?.fromName || email}</p>
+                            <p className="mt-1 truncate text-xs text-muted-foreground">{email}</p>
+                            {count > 0 && <p className="mt-1 text-xs text-muted-foreground">메일 {count}개</p>}
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="border-primary/50 text-primary hover:bg-primary/5 hover:text-primary"
+                              onClick={(e) => { e.stopPropagation(); onUnmute(email) }}
+                            >
+                              뮤트 해제
+                            </Button>
+                            {isExpanded ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+                          </div>
+                        </button>
+                        {isExpanded && (
+                          <div className="border-t bg-muted/10">
+                            {senderMails.length === 0 ? (
+                              <p className="px-5 py-4 text-sm text-muted-foreground">메일이 없습니다.</p>
+                            ) : (
+                              senderMails.map((mail) => (
+                                <button
+                                  key={`${mail.accountId}:${mail.id}`}
+                                  type="button"
+                                  onClick={() => onSelectMail(mail.id, mail.accountId)}
+                                  className="flex w-full items-start gap-3 border-b px-5 py-3 text-left last:border-b-0 hover:bg-muted/20 transition-colors"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className={cn("truncate text-sm", !mail.isRead && "font-medium")}>{mail.subject || "(제목 없음)"}</p>
+                                    {mail.snippet && <p className="mt-0.5 truncate text-xs text-muted-foreground">{mail.snippet}</p>}
+                                  </div>
+                                  <span className="shrink-0 text-xs text-muted-foreground whitespace-nowrap">
+                                    {new Date(mail.receivedAt).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}
+                                  </span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <Button variant="outline" size="sm" className="border-primary/50 text-primary hover:bg-primary/5 hover:text-primary" onClick={() => onUnmute(email)}>
-                        뮤트 해제
-                      </Button>
-                    </div>
-                  ))}
+                    )
+                  })}
                   {mutedSenders.length === 0 && (
                     <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
                       <VolumeX className="size-11 opacity-35" />
