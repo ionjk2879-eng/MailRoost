@@ -1084,6 +1084,23 @@ function App() {
         onDeleteFolder={handleDeleteFolder}
         onReorderFolders={mailOrg.handleReorderFolders}
         onReorderAccounts={workspace.handleReorderAccounts}
+        onDropMailToFolder={(folderId, mailId, accountId, fromEmail, _fromName) => {
+          if (view === "folder") {
+            workspace.handleMoveMailFromFolder(mailId, accountId, folderId)
+          } else {
+            workspace.handleMoveMailFromInbox(mailId, accountId, folderId)
+          }
+          if (fromEmail) {
+            const folderName = mailOrg.folders.find((f) => f.id === folderId)?.name ?? ""
+            void mailOrg.handleCreateRule(
+              { from: fromEmail, subject: "", excludeFrom: "", excludeSubject: "" },
+              folderId,
+              null,
+              false,
+              folderName ? `${fromEmail} → ${folderName}` : fromEmail,
+            )
+          }
+        }}
         onLogout={handleLogout}
         onCompose={sendableAccounts.length > 0 ? handleOpenCompose : undefined}
         onOpenSettings={() => setSettingsOpen(true)}

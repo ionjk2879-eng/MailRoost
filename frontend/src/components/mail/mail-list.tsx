@@ -414,6 +414,14 @@ export function MailList({
                 key={mail.id}
                 id={`mail-row-${mail.id}`}
                 type="button"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = "copy"
+                  e.dataTransfer.setData(
+                    "application/x-mailroost-mail",
+                    JSON.stringify({ mailId: mail.id, accountId: mail.accountId, fromEmail: mail.fromEmail, fromName: mail.fromName }),
+                  )
+                }}
                 onMouseDown={(e) => {
                   if (e.shiftKey) e.preventDefault()
                 }}

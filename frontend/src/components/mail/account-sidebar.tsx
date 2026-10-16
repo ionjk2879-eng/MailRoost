@@ -128,6 +128,7 @@ interface AccountSidebarProps {
   onDeleteFolder: (folderId: string) => void
   onReorderFolders: (order: string[]) => void
   onReorderAccounts: (order: string[]) => void
+  onDropMailToFolder?: (folderId: string, mailId: string, accountId: string, fromEmail: string, fromName: string) => void
   onLogout: () => void
   onCompose?: () => void
   onOpenSettings: () => void
@@ -174,6 +175,7 @@ export function AccountSidebar({
   onDeleteFolder,
   onReorderFolders,
   onReorderAccounts,
+  onDropMailToFolder,
   onLogout,
   onCompose,
   onOpenSettings,
@@ -496,7 +498,19 @@ export function AccountSidebar({
                   draggable
                   onDragStart={folderDrag.handleDragStart(folder.id)}
                   onDragOver={folderDrag.handleDragOver(folder.id)}
-                  onDrop={folderDrag.handleDrop(folder.id)}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    const rawData = e.dataTransfer.getData("application/x-mailroost-mail")
+                    if (rawData) {
+                      folderDrag.handleDragEnd()
+                      const { mailId, accountId, fromEmail, fromName } = JSON.parse(rawData) as {
+                        mailId: string; accountId: string; fromEmail: string; fromName: string
+                      }
+                      onDropMailToFolder?.(folder.id, mailId, accountId, fromEmail, fromName)
+                      return
+                    }
+                    folderDrag.handleDrop(folder.id)(e)
+                  }}
                   onDragEnd={folderDrag.handleDragEnd}
                 >
                   <SidebarMenuButton
