@@ -1,10 +1,10 @@
-# 통합 첨부함 Implementation Plan
+﻿# ?듯빀 泥⑤???Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
-**Goal:** Gmail/네이버/다음/범용 IMAP 전 계정에서 첨부파일이 있는 메일을 모아, 계정/메일함 구분 없이 파일명으로 검색·다운로드할 수 있는 "첨부함" 화면을 만든다.
+**Goal:** Gmail/?ㅼ씠踰??ㅼ쓬/踰붿슜 IMAP ??怨꾩젙?먯꽌 泥⑤??뚯씪???덈뒗 硫붿씪??紐⑥븘, 怨꾩젙/硫붿씪??援щ텇 ?놁씠 ?뚯씪紐낆쑝濡?寃?됀룸떎?대줈?쒗븷 ???덈뒗 "泥⑤??? ?붾㈃??留뚮뱺??
 
-**Architecture:** 색인을 저장하지 않고, 화면을 열 때마다 계정별로 최근 100통을 훑어 첨부파일만 추린다. Gmail은 `has:attachment` 서버 검색 + 배치 조회(`format=full`)로, IMAP(네이버/다음/범용)은 최근 범위의 원본 전체를 한 연결로 가져와 이미 있는 MIME 파서로 추출한다 — 두 경로 모두 기존 코드를 최대한 재사용하고 새 파싱 로직은 만들지 않는다. 프런트는 사이드바에 새 화면 하나를 추가하고, 그 화면이 마운트될 때 스스로 데이터를 가져온다(App.tsx의 중앙 `workspace`/`mailOrg` 훅에 상태를 얹지 않는다 — 자주 안 열어보는 독립된 화면이라 훅을 키우는 것보다 컴포넌트 로컬 상태가 더 단순하다).
+**Architecture:** ?됱씤????ν븯吏 ?딄퀬, ?붾㈃?????뚮쭏??怨꾩젙蹂꾨줈 理쒓렐 100?듭쓣 ?묒뼱 泥⑤??뚯씪留?異붾┛?? Gmail? `has:attachment` ?쒕쾭 寃??+ 諛곗튂 議고쉶(`format=full`)濡? IMAP(?ㅼ씠踰??ㅼ쓬/踰붿슜)? 理쒓렐 踰붿쐞???먮낯 ?꾩껜瑜????곌껐濡?媛?몄? ?대? ?덈뒗 MIME ?뚯꽌濡?異붿텧?쒕떎 ????寃쎈줈 紐⑤몢 湲곗〈 肄붾뱶瑜?理쒕????ъ궗?⑺븯怨????뚯떛 濡쒖쭅? 留뚮뱾吏 ?딅뒗?? ?꾨윴?몃뒗 ?ъ씠?쒕컮?????붾㈃ ?섎굹瑜?異붽??섍퀬, 洹??붾㈃??留덉슫?몃맆 ???ㅼ뒪濡??곗씠?곕? 媛?몄삩??App.tsx??以묒븰 `workspace`/`mailOrg` ?낆뿉 ?곹깭瑜??뱀? ?딅뒗?????먯＜ ???댁뼱蹂대뒗 ?낅┰???붾㈃?대씪 ?낆쓣 ?ㅼ슦??寃껊낫??而댄룷?뚰듃 濡쒖뺄 ?곹깭媛 ???⑥닚?섎떎).
 
 **Tech Stack:** Cloudflare Workers + Hono (backend), React 19 + Vite (frontend), Vitest
 
@@ -12,30 +12,30 @@
 
 ## Global Constraints
 
-- 계정 유형(Gmail/IMAP)을 사용자가 직접 고르게 하지 않는다 — 백엔드가 계정마다 알아서 처리, 프런트는 합쳐진 목록 하나만 보여준다
-- 계정당 최근 100통으로 스캔 범위를 제한한다 (무제한 스캔 금지)
-- 첨부파일 크기는 정확한 값을 쓴다 (근사치 로직을 별도로 만들지 않는다 — 스펙 문서의 "설계 중 재검토" 참고)
-- 인라인 이미지와 실첨부파일을 구분하지 않는다 (message-card.tsx의 기존 동작과 동일하게)
-- 계정 하나가 실패해도 나머지 계정 결과는 정상 반환한다 (조용히 스킵 + 콘솔 로그)
-- 기존 첨부파일 다운로드 엔드포인트(`/mail/:id/attachment/:attachmentId`)는 변경하지 않는다
+- 怨꾩젙 ?좏삎(Gmail/IMAP)???ъ슜?먭? 吏곸젒 怨좊Ⅴ寃??섏? ?딅뒗????諛깆뿏?쒓? 怨꾩젙留덈떎 ?뚯븘??泥섎━, ?꾨윴?몃뒗 ?⑹퀜吏?紐⑸줉 ?섎굹留?蹂댁뿬以??
+- 怨꾩젙??理쒓렐 100?듭쑝濡??ㅼ틪 踰붿쐞瑜??쒗븳?쒕떎 (臾댁젣???ㅼ틪 湲덉?)
+- 泥⑤??뚯씪 ?ш린???뺥솗??媛믪쓣 ?대떎 (洹쇱궗移?濡쒖쭅??蹂꾨룄濡?留뚮뱾吏 ?딅뒗?????ㅽ럺 臾몄꽌??"?ㅺ퀎 以??ш??? 李멸퀬)
+- ?몃씪???대?吏? ?ㅼ꺼遺?뚯씪??援щ텇?섏? ?딅뒗??(message-card.tsx??湲곗〈 ?숈옉怨??숈씪?섍쾶)
+- 怨꾩젙 ?섎굹媛 ?ㅽ뙣?대룄 ?섎㉧吏 怨꾩젙 寃곌낵???뺤긽 諛섑솚?쒕떎 (議곗슜???ㅽ궢 + 肄섏넄 濡쒓렇)
+- 湲곗〈 泥⑤??뚯씪 ?ㅼ슫濡쒕뱶 ?붾뱶?ъ씤??`/mail/:id/attachment/:attachmentId`)??蹂寃쏀븯吏 ?딅뒗??
 
 ---
 
-## Task 1: 공용 타입 `AttachmentListItem`
+## Task 1: 怨듭슜 ???`AttachmentListItem`
 
 **Files:**
 - Modify: `backend/src/types.ts`
 - Modify: `frontend/src/types/mail.ts`
 
 **Interfaces:**
-- Produces: `AttachmentListItem` (양쪽에 동일한 필드로 정의)
+- Produces: `AttachmentListItem` (?묒そ???숈씪???꾨뱶濡??뺤쓽)
 
-- [ ] **Step 1: 백엔드 타입 추가**
+- [x] **Step 1: 諛깆뿏?????異붽?**
 
-`backend/src/types.ts`에서 `MailAttachment` 인터페이스 바로 다음 줄에 추가:
+`backend/src/types.ts`?먯꽌 `MailAttachment` ?명꽣?섏씠??諛붾줈 ?ㅼ쓬 以꾩뿉 異붽?:
 
 ```ts
-// 첨부함 화면용 — 계정 전체를 훑어서 나온 "메일 하나 + 첨부파일 하나" 평탄화된 항목.
+// 泥⑤????붾㈃????怨꾩젙 ?꾩껜瑜??묒뼱???섏삩 "硫붿씪 ?섎굹 + 泥⑤??뚯씪 ?섎굹" ?됲깂?붾맂 ??ぉ.
 export interface AttachmentListItem {
   accountId: string
   mailId: string
@@ -50,9 +50,9 @@ export interface AttachmentListItem {
 }
 ```
 
-- [ ] **Step 2: 프런트 타입 미러링**
+- [x] **Step 2: ?꾨윴?????誘몃윭留?*
 
-`frontend/src/types/mail.ts`에서 `MailAttachment` 인터페이스 바로 다음 줄에 동일한 내용 추가:
+`frontend/src/types/mail.ts`?먯꽌 `MailAttachment` ?명꽣?섏씠??諛붾줈 ?ㅼ쓬 以꾩뿉 ?숈씪???댁슜 異붽?:
 
 ```ts
 export interface AttachmentListItem {
@@ -69,12 +69,12 @@ export interface AttachmentListItem {
 }
 ```
 
-- [ ] **Step 3: 타입체크**
+- [x] **Step 3: ??낆껜??*
 
 Run: `cd backend && npx tsc --noEmit` / `cd frontend && npx tsc -b`
-Expected: 둘 다 에러 없음 (아직 아무도 이 타입을 안 쓰므로 추가만으로는 에러가 날 수 없다)
+Expected: ?????먮윭 ?놁쓬 (?꾩쭅 ?꾨Т??????낆쓣 ???곕?濡?異붽?留뚯쑝濡쒕뒗 ?먮윭媛 ?????녿떎)
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 而ㅻ컠**
 
 ```bash
 git add backend/src/types.ts frontend/src/types/mail.ts
@@ -83,31 +83,31 @@ git commit -m "feat: add AttachmentListItem type for the attachment library"
 
 ---
 
-## Task 2: Gmail — 계정 하나의 첨부파일 목록 조회
+## Task 2: Gmail ??怨꾩젙 ?섎굹??泥⑤??뚯씪 紐⑸줉 議고쉶
 
 **Files:**
 - Modify: `backend/src/lib/gmail.ts`
-- Create: `backend/src/lib/gmail.test.ts` 확장 (기존 파일에 테스트 추가)
+- Create: `backend/src/lib/gmail.test.ts` ?뺤옣 (湲곗〈 ?뚯씪???뚯뒪??異붽?)
 
 **Interfaces:**
 - Consumes: `AttachmentListItem` (Task 1)
 - Produces: `export async function listAttachmentsForAccount(accessToken: string, accountId: string, maxResults?: number): Promise<AttachmentListItem[]>`
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [x] **Step 1: ?ㅽ뙣?섎뒗 ?뚯뒪???묒꽦**
 
-`backend/src/lib/gmail.test.ts` 최상단의:
+`backend/src/lib/gmail.test.ts` 理쒖긽?⑥쓽:
 
 ```ts
 import { describe, expect, it } from "vitest"
 ```
 
-를 (새 테스트가 `afterEach`로 `globalThis.fetch`를 복원하므로):
+瑜?(???뚯뒪?멸? `afterEach`濡?`globalThis.fetch`瑜?蹂듭썝?섎?濡?:
 
 ```ts
 import { afterEach, describe, expect, it } from "vitest"
 ```
 
-로 바꾼다. 그리고 기존 `import { mapMessageToMail, type GmailMessage } from "./gmail"` 옆에 추가:
+濡?諛붽씔?? 洹몃━怨?湲곗〈 `import { mapMessageToMail, type GmailMessage } from "./gmail"` ?놁뿉 異붽?:
 
 ```ts
 import { listAttachmentsForAccount } from "./gmail"
@@ -196,14 +196,14 @@ describe("listAttachmentsForAccount", () => {
 })
 ```
 
-- [ ] **Step 2: 테스트 실패 확인**
+- [x] **Step 2: ?뚯뒪???ㅽ뙣 ?뺤씤**
 
-Run (backend 디렉터리에서): `npx vitest run src/lib/gmail.test.ts`
-Expected: FAIL — `listAttachmentsForAccount`가 export되지 않음
+Run (backend ?붾젆?곕━?먯꽌): `npx vitest run src/lib/gmail.test.ts`
+Expected: FAIL ??`listAttachmentsForAccount`媛 export?섏? ?딆쓬
 
-- [ ] **Step 3: `batchGetMessages`에 `format` 매개변수 추가**
+- [x] **Step 3: `batchGetMessages`??`format` 留ㅺ컻蹂??異붽?**
 
-`backend/src/lib/gmail.ts:218` (`async function batchGetMessages(accessToken: string, ids: string[]): Promise<GmailMessage[]> {`)부터 시작하는 함수를 아래로 교체:
+`backend/src/lib/gmail.ts:218` (`async function batchGetMessages(accessToken: string, ids: string[]): Promise<GmailMessage[]> {`)遺???쒖옉?섎뒗 ?⑥닔瑜??꾨옒濡?援먯껜:
 
 ```ts
 async function batchGetMessages(accessToken: string, ids: string[], format: "metadata" | "full" = "metadata"): Promise<GmailMessage[]> {
@@ -250,35 +250,35 @@ async function batchGetMessages(accessToken: string, ids: string[], format: "met
       const parsed = JSON.parse(section.slice(jsonStart, jsonEnd + 1)) as GmailMessage
       if (parsed.id) messages.push(parsed)
     } catch {
-      // 파싱 실패한 파트는 건너뛴다 (한 메시지가 개별적으로 404 등을 반환한 경우 등)
+      // ?뚯떛 ?ㅽ뙣???뚰듃??嫄대꼫?대떎 (??硫붿떆吏媛 媛쒕퀎?곸쑝濡?404 ?깆쓣 諛섑솚??寃쎌슦 ??
     }
   }
   return messages
 }
 ```
 
-(바뀐 부분: 시그니처에 `format` 매개변수 추가, 재귀 호출에 `format` 전달, `path` 계산을 `format`에 따라 분기. 나머지는 전부 동일.)
+(諛붾?遺遺? ?쒓렇?덉쿂??`format` 留ㅺ컻蹂??異붽?, ?ш? ?몄텧??`format` ?꾨떖, `path` 怨꾩궛??`format`???곕씪 遺꾧린. ?섎㉧吏???꾨? ?숈씪.)
 
-- [ ] **Step 4: `listAttachmentsForAccount` 구현**
+- [x] **Step 4: `listAttachmentsForAccount` 援ы쁽**
 
-`backend/src/types.ts`에서 `AttachmentListItem`을 가져오도록 `backend/src/lib/gmail.ts:1`의 import를:
+`backend/src/types.ts`?먯꽌 `AttachmentListItem`??媛?몄삤?꾨줉 `backend/src/lib/gmail.ts:1`??import瑜?
 
 ```ts
 import type { AttachmentListItem, Env, GmailAccountRecord, Mail, MailAttachment, MailCategory } from "../types"
 ```
 
-로 바꾸고, `getAttachment` 함수(약 554번째 줄, `export async function getAttachment(`) 바로 앞에 추가:
+濡?諛붽씀怨? `getAttachment` ?⑥닔(??554踰덉㎏ 以? `export async function getAttachment(`) 諛붾줈 ?욎뿉 異붽?:
 
 ```ts
-// 첨부함 화면용 — has:attachment 검색으로 후보를 서버에서 미리 좁힌 뒤, format=full로 배치 조회해서
-// 첨부파일 메타데이터(파일명/크기/타입)를 뽑는다. Gmail은 format=full에서도 첨부파일의 실제
-// 바이트는 안 주고 size/filename/mimeType/attachmentId만 주므로 추가 디코딩이 필요 없다.
+// 泥⑤????붾㈃????has:attachment 寃?됱쑝濡??꾨낫瑜??쒕쾭?먯꽌 誘몃━ 醫곹엺 ?? format=full濡?諛곗튂 議고쉶?댁꽌
+// 泥⑤??뚯씪 硫뷀??곗씠???뚯씪紐??ш린/???瑜?戮묐뒗?? Gmail? format=full?먯꽌??泥⑤??뚯씪???ㅼ젣
+// 諛붿씠?몃뒗 ??二쇨퀬 size/filename/mimeType/attachmentId留?二쇰?濡?異붽? ?붿퐫?⑹씠 ?꾩슂 ?녿떎.
 export async function listAttachmentsForAccount(accessToken: string, accountId: string, maxResults = 100): Promise<AttachmentListItem[]> {
   const params = new URLSearchParams({ maxResults: String(maxResults), q: "has:attachment" })
   const listRes = await fetchWithRetry(`${GMAIL_API_BASE}/messages?${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
-  if (!listRes.ok) throw new Error(`Gmail 첨부파일 검색 실패: ${listRes.status}`)
+  if (!listRes.ok) throw new Error(`Gmail 泥⑤??뚯씪 寃???ㅽ뙣: ${listRes.status}`)
   const listJson = (await listRes.json()) as { messages?: { id: string }[] }
   const ids = listJson.messages?.map((m) => m.id) ?? []
   if (ids.length === 0) return []
@@ -310,19 +310,19 @@ export async function listAttachmentsForAccount(accessToken: string, accountId: 
 }
 ```
 
-`collectAttachments`와 `mapMessageToMail`은 이미 같은 파일에 있으므로(각각 약 362번째, 192번째 줄) 새로 import할 필요 없다.
+`collectAttachments`? `mapMessageToMail`? ?대? 媛숈? ?뚯씪???덉쑝誘濡?媛곴컖 ??362踰덉㎏, 192踰덉㎏ 以? ?덈줈 import???꾩슂 ?녿떎.
 
-- [ ] **Step 5: 테스트 통과 확인**
+- [x] **Step 5: ?뚯뒪???듦낵 ?뺤씤**
 
 Run: `npx vitest run src/lib/gmail.test.ts`
-Expected: PASS (기존 2개 + 새로 추가한 2개, 총 4개)
+Expected: PASS (湲곗〈 2媛?+ ?덈줈 異붽???2媛? 珥?4媛?
 
-- [ ] **Step 6: 전체 백엔드 테스트 + 타입체크**
+- [x] **Step 6: ?꾩껜 諛깆뿏???뚯뒪??+ ??낆껜??*
 
 Run: `npx vitest run && npx tsc --noEmit`
-Expected: 전부 PASS, 타입 에러 없음
+Expected: ?꾨? PASS, ????먮윭 ?놁쓬
 
-- [ ] **Step 7: 커밋**
+- [x] **Step 7: 而ㅻ컠**
 
 ```bash
 git add backend/src/lib/gmail.ts backend/src/lib/gmail.test.ts
@@ -331,40 +331,40 @@ git commit -m "feat: add Gmail attachment-library listing (has:attachment search
 
 ---
 
-## Task 3: IMAP — 계정 하나의 첨부파일 목록 조회
+## Task 3: IMAP ??怨꾩젙 ?섎굹??泥⑤??뚯씪 紐⑸줉 議고쉶
 
 **Files:**
 - Modify: `backend/src/lib/imap.ts`
-- Create: `backend/src/lib/imap-parse.test.ts` 확장 불필요 (아래 참고) — 대신 `backend/src/lib/imap.ts`에 새로 추가하는 함수는 `cloudflare:sockets`에 의존하므로 직접 유닛테스트할 수 없다 (Task 2에서 이 문제를 발견하고 `imap-parse.ts`로 순수 파싱 로직을 뽑아낸 전례가 있음 — 이번엔 새 함수 자체가 소켓 연결이 필수라 뽑아낼 순수 로직이 없다). 수동 확인으로 대체한다 (Step 6 참고).
+- Create: `backend/src/lib/imap-parse.test.ts` ?뺤옣 遺덊븘??(?꾨옒 李멸퀬) ?????`backend/src/lib/imap.ts`???덈줈 異붽??섎뒗 ?⑥닔??`cloudflare:sockets`???섏〈?섎?濡?吏곸젒 ?좊떅?뚯뒪?명븷 ???녿떎 (Task 2?먯꽌 ??臾몄젣瑜?諛쒓껄?섍퀬 `imap-parse.ts`濡??쒖닔 ?뚯떛 濡쒖쭅??戮묒븘???꾨?媛 ?덉쓬 ???대쾲?????⑥닔 ?먯껜媛 ?뚯폆 ?곌껐???꾩닔??戮묒븘???쒖닔 濡쒖쭅???녿떎). ?섎룞 ?뺤씤?쇰줈 ?泥댄븳??(Step 6 李멸퀬).
 
 **Interfaces:**
-- Consumes: `AttachmentListItem` (Task 1), `parseFetchLine`/`parseInternalDate` (`imap-parse.ts`, 이미 import되어 있음), `listMimeAttachments`/`parseHeaderBlock`/`parseFromHeader`/`decodeRfc2047` (`mime.ts`, 이미 import되어 있음)
+- Consumes: `AttachmentListItem` (Task 1), `parseFetchLine`/`parseInternalDate` (`imap-parse.ts`, ?대? import?섏뼱 ?덉쓬), `listMimeAttachments`/`parseHeaderBlock`/`parseFromHeader`/`decodeRfc2047` (`mime.ts`, ?대? import?섏뼱 ?덉쓬)
 - Produces: `export async function imapListAttachments(config: ImapConfig, accountId: string, maxResults?: number): Promise<AttachmentListItem[]>`, `export async function naverListAttachments(email: string, appPassword: string, accountId: string, maxResults?: number): Promise<AttachmentListItem[]>`, `export async function daumListAttachments(email: string, password: string, accountId: string, maxResults?: number): Promise<AttachmentListItem[]>`
 
-- [ ] **Step 1: `Mail`과 나란히 `AttachmentListItem` import**
+- [x] **Step 1: `Mail`怨??섎???`AttachmentListItem` import**
 
-`backend/src/lib/imap.ts:2`의:
+`backend/src/lib/imap.ts:2`??
 
 ```ts
 import type { Mail } from "../types"
 ```
 
-를:
+瑜?
 
 ```ts
 import type { AttachmentListItem, Mail } from "../types"
 ```
 
-로 바꾼다.
+濡?諛붽씔??
 
-- [ ] **Step 2: `imapListAttachments` 구현**
+- [x] **Step 2: `imapListAttachments` 援ы쁽**
 
-`backend/src/lib/imap.ts`의 `imapGetMailDetail` 함수(현재 약 544번째 줄, `export async function imapGetMailDetail(config: ImapConfig, accountId: string, uid: string): Promise<Mail> {`) 바로 앞에 추가:
+`backend/src/lib/imap.ts`??`imapGetMailDetail` ?⑥닔(?꾩옱 ??544踰덉㎏ 以? `export async function imapGetMailDetail(config: ImapConfig, accountId: string, uid: string): Promise<Mail> {`) 諛붾줈 ?욎뿉 異붽?:
 
 ```ts
-// 첨부함 화면용 — "첨부파일 있음" 검색이 표준 IMAP에 없으므로, 최근 메일 범위의 원본 전체를
-// 한 번의 연결로 가져온 뒤 이미 있는 listMimeAttachments로 첨부파일을 추출한다. 이 함수가 정확한
-// 크기까지 계산해주므로 별도 근사치 로직이 필요 없다.
+// 泥⑤????붾㈃????"泥⑤??뚯씪 ?덉쓬" 寃?됱씠 ?쒖? IMAP???놁쑝誘濡? 理쒓렐 硫붿씪 踰붿쐞???먮낯 ?꾩껜瑜?
+// ??踰덉쓽 ?곌껐濡?媛?몄삩 ???대? ?덈뒗 listMimeAttachments濡?泥⑤??뚯씪??異붿텧?쒕떎. ???⑥닔媛 ?뺥솗??
+// ?ш린源뚯? 怨꾩궛?댁＜誘濡?蹂꾨룄 洹쇱궗移?濡쒖쭅???꾩슂 ?녿떎.
 export async function imapListAttachments(config: ImapConfig, accountId: string, maxResults = 100): Promise<AttachmentListItem[]> {
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
@@ -394,7 +394,7 @@ export async function imapListAttachments(config: ImapConfig, accountId: string,
       const headerBlock = idx === -1 ? parsed.literalText : parsed.literalText.slice(0, idx)
       const headers = parseHeaderBlock(headerBlock)
       const { name: fromName, email: fromEmail } = parseFromHeader(headers["from"] ?? "")
-      const subject = decodeRfc2047(headers["subject"] ?? "") || "(제목 없음)"
+      const subject = decodeRfc2047(headers["subject"] ?? "") || "(?쒕ぉ ?놁쓬)"
       const receivedAt = parseInternalDate(parsed.internalDate)
 
       for (const att of attachments) {
@@ -417,9 +417,9 @@ export async function imapListAttachments(config: ImapConfig, accountId: string,
 }
 ```
 
-- [ ] **Step 3: 네이버/다음 얇은 래퍼 추가**
+- [x] **Step 3: ?ㅼ씠踰??ㅼ쓬 ?뉗? ?섑띁 異붽?**
 
-`naverGetMailDetail` 함수(현재 약 698번째 줄) 바로 다음에 추가:
+`naverGetMailDetail` ?⑥닔(?꾩옱 ??698踰덉㎏ 以? 諛붾줈 ?ㅼ쓬??異붽?:
 
 ```ts
 export async function naverListAttachments(email: string, appPassword: string, accountId: string, maxResults = 100): Promise<AttachmentListItem[]> {
@@ -427,7 +427,7 @@ export async function naverListAttachments(email: string, appPassword: string, a
 }
 ```
 
-`daumGetMailDetail` 함수(현재 약 805번째 줄) 바로 다음에 추가:
+`daumGetMailDetail` ?⑥닔(?꾩옱 ??805踰덉㎏ 以? 諛붾줈 ?ㅼ쓬??異붽?:
 
 ```ts
 export async function daumListAttachments(email: string, password: string, accountId: string, maxResults = 100): Promise<AttachmentListItem[]> {
@@ -435,23 +435,23 @@ export async function daumListAttachments(email: string, password: string, accou
 }
 ```
 
-(정확한 삽입 위치는 함수 이름으로 찾을 것 — 이 두 함수도 Task 2 등 앞선 작업으로 줄 번호가 약간 밀렸을 수 있다.)
+(?뺥솗???쎌엯 ?꾩튂???⑥닔 ?대쫫?쇰줈 李얠쓣 寃????????⑥닔??Task 2 ???욎꽑 ?묒뾽?쇰줈 以?踰덊샇媛 ?쎄컙 諛?몄쓣 ???덈떎.)
 
-- [ ] **Step 4: 타입체크**
+- [x] **Step 4: ??낆껜??*
 
-Run (backend 디렉터리에서): `npx tsc --noEmit`
-Expected: 에러 없음
+Run (backend ?붾젆?곕━?먯꽌): `npx tsc --noEmit`
+Expected: ?먮윭 ?놁쓬
 
-- [ ] **Step 5: 전체 백엔드 테스트**
+- [x] **Step 5: ?꾩껜 諛깆뿏???뚯뒪??*
 
 Run: `npx vitest run`
-Expected: 기존 테스트 전부 PASS (이 태스크는 새 테스트를 추가하지 않는다 — Step 0 설명 참고)
+Expected: 湲곗〈 ?뚯뒪???꾨? PASS (???쒖뒪?щ뒗 ???뚯뒪?몃? 異붽??섏? ?딅뒗????Step 0 ?ㅻ챸 李멸퀬)
 
-- [ ] **Step 6: 수동 확인 계획 기록**
+- [x] **Step 6: ?섎룞 ?뺤씤 怨꾪쉷 湲곕줉**
 
-이 함수는 실제 IMAP 서버 연결이 필요해 유닛테스트가 불가능하다. 보고서에 "네이버/다음 실제 계정으로 첨부함 화면을 열어 확인 필요 (Task 6 완료 후 가능)"라고 명시적으로 남긴다.
+???⑥닔???ㅼ젣 IMAP ?쒕쾭 ?곌껐???꾩슂???좊떅?뚯뒪?멸? 遺덇??ν븯?? 蹂닿퀬?쒖뿉 "?ㅼ씠踰??ㅼ쓬 ?ㅼ젣 怨꾩젙?쇰줈 泥⑤????붾㈃???댁뼱 ?뺤씤 ?꾩슂 (Task 6 ?꾨즺 ??媛??"?쇨퀬 紐낆떆?곸쑝濡??④릿??
 
-- [ ] **Step 7: 커밋**
+- [x] **Step 7: 而ㅻ컠**
 
 ```bash
 git add backend/src/lib/imap.ts
@@ -460,19 +460,19 @@ git commit -m "feat: add IMAP attachment-library listing (bounded raw-body scan)
 
 ---
 
-## Task 4: 백엔드 라우트 `GET /api/attachments`
+## Task 4: 諛깆뿏???쇱슦??`GET /api/attachments`
 
 **Files:**
 - Create: `backend/src/routes/attachments.ts`
 - Modify: `backend/src/routes/api.ts`
 
 **Interfaces:**
-- Consumes: `listAttachmentsForAccount` (Task 2), `naverListAttachments`/`daumListAttachments`/`imapListAttachments` (Task 3), `resolveAccounts`/`ensureFreshToken`/`gmailTokenPatchOf`/`persistAccountTokenRefresh` (`../lib/auth`, `../lib/gmail` — 기존 함수, `routes/rules.ts`가 이미 같은 조합을 쓰고 있음), `readRawCookie`/`SESSION_COOKIE`/`readSession` (기존)
-- Produces: `GET /api/attachments` → `{ attachments: AttachmentListItem[] }`
+- Consumes: `listAttachmentsForAccount` (Task 2), `naverListAttachments`/`daumListAttachments`/`imapListAttachments` (Task 3), `resolveAccounts`/`ensureFreshToken`/`gmailTokenPatchOf`/`persistAccountTokenRefresh` (`../lib/auth`, `../lib/gmail` ??湲곗〈 ?⑥닔, `routes/rules.ts`媛 ?대? 媛숈? 議고빀???곌퀬 ?덉쓬), `readRawCookie`/`SESSION_COOKIE`/`readSession` (湲곗〈)
+- Produces: `GET /api/attachments` ??`{ attachments: AttachmentListItem[] }`
 
-- [ ] **Step 1: 라우트 파일 작성**
+- [x] **Step 1: ?쇱슦???뚯씪 ?묒꽦**
 
-`backend/src/routes/attachments.ts` 신설 — `backend/src/routes/rules.ts`의 `/rules/:id/apply` 라우트(계정별 `Promise.all` + try/catch + 토큰 갱신 패턴)를 그대로 본뜬다:
+`backend/src/routes/attachments.ts` ?좎꽕 ??`backend/src/routes/rules.ts`??`/rules/:id/apply` ?쇱슦??怨꾩젙蹂?`Promise.all` + try/catch + ?좏겙 媛깆떊 ?⑦꽩)瑜?洹몃?濡?蹂몃쑍??
 
 ```ts
 import { Hono } from "hono"
@@ -528,9 +528,9 @@ attachments.get("/attachments", async (c) => {
 export default attachments
 ```
 
-- [ ] **Step 2: `routes/api.ts`에 마운트**
+- [x] **Step 2: `routes/api.ts`??留덉슫??*
 
-`backend/src/routes/api.ts:1-17`을:
+`backend/src/routes/api.ts:1-17`??
 
 ```ts
 import { Hono } from "hono"
@@ -541,7 +541,7 @@ import backup from "./backup"
 import folders from "./folders"
 ```
 
-로 바꾸고 (기존 `import accounts from "./accounts"` 다음 줄에 `attachments` import 한 줄만 추가), 아래쪽 라우트 등록부:
+濡?諛붽씀怨?(湲곗〈 `import accounts from "./accounts"` ?ㅼ쓬 以꾩뿉 `attachments` import ??以꾨쭔 異붽?), ?꾨옒履??쇱슦???깅줉遺:
 
 ```ts
 api.route("/", accounts)
@@ -550,14 +550,14 @@ api.route("/", backup)
 api.route("/", folders)
 ```
 
-(기존 `api.route("/", accounts)` 다음 줄에 `api.route("/", attachments)` 한 줄만 추가.)
+(湲곗〈 `api.route("/", accounts)` ?ㅼ쓬 以꾩뿉 `api.route("/", attachments)` ??以꾨쭔 異붽?.)
 
-- [ ] **Step 3: 타입체크 + 전체 테스트**
+- [x] **Step 3: ??낆껜??+ ?꾩껜 ?뚯뒪??*
 
-Run (backend 디렉터리에서): `npx tsc --noEmit && npx vitest run`
-Expected: 타입 에러 없음, 모든 테스트 PASS
+Run (backend ?붾젆?곕━?먯꽌): `npx tsc --noEmit && npx vitest run`
+Expected: ????먮윭 ?놁쓬, 紐⑤뱺 ?뚯뒪??PASS
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 而ㅻ컠**
 
 ```bash
 git add backend/src/routes/attachments.ts backend/src/routes/api.ts
@@ -566,19 +566,19 @@ git commit -m "feat: add GET /api/attachments route"
 
 ---
 
-## Task 5: 프런트 — `AttachmentsView` 화면
+## Task 5: ?꾨윴????`AttachmentsView` ?붾㈃
 
 **Files:**
 - Modify: `frontend/src/lib/api.ts`
 - Create: `frontend/src/components/attachments/attachments-view.tsx`
 
 **Interfaces:**
-- Consumes: `AttachmentListItem` (Task 1), `attachmentDownloadUrl` (이미 `frontend/src/lib/api.ts`에 있음)
+- Consumes: `AttachmentListItem` (Task 1), `attachmentDownloadUrl` (?대? `frontend/src/lib/api.ts`???덉쓬)
 - Produces: `export async function fetchAttachments(): Promise<AttachmentListItem[]>`, `export function AttachmentsView(props: { accounts: Account[] })`
 
-- [ ] **Step 1: `fetchAttachments` 추가**
+- [x] **Step 1: `fetchAttachments` 異붽?**
 
-`frontend/src/lib/api.ts`에서 `export function attachmentDownloadUrl(...)` 함수 바로 앞에 추가:
+`frontend/src/lib/api.ts`?먯꽌 `export function attachmentDownloadUrl(...)` ?⑥닔 諛붾줈 ?욎뿉 異붽?:
 
 ```ts
 export async function fetchAttachments(): Promise<AttachmentListItem[]> {
@@ -590,15 +590,15 @@ export async function fetchAttachments(): Promise<AttachmentListItem[]> {
 
 ```
 
-파일 최상단 import 줄(`import type { Account, AppNotification, AutoClassifyRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"`)에 `AttachmentListItem`을 알파벳 순서로 추가:
+?뚯씪 理쒖긽??import 以?`import type { Account, AppNotification, AutoClassifyRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"`)??`AttachmentListItem`???뚰뙆踰??쒖꽌濡?異붽?:
 
 ```ts
 import type { Account, AppNotification, AttachmentListItem, AutoClassifyRule, Contact, Draft, ForwardedAttachmentRef, Mail, MailAttachment, MailCategory, MailFolder, MemoItem, QuickReply, SavedFilter } from "@/types/mail"
 ```
 
-- [ ] **Step 2: `AttachmentsView` 컴포넌트 작성**
+- [x] **Step 2: `AttachmentsView` 而댄룷?뚰듃 ?묒꽦**
 
-`frontend/src/components/attachments/attachments-view.tsx` 신설:
+`frontend/src/components/attachments/attachments-view.tsx` ?좎꽕:
 
 ```tsx
 import { File, FileArchive, FileSpreadsheet, FileText, Image as ImageIcon, Loader2, Search } from "lucide-react"
@@ -664,8 +664,8 @@ export function AttachmentsView({ accounts }: AttachmentsViewProps) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-col gap-3 border-b bg-background px-5 py-4">
         <div>
-          <h2 className="text-lg font-semibold">첨부함</h2>
-          <p className="text-muted-foreground text-xs">모든 계정에서 받은 첨부파일을 최근 순으로 모아 보여줍니다 (계정당 최근 100통 범위).</p>
+          <h2 className="text-lg font-semibold">泥⑤???/h2>
+          <p className="text-muted-foreground text-xs">紐⑤뱺 怨꾩젙?먯꽌 諛쏆? 泥⑤??뚯씪??理쒓렐 ?쒖쑝濡?紐⑥븘 蹂댁뿬以띾땲??(怨꾩젙??理쒓렐 100??踰붿쐞).</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative min-w-0 flex-1">
@@ -674,7 +674,7 @@ export function AttachmentsView({ accounts }: AttachmentsViewProps) {
               type="text"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="파일명 검색"
+              placeholder="?뚯씪紐?寃??
               className="bg-muted/50 focus:bg-background focus:ring-ring/40 h-10 w-full rounded-lg border border-transparent py-2 pr-3 pl-9 text-sm outline-none transition-all focus:border-border focus:ring-2"
             />
           </div>
@@ -683,7 +683,7 @@ export function AttachmentsView({ accounts }: AttachmentsViewProps) {
             onChange={(event) => setAccountFilter(event.target.value)}
             className="h-10 rounded-md border bg-background px-3 text-sm"
           >
-            <option value="all">전체 계정</option>
+            <option value="all">?꾩껜 怨꾩젙</option>
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>{accountLabel(account)}</option>
             ))}
@@ -700,7 +700,7 @@ export function AttachmentsView({ accounts }: AttachmentsViewProps) {
           )}
           {!isLoading && filtered.length === 0 && (
             <p className="text-muted-foreground p-6 text-sm">
-              {items.length === 0 ? "첨부파일이 있는 메일이 없습니다." : "검색 결과가 없습니다."}
+              {items.length === 0 ? "泥⑤??뚯씪???덈뒗 硫붿씪???놁뒿?덈떎." : "寃??寃곌낵媛 ?놁뒿?덈떎."}
             </p>
           )}
           {!isLoading && filtered.map((item) => {
@@ -723,7 +723,7 @@ export function AttachmentsView({ accounts }: AttachmentsViewProps) {
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{item.filename}</p>
                   <p className="text-muted-foreground truncate text-xs">
-                    {item.fromName} · {account ? accountLabel(account) : item.fromEmail} · {formatDate(item.receivedAt)}
+                    {item.fromName} 쨌 {account ? accountLabel(account) : item.fromEmail} 쨌 {formatDate(item.receivedAt)}
                   </p>
                 </div>
                 <span className="text-muted-foreground shrink-0 text-xs">{formatFileSize(item.size)}</span>
@@ -737,12 +737,12 @@ export function AttachmentsView({ accounts }: AttachmentsViewProps) {
 }
 ```
 
-- [ ] **Step 3: 타입체크 + 빌드**
+- [x] **Step 3: ??낆껜??+ 鍮뚮뱶**
 
-Run (frontend 디렉터리에서): `npx tsc -b && npm run build`
-Expected: 에러 없음 (이 시점에서는 아직 아무도 `AttachmentsView`/`fetchAttachments`를 호출하지 않으므로, "사용 안 함" 경고가 나면 안 되고 — 둘 다 export되어 있으니 빌드 자체는 통과해야 한다)
+Run (frontend ?붾젆?곕━?먯꽌): `npx tsc -b && npm run build`
+Expected: ?먮윭 ?놁쓬 (???쒖젏?먯꽌???꾩쭅 ?꾨Т??`AttachmentsView`/`fetchAttachments`瑜??몄텧?섏? ?딆쑝誘濡? "?ъ슜 ???? 寃쎄퀬媛 ?섎㈃ ???섍퀬 ??????export?섏뼱 ?덉쑝??鍮뚮뱶 ?먯껜???듦낵?댁빞 ?쒕떎)
 
-- [ ] **Step 4: 커밋**
+- [x] **Step 4: 而ㅻ컠**
 
 ```bash
 git add frontend/src/lib/api.ts frontend/src/components/attachments/attachments-view.tsx
@@ -751,7 +751,7 @@ git commit -m "feat: add AttachmentsView component"
 
 ---
 
-## Task 6: 사이드바/네비게이션 연결
+## Task 6: ?ъ씠?쒕컮/?ㅻ퉬寃뚯씠???곌껐
 
 **Files:**
 - Modify: `frontend/src/hooks/use-mail-workspace.ts`
@@ -761,55 +761,55 @@ git commit -m "feat: add AttachmentsView component"
 **Interfaces:**
 - Consumes: `AttachmentsView` (Task 5)
 
-- [ ] **Step 1: `AppView`에 `"attachments"` 추가**
+- [x] **Step 1: `AppView`??`"attachments"` 異붽?**
 
-`frontend/src/hooks/use-mail-workspace.ts:32`의:
+`frontend/src/hooks/use-mail-workspace.ts:32`??
 
 ```ts
 export type AppView = "home" | "inbox" | "starred" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts" | "snoozed" | "muted"
 ```
 
-를:
+瑜?
 
 ```ts
 export type AppView = "home" | "inbox" | "starred" | "cleanup" | "trash" | "folder" | "archive" | "memo" | "drafts" | "snoozed" | "muted" | "attachments"
 ```
 
-로 바꾼다.
+濡?諛붽씔??
 
-- [ ] **Step 2: 사이드바에 "첨부함" 메뉴 항목 추가**
+- [x] **Step 2: ?ъ씠?쒕컮??"泥⑤??? 硫붾돱 ??ぉ 異붽?**
 
-`frontend/src/components/mail/account-sidebar.tsx:1`의 lucide-react import에 `Paperclip` 추가:
+`frontend/src/components/mail/account-sidebar.tsx:1`??lucide-react import??`Paperclip` 異붽?:
 
 ```ts
 import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, LogOut, Paperclip, Pencil, Plus, Settings, Sparkles, Star, StickyNote, Trash2, VolumeX } from "lucide-react"
 ```
 
-`AccountSidebarProps` 인터페이스에서 `isArchiveView: boolean` 다음 줄에 추가:
+`AccountSidebarProps` ?명꽣?섏씠?ㅼ뿉??`isArchiveView: boolean` ?ㅼ쓬 以꾩뿉 異붽?:
 
 ```ts
   isAttachmentsView: boolean
 ```
 
-같은 인터페이스에서 `onGoArchive: () => void` 다음 줄에 추가:
+媛숈? ?명꽣?섏씠?ㅼ뿉??`onGoArchive: () => void` ?ㅼ쓬 以꾩뿉 異붽?:
 
 ```ts
   onGoAttachments: () => void
 ```
 
-컴포넌트 함수의 구조분해 매개변수에서 `isArchiveView,` 다음 줄에 추가:
+而댄룷?뚰듃 ?⑥닔??援ъ“遺꾪빐 留ㅺ컻蹂?섏뿉??`isArchiveView,` ?ㅼ쓬 以꾩뿉 異붽?:
 
 ```ts
   isAttachmentsView,
 ```
 
-그리고 `onGoArchive,` 다음 줄에 추가:
+洹몃━怨?`onGoArchive,` ?ㅼ쓬 以꾩뿉 異붽?:
 
 ```ts
   onGoAttachments,
 ```
 
-"보관함" `SidebarMenuItem` 블록(아래 JSX, `<Archive />` 다음에 `<span>보관함</span>`이 있는 부분) 바로 다음에 새 항목 추가:
+"蹂닿??? `SidebarMenuItem` 釉붾줉(?꾨옒 JSX, `<Archive />` ?ㅼ쓬??`<span>蹂닿???/span>`???덈뒗 遺遺? 諛붾줈 ?ㅼ쓬??????ぉ 異붽?:
 
 ```tsx
               <SidebarMenuItem>
@@ -821,14 +821,14 @@ import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, 
                   }}
                 >
                   <Paperclip />
-                  <span>첨부함</span>
+                  <span>泥⑤???/span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 ```
 
-- [ ] **Step 3: App.tsx — `goToAttachments` 핸들러 + 렌더링 분기**
+- [x] **Step 3: App.tsx ??`goToAttachments` ?몃뱾??+ ?뚮뜑留?遺꾧린**
 
-`frontend/src/App.tsx`에서 `goToDrafts` 함수(약 401번째 줄) 바로 다음에 추가 (데이터 프리로드가 없는 `goToDrafts`/`goToSnooze`/`goToMuted`와 같은 형태 — `AttachmentsView`가 스스로 데이터를 가져오므로 여기서 로드 호출이 필요 없다):
+`frontend/src/App.tsx`?먯꽌 `goToDrafts` ?⑥닔(??401踰덉㎏ 以? 諛붾줈 ?ㅼ쓬??異붽? (?곗씠???꾨━濡쒕뱶媛 ?녿뒗 `goToDrafts`/`goToSnooze`/`goToMuted`? 媛숈? ?뺥깭 ??`AttachmentsView`媛 ?ㅼ뒪濡??곗씠?곕? 媛?몄삤誘濡??ш린??濡쒕뱶 ?몄텧???꾩슂 ?녿떎):
 
 ```ts
   const goToAttachments = () => {
@@ -840,26 +840,26 @@ import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, 
   }
 ```
 
-`<AccountSidebar>` JSX 호출부(약 969번째 줄부터)에서 `isArchiveView={view === "archive"}` 다음 줄에 추가:
+`<AccountSidebar>` JSX ?몄텧遺(??969踰덉㎏ 以꾨????먯꽌 `isArchiveView={view === "archive"}` ?ㅼ쓬 以꾩뿉 異붽?:
 
 ```tsx
         isAttachmentsView={view === "attachments"}
 ```
 
-같은 JSX에서 `onGoArchive={goToArchive}` 다음 줄에 추가:
+媛숈? JSX?먯꽌 `onGoArchive={goToArchive}` ?ㅼ쓬 以꾩뿉 異붽?:
 
 ```tsx
         onGoAttachments={goToAttachments}
 ```
 
-헤더 타이틀 삼항연산자 체인(약 1018번째 줄 `: view === "archive" ? "보관함"` 다음)에 추가:
+?ㅻ뜑 ??댄? ?쇳빆?곗궛??泥댁씤(??1018踰덉㎏ 以?`: view === "archive" ? "蹂닿???` ?ㅼ쓬)??異붽?:
 
 ```tsx
                     : view === "attachments"
-                      ? "첨부함"
+                      ? "泥⑤???
 ```
 
-렌더링 분기(약 1139번째 줄 `) : view === "memo" ? (` 바로 앞, 즉 `TrashView`를 렌더링하는 `) : view === "trash" ? (` 블록이 끝나는 지점) 바로 다음에 새 분기 추가 — `MemoView` 분기 앞에 끼워넣는다:
+?뚮뜑留?遺꾧린(??1139踰덉㎏ 以?`) : view === "memo" ? (` 諛붾줈 ?? 利?`TrashView`瑜??뚮뜑留곹븯??`) : view === "trash" ? (` 釉붾줉???앸굹??吏?? 諛붾줈 ?ㅼ쓬????遺꾧린 異붽? ??`MemoView` 遺꾧린 ?욎뿉 ?쇱썙?ｋ뒗??
 
 ```tsx
         ) : view === "attachments" ? (
@@ -867,41 +867,42 @@ import { AlarmClock, Archive, ChevronDown, FileEdit, Folder, FolderPlus, Inbox, 
         ) : view === "memo" ? (
 ```
 
-(기존 `) : view === "memo" ? (` 줄을 위 3줄로 교체하는 것과 동일 — 새 분기를 추가하고 그다음에 원래 있던 `view === "memo"` 분기가 이어지게.)
+(湲곗〈 `) : view === "memo" ? (` 以꾩쓣 ??3以꾨줈 援먯껜?섎뒗 寃껉낵 ?숈씪 ????遺꾧린瑜?異붽??섍퀬 洹몃떎?뚯뿉 ?먮옒 ?덈뜕 `view === "memo"` 遺꾧린媛 ?댁뼱吏寃?)
 
-`App.tsx` 최상단 import 목록에 `AttachmentsView` 추가 — `import { CleanupView, SHORTCUTS } from "@/components/cleanup/cleanup-view"` 다음 줄에:
+`App.tsx` 理쒖긽??import 紐⑸줉??`AttachmentsView` 異붽? ??`import { CleanupView, SHORTCUTS } from "@/components/cleanup/cleanup-view"` ?ㅼ쓬 以꾩뿉:
 
 ```ts
 import { AttachmentsView } from "@/components/attachments/attachments-view"
 ```
 
-- [ ] **Step 4: 타입체크 + 빌드**
+- [x] **Step 4: ??낆껜??+ 鍮뚮뱶**
 
-Run (frontend 디렉터리에서): `npx tsc -b && npm run build`
-Expected: 에러 없음
+Run (frontend ?붾젆?곕━?먯꽌): `npx tsc -b && npm run build`
+Expected: ?먮윭 ?놁쓬
 
-- [ ] **Step 5: 전체 테스트**
+- [x] **Step 5: ?꾩껜 ?뚯뒪??*
 
 Run: `npx vitest run` (frontend), `cd ../backend && npx vitest run`
-Expected: 전부 PASS
+Expected: ?꾨? PASS
 
-- [ ] **Step 6: 로컬 수동 확인**
+- [x] **Step 6: 濡쒖뺄 ?섎룞 ?뺤씤**
 
-Run: `npx wrangler dev`(backend) + `npx vite --port 5183`(frontend), 실제 로그인 계정으로:
-1. 사이드바에 "첨부함" 항목이 보이는지, 클릭하면 화면이 열리는지
-2. Gmail 계정에 첨부파일 있는 메일이 있으면 목록에 나오는지
-3. 네이버/다음 계정이 연결되어 있으면 그쪽 첨부파일도 같이 나오는지 (Task 3에서 유닛테스트로
-   확인 못 한 부분 — 여기서 처음 실제로 검증됨)
-4. 파일명 검색, 계정 필터가 동작하는지
-5. 다운로드 버튼을 눌러 실제로 파일이 받아지는지 (기존 `/mail/:id/attachment/:attachmentId`
-   라우트를 그대로 쓰므로 정상 동작해야 함)
-6. 계정 중 하나가 로그인 만료 등으로 실패해도 나머지 계정 결과는 나오는지 (하나만 일부러 끊어보긴
-   어려우므로, 최소한 백엔드 로그에 `[attachments] account X failed, skipping` 형태로만 남고
-   500 에러로 전체가 죽지 않는지 코드 리뷰로 확인)
+Run: `npx wrangler dev`(backend) + `npx vite --port 5183`(frontend), ?ㅼ젣 濡쒓렇??怨꾩젙?쇰줈:
+1. ?ъ씠?쒕컮??"泥⑤??? ??ぉ??蹂댁씠?붿?, ?대┃?섎㈃ ?붾㈃???대━?붿?
+2. Gmail 怨꾩젙??泥⑤??뚯씪 ?덈뒗 硫붿씪???덉쑝硫?紐⑸줉???섏삤?붿?
+3. ?ㅼ씠踰??ㅼ쓬 怨꾩젙???곌껐?섏뼱 ?덉쑝硫?洹몄そ 泥⑤??뚯씪??媛숈씠 ?섏삤?붿? (Task 3?먯꽌 ?좊떅?뚯뒪?몃줈
+   ?뺤씤 紐???遺遺????ш린??泥섏쓬 ?ㅼ젣濡?寃利앸맖)
+4. ?뚯씪紐?寃?? 怨꾩젙 ?꾪꽣媛 ?숈옉?섎뒗吏
+5. ?ㅼ슫濡쒕뱶 踰꾪듉???뚮윭 ?ㅼ젣濡??뚯씪??諛쏆븘吏?붿? (湲곗〈 `/mail/:id/attachment/:attachmentId`
+   ?쇱슦?몃? 洹몃?濡??곕?濡??뺤긽 ?숈옉?댁빞 ??
+6. 怨꾩젙 以??섎굹媛 濡쒓렇??留뚮즺 ?깆쑝濡??ㅽ뙣?대룄 ?섎㉧吏 怨꾩젙 寃곌낵???섏삤?붿? (?섎굹留??쇰????딆뼱蹂닿릿
+   ?대젮?곕?濡? 理쒖냼??諛깆뿏??濡쒓렇??`[attachments] account X failed, skipping` ?뺥깭濡쒕쭔 ?④퀬
+   500 ?먮윭濡??꾩껜媛 二쎌? ?딅뒗吏 肄붾뱶 由щ럭濡??뺤씤)
 
-- [ ] **Step 7: 커밋**
+- [x] **Step 7: 而ㅻ컠**
 
 ```bash
 git add frontend/src/hooks/use-mail-workspace.ts frontend/src/components/mail/account-sidebar.tsx frontend/src/App.tsx
 git commit -m "feat: wire the attachment library into the sidebar and navigation"
 ```
+

@@ -180,8 +180,8 @@ Gmail·네이버 대비 기능 비교 + 기술 부채 기준으로 우선순위�
 
 | # | 항목 | 설명 |
 |---|------|------|
-| T1 | **계획 파일 체크박스 업데이트** | `docs/superpowers/plans/2026-08-29-thread-view.md`, `attachment-library.md` — 구현 완료됐지만 체크박스 미업데이트 |
-| T2 | **`assignmentKey` 코드 주석** | CLAUDE.md에 경위가 있지만 실제 함수 위에 한 줄 경고 주석 없음 |
+| T1 | **계획 파일 체크박스 업데이트** | ✅ 완료 — `thread-view.md`, `attachment-library.md` 전체 체크박스 완료 처리 |
+| T2 | **`assignmentKey` 코드 주석** | ✅ 완료 — `mailOrg.ts:10-18`에 이미 상세 경고 주석 존재 |
 
 ---
 
