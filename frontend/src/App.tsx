@@ -558,7 +558,8 @@ function App() {
     }
 
     return (
-      `<br><br>` +
+      `<p><br></p>` +
+      `<div style="border-top:1px solid #e5e7eb;padding-top:8px;margin:4px 0 12px;color:#6b7280;font-size:12px">---------- 내 메일 ----------</div>` +
       `<div style="border-left:3px solid #d1d5db;margin:0;padding:0 0 0 12px;color:#6b7280;font-size:13px">` +
       `<div style="margin-bottom:8px">---------- 원본 메일 ----------<br>${headerHtml}</div>` +
       `<div style="color:inherit">${bodyHtml}</div>` +
