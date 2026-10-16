@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "frontend/src/components/mail/message-card.tsx"
+        ],
+        "createdAt": "2026-10-16T03:17:21.557Z",
+        "reason": "regex replacement string in buildIframeDoc injects attributes into email body img tags at runtime, not a rendered img element"
+      }
+    ]
+  }
+}

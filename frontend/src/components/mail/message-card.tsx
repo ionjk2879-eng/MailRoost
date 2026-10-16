@@ -1,4 +1,4 @@
-import { Archive, Check, Clock, Download, Eye, FileDown, Folder, FolderInput, Forward, Inbox, MailOpen, MoreHorizontal, Paperclip, Reply, ReplyAll, Star, StickyNote, Trash2, VolumeX, X } from "lucide-react"
+import { Archive, Check, Clock, Download, Eye, FileDown, Folder, FolderInput, Forward, Inbox, MailOpen, MoreHorizontal, Paperclip, Printer, Reply, ReplyAll, Star, StickyNote, Trash2, VolumeX, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -131,6 +131,37 @@ function LinkifiedText({ text }: { text: string }) {
   </p>
 }
 
+function buildPrintDoc(mail: Mail): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+  const header = `<div style="margin-bottom:24px;padding-bottom:12px;border-bottom:1px solid #ccc;font-family:system-ui,sans-serif">
+    <h1 style="font-size:18px;font-weight:600;margin:0 0 10px;line-height:1.3">${esc(mail.subject || "(제목 없음)")}</h1>
+    <div style="font-size:13px;color:#555">보낸사람: ${esc(mail.fromName ? `${mail.fromName} <${mail.fromEmail}>` : mail.fromEmail)}</div>
+    <div style="font-size:13px;color:#555;margin-top:2px">날짜: ${formatFullDate(mail.receivedAt)}</div>
+  </div>`
+  const inlineImages = new Map(
+    (mail.attachments ?? [])
+      .filter((a) => a.contentId)
+      .map((a) => [a.contentId!.toLowerCase(), inlineAttachmentUrl(mail.id, mail.accountId, a)]),
+  )
+  const bodyContent = mail.bodyHtml
+    ? mail.bodyHtml.replace(
+        /\b(src|background)\s*=\s*(["'])cid:([^"']+)\2/gi,
+        (_m, attr: string, q: string, raw: string) => {
+          let cid = raw; try { cid = decodeURIComponent(raw) } catch { /* use raw */ }
+          cid = cid.replace(/^<|>$/g, "").toLowerCase()
+          const url = inlineImages.get(cid)
+          return url ? `${attr}=${q}${url}${q}` : _m
+        },
+      )
+    : `<pre style="font-family:system-ui,sans-serif;font-size:14px;line-height:1.7;white-space:pre-wrap">${esc(mail.body)}</pre>`
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(mail.subject)}</title>
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.6;padding:24px;margin:0;color:#1a1a1a;background:#fff;word-wrap:break-word}
+  img{max-width:100%;height:auto}table{max-width:100%}a{color:#2563eb}
+  @media print{@page{margin:1.5cm}}
+</style></head><body>${header}${bodyContent}</body></html>`
+}
+
 export function MessageCard({
   mail,
   accounts,
@@ -153,6 +184,15 @@ export function MessageCard({
   onClose,
 }: MessageCardProps) {
   const [previewAttachment, setPreviewAttachment] = useState<MailAttachment | null>(null)
+
+  const handlePrint = () => {
+    const win = window.open("", "_blank")
+    if (!win) return
+    win.document.write(buildPrintDoc(mail))
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 300)
+  }
   const cardRef = useRef<HTMLDivElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
 
@@ -334,6 +374,9 @@ export function MessageCard({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+            <Button variant="ghost" size="icon" className="size-8" title="인쇄" onClick={handlePrint}>
+              <Printer className="size-4" />
+            </Button>
             <div className="mx-1 h-5 w-px shrink-0 bg-border" />
             <Button variant="ghost" size="icon" className="hover:text-destructive size-8" title="삭제" onClick={() => onDelete?.(mail.id, mail.accountId)}>
               <Trash2 className="size-4" />
