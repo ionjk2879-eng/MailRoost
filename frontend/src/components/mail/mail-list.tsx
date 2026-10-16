@@ -1,4 +1,4 @@
-import { Archive, Check, ChevronDown, Folder, FolderInput, Inbox, Loader2, MailOpen, Minus, PanelRightOpen, Star, StarOff, Trash2, X } from "lucide-react"
+import { Archive, Check, ChevronDown, Folder, FolderInput, Inbox, Loader2, MailOpen, Minus, PanelRightOpen, Reply, Star, StarOff, Trash2, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { SenderIcon } from "@/components/mail/sender-icon"
@@ -11,10 +11,22 @@ type SelectFilter = "all" | "none" | "read" | "unread" | "starred" | "unstarred"
 // "전체 선택" 모드에서 실제로 서버 전체를 대상으로 삼을 수 있는 필터 (all/none은 의미가 없어 제외).
 type FilterSelectAllFilter = Exclude<SelectFilter, "all" | "none">
 
+function Highlight({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text}</>
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const parts = text.split(new RegExp(`(${escaped})`, "gi"))
+  return <>{parts.map((part, i) =>
+    part.toLowerCase() === query.toLowerCase()
+      ? <mark key={i} className="rounded-[2px] bg-yellow-200/90 px-px text-yellow-900 dark:bg-yellow-500/30 dark:text-yellow-200">{part}</mark>
+      : part
+  )}</>
+}
+
 interface MailListProps {
   mails: Mail[]
   selectedMailId: string | null
   onSelectMail: (mailId: string) => void
+  searchQuery?: string
   // J/K 키보드 탐색 포커스 (열려있는 메일과는 별개)
   focusedMailId?: string | null
   onToggleStar: (mailId: string, accountId: string, starred: boolean) => void
@@ -47,6 +59,7 @@ interface MailListProps {
   groupThreads?: boolean
   // 참고용 사이드 패널에 이 메일을 띄운다 (데스크톱 전용, 제공되지 않으면 버튼 자체를 숨김).
   onOpenReference?: (mailId: string, accountId: string) => void
+  onQuickReply?: (mail: Mail) => void
 }
 
 function formatTime(iso: string): string {
@@ -109,6 +122,8 @@ export function MailList({
   onLoadMore,
   groupThreads = true,
   onOpenReference,
+  onQuickReply,
+  searchQuery = "",
 }: MailListProps) {
   const groups = groupThreads ? groupIntoThreads(mails) : mails.map((mail) => [mail])
   const [filterOpen, setFilterOpen] = useState(false)
@@ -440,7 +455,7 @@ export function MailList({
 
                   <SenderIcon email={mail.fromEmail} senderName={mail.fromName} className="size-6 rounded-md" />
                   <span className={cn("min-w-0 flex-1 truncate text-[13px]", !mail.isRead && "font-semibold text-foreground")}>
-                    {mail.fromName}
+                    <Highlight text={mail.fromName} query={searchQuery} />
                   </span>
                   {group.length > 1 && (
                     <span className="text-muted-foreground shrink-0 text-[11px] font-medium">{group.length}</span>
@@ -457,8 +472,19 @@ export function MailList({
                     )}
                   </span>
                   <span className={cn("min-w-0 flex-1 truncate text-[13px]", !mail.isRead && "font-semibold")}>
-                    {mail.subject}
+                    <Highlight text={mail.subject} query={searchQuery} />
                   </span>
+                  {onQuickReply && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onQuickReply(mail) }}
+                      className="inline-flex shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-40 hover:!opacity-70 lg:opacity-0 max-lg:opacity-40"
+                      aria-label="빠른 답장"
+                      title="빠른 답장"
+                    >
+                      <Reply className="text-muted-foreground size-3.5" />
+                    </button>
+                  )}
                   {onOpenReference && (
                     <button
                       type="button"
@@ -497,7 +523,7 @@ export function MailList({
                 </div>
 
                 <span className="text-muted-foreground w-full min-w-0 truncate pl-6 text-xs">
-                  {mail.snippet}
+                  <Highlight text={mail.snippet} query={searchQuery} />
                 </span>
               </button>
             )

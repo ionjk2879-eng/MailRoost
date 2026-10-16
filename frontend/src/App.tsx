@@ -875,6 +875,8 @@ function App() {
           onLoadMore={workspace.handleLoadMore}
           groupThreads={!workspace.searchQuery}
           onOpenReference={openReferenceMail}
+          searchQuery={workspace.searchQuery}
+          onQuickReply={handleReply}
         />
       </div>
     </div>
@@ -950,6 +952,7 @@ function App() {
       currentFolderId={selectedFolderId ?? undefined}
       onBulkMove={workspace.handleBulkMoveFromFolder}
       onOpenReference={openReferenceMail}
+      onQuickReply={handleReply}
     />
   )
 
