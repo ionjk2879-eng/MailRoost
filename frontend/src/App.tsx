@@ -1084,16 +1084,6 @@ function App() {
         onDeleteFolder={handleDeleteFolder}
         onReorderFolders={mailOrg.handleReorderFolders}
         onReorderAccounts={workspace.handleReorderAccounts}
-        onDropMailToStarred={(mailId, accountId) => {
-          workspace.handleToggleStar(mailId, accountId, true)
-        }}
-        onDropMailToArchive={(mailId, accountId) => {
-          if (view === "folder") {
-            workspace.handleMoveMailFromFolder(mailId, accountId, ARCHIVE_FOLDER_ID)
-          } else {
-            workspace.handleMoveMailFromInbox(mailId, accountId, ARCHIVE_FOLDER_ID)
-          }
-        }}
         onDropMailToFolder={(folderId, mailId, accountId, fromEmail, _fromName) => {
           if (view === "folder") {
             workspace.handleMoveMailFromFolder(mailId, accountId, folderId)
