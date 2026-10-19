@@ -28,6 +28,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import { Link } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import type { Account, MailFolder } from "@/types/mail"
 
@@ -579,6 +580,10 @@ export function AccountSidebar({
             로그아웃
           </Button>
         )}
+        <div className="flex gap-3 px-2 pt-1">
+          <Link to="/privacy" className="text-muted-foreground/60 hover:text-muted-foreground text-[11px]">개인정보처리방침</Link>
+          <Link to="/terms" className="text-muted-foreground/60 hover:text-muted-foreground text-[11px]">이용약관</Link>
+        </div>
       </SidebarFooter>
 
       <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
