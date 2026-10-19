@@ -10,7 +10,7 @@ const PREVIEW_MAILS = mockMails.slice(0, 3)
 
 export function LandingView() {
   return (
-    <div className="relative min-h-svh overflow-hidden bg-[#fffaf5] text-zinc-950 dark:bg-background dark:text-foreground">
+    <div className="relative min-h-svh overflow-x-hidden bg-[#fffaf5] text-zinc-950 dark:bg-background dark:text-foreground">
       {/* 우측 상단에서 번지는 브랜드 온기 */}
       <div
         className="pointer-events-none absolute right-0 top-0 h-full w-2/3 opacity-70"
