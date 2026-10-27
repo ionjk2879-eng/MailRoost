@@ -9,7 +9,7 @@ interface TrashViewProps {
   accounts: Account[]
   mails: Mail[]
   isLoading: boolean
-  hasMore: boolean
+  nextCursor: string | null
   isLoadingMore: boolean
   onLoadMore: () => void
   onEmptyAccount: (accountId: string) => Promise<void>
@@ -34,11 +34,22 @@ function accountLabel(account: Account): string {
     : account.label
 }
 
+// 서버 커서는 계정별 "다음 페이지" 정보를 담은 base64 JSON이다 (backend/src/lib/cursor.ts) —
+// 키에 남아 있는 계정만 아직 안 불러온 휴지통 메일이 더 있다.
+function accountIdsWithMore(cursor: string | null): Set<string> {
+  if (!cursor) return new Set()
+  try {
+    return new Set(Object.keys(JSON.parse(atob(cursor))))
+  } catch {
+    return new Set()
+  }
+}
+
 export function TrashView({
   accounts,
-  mails,
+  mails: allMails,
   isLoading,
-  hasMore,
+  nextCursor,
   isLoadingMore,
   onLoadMore,
   onEmptyAccount,
@@ -54,6 +65,18 @@ export function TrashView({
   const [confirmEmptyAll, setConfirmEmptyAll] = useState(false)
   const [isEmptyingAll, setIsEmptyingAll] = useState(false)
   const [emptyAllError, setEmptyAllError] = useState<string | null>(null)
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+
+  const hasMore = !!nextCursor
+  const moreIds = accountIdsWithMore(nextCursor)
+  const mails = selectedAccountId ? allMails.filter((m) => m.accountId === selectedAccountId) : allMails
+  const selectedAccount = accounts.find((a) => a.id === selectedAccountId)
+
+  // 같은 계정을 다시 누르면 전체 보기로 돌아간다. 화면에서 사라진 메일이 선택된 채로 남지 않게 선택도 비운다.
+  const handleSelectAccount = (accountId: string) => {
+    setSelectedAccountId((prev) => (prev === accountId ? null : accountId))
+    setCheckedIds(new Set())
+  }
 
   const allChecked = mails.length > 0 && mails.every((m) => checkedIds.has(m.id))
   const someChecked = checkedIds.size > 0 && !allChecked
@@ -136,17 +159,28 @@ export function TrashView({
               <thead className="bg-muted/50">
                 <tr>
                   <th className="px-4 py-2.5 text-left font-medium">계정</th>
+                  <th className="px-4 py-2.5 text-center font-medium">휴지통 메일</th>
                   <th className="px-4 py-2.5 text-right font-medium">관리</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {accounts.map((account) => (
-                  <tr key={account.id} className="hover:bg-muted/30">
+                {accounts.map((account) => {
+                  const count = allMails.filter((m) => m.accountId === account.id).length
+                  return (
+                  <tr
+                    key={account.id}
+                    onClick={() => handleSelectAccount(account.id)}
+                    className={cn("hover:bg-muted/30 cursor-pointer", selectedAccountId === account.id && "bg-primary/5")}
+                  >
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
                         <span className={cn("size-2 shrink-0 rounded-full", account.color)} />
                         <span className="truncate">{accountLabel(account)}</span>
                       </div>
+                    </td>
+                    <td className="text-muted-foreground px-4 py-2.5 text-center">
+                      {count}
+                      {moreIds.has(account.id) && "+"}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <Button
@@ -154,7 +188,10 @@ export function TrashView({
                         size="sm"
                         className="h-7 text-xs text-destructive hover:text-destructive"
                         disabled={emptyingAccountId !== null}
-                        onClick={() => setConfirmEmptyId(account.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setConfirmEmptyId(account.id)
+                        }}
                       >
                         {emptyingAccountId === account.id ? (
                           <Loader2 className="size-3 animate-spin" />
@@ -164,7 +201,8 @@ export function TrashView({
                       </Button>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -209,7 +247,9 @@ export function TrashView({
             </div>
           </>
         ) : (
-          <span className="text-muted-foreground text-xs">메일함</span>
+          <span className="text-muted-foreground text-xs">
+            {selectedAccount ? `${accountLabel(selectedAccount)} 메일함` : "메일함"}
+          </span>
         )}
       </div>
 

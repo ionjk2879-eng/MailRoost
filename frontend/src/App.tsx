@@ -1259,7 +1259,7 @@ function App() {
               accounts={accounts}
               mails={workspace.trashMails}
               isLoading={workspace.isTrashLoading}
-              hasMore={!!workspace.trashCursor}
+              nextCursor={workspace.trashCursor}
               isLoadingMore={workspace.isTrashLoadingMore}
               onLoadMore={workspace.handleLoadMoreTrash}
               onEmptyAccount={workspace.handleEmptyTrashAccount}
