@@ -572,14 +572,15 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     await deleteMailsWithRevert(targets)
   }
 
-  // 서버가 받은편지함 전체(readOnly면 읽은 메일 전체)를 비우므로, 성공한 뒤에 화면 상태에서도 해당 메일을 걷어낸다.
+  // 서버가 받은편지함 전체(readOnly면 읽은 메일 전체, 별표·보관 메일 제외)를 비우므로, 성공한 뒤에 화면 상태에서도 해당 메일을 걷어낸다.
   const handleEmptyInbox = async (accountId: string, readOnly: boolean) => {
     const result = await emptyInbox(accountId, readOnly)
     if (!result.ok) {
       showError(result.error ?? "메일함을 비우지 못했습니다. 다시 시도해주세요.")
       return
     }
-    const isRemoved = (m: Mail) => m.accountId === accountId && (!readOnly || m.isRead)
+    // 서버는 별표 메일을 건드리지 않는다 (보관한 메일은 애초에 이 목록에 없다)
+    const isRemoved = (m: Mail) => m.accountId === accountId && !m.isStarred && (!readOnly || m.isRead)
     const removedIds = new Set<string>()
     for (const m of realMails) {
       if (!isRemoved(m)) continue

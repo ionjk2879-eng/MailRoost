@@ -365,16 +365,21 @@ export async function imapInboxTotal(config: ImapConfig): Promise<number> {
   })
 }
 
-// 받은편지함 전체(readOnly면 읽은 메일만)를 휴지통으로 옮기고 지운다 (불러온 페이지와 무관). 지운 UID를 돌려준다.
-export async function imapEmptyInbox(config: ImapConfig, readOnly = false): Promise<string[]> {
+// 받은편지함 전체(readOnly면 읽은 메일만)를 휴지통으로 옮기고 지운다 (불러온 페이지와 무관). 별표(FLAGGED)
+// 메일과 exclude가 true를 돌려주는 메일(앱에서 보관한 메일)은 건드리지 않는다. 지운 UID를 돌려준다.
+export async function imapEmptyInbox(
+  config: ImapConfig,
+  readOnly = false,
+  exclude: (uid: string) => boolean = () => false,
+): Promise<string[]> {
   return withImap(config, async (client) => {
     const selectResult = await client.command("SELECT INBOX")
     if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
 
-    const searchResult = await client.command(`UID SEARCH ${readOnly ? "SEEN" : "ALL"}`)
+    const searchResult = await client.command(`UID SEARCH ${readOnly ? "UNFLAGGED SEEN" : "UNFLAGGED"}`)
     if (!searchResult.ok) throw new Error(`메일 검색에 실패했습니다 (${searchResult.statusLine}).`)
     const line = searchResult.lines.find((l) => /^\*\s+SEARCH/i.test(l))
-    const uids = line ? line.replace(/^\*\s+SEARCH\s*/i, "").trim().split(/\s+/).filter(Boolean) : []
+    const uids = (line ? line.replace(/^\*\s+SEARCH\s*/i, "").trim().split(/\s+/).filter(Boolean) : []).filter((uid) => !exclude(uid))
     if (uids.length === 0) return []
     assertValidUids(uids)
 
@@ -808,8 +813,13 @@ export async function naverInboxTotal(email: string, appPassword: string): Promi
   return imapInboxTotal(naverConfig(email, appPassword))
 }
 
-export async function naverEmptyInbox(email: string, appPassword: string, readOnly = false): Promise<string[]> {
-  return imapEmptyInbox(naverConfig(email, appPassword), readOnly)
+export async function naverEmptyInbox(
+  email: string,
+  appPassword: string,
+  readOnly = false,
+  exclude?: (uid: string) => boolean,
+): Promise<string[]> {
+  return imapEmptyInbox(naverConfig(email, appPassword), readOnly, exclude)
 }
 
 export async function naverSearchInbox(
@@ -939,8 +949,13 @@ export async function daumInboxTotal(email: string, password: string): Promise<n
   return imapInboxTotal(daumConfig(email, password))
 }
 
-export async function daumEmptyInbox(email: string, password: string, readOnly = false): Promise<string[]> {
-  return imapEmptyInbox(daumConfig(email, password), readOnly)
+export async function daumEmptyInbox(
+  email: string,
+  password: string,
+  readOnly = false,
+  exclude?: (uid: string) => boolean,
+): Promise<string[]> {
+  return imapEmptyInbox(daumConfig(email, password), readOnly, exclude)
 }
 
 export async function daumSearchInbox(

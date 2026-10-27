@@ -306,20 +306,24 @@ export async function getInboxTotal(accessToken: string): Promise<number> {
   return json.messagesTotal ?? 0
 }
 
-// 받은편지함 전체(readOnly면 읽은 메일만)를 휴지통으로 옮긴다 (불러온 페이지와 무관). 옮긴 메일 id를 돌려준다.
-export async function trashAllInboxMails(accessToken: string, readOnly = false): Promise<string[]> {
+// 받은편지함 전체(readOnly면 읽은 메일만)를 휴지통으로 옮긴다 (불러온 페이지와 무관). 별표 메일과
+// exclude가 true를 돌려주는 메일(앱에서 보관한 메일)은 건드리지 않는다. 옮긴 메일 id를 돌려준다.
+export async function trashAllInboxMails(
+  accessToken: string,
+  readOnly = false,
+  exclude: (id: string) => boolean = () => false,
+): Promise<string[]> {
   const ids: string[] = []
   let pageToken: string | undefined
   do {
-    const params = new URLSearchParams({ maxResults: "500", labelIds: "INBOX" })
-    if (readOnly) params.set("q", "is:read")
+    const params = new URLSearchParams({ maxResults: "500", labelIds: "INBOX", q: readOnly ? "-is:starred is:read" : "-is:starred" })
     if (pageToken) params.set("pageToken", pageToken)
     const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages?${params}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
     if (!res.ok) throw new Error(`Gmail list failed: ${res.status}`)
     const json = (await res.json()) as { messages?: { id: string }[]; nextPageToken?: string }
-    for (const m of json.messages ?? []) ids.push(m.id)
+    for (const m of json.messages ?? []) if (!exclude(m.id)) ids.push(m.id)
     pageToken = json.nextPageToken
   } while (pageToken)
 

@@ -357,13 +357,13 @@ function MailboxManageTab({
             <h3 className="font-semibold mb-2">{confirmClear.readOnly ? "읽은 메일 비우기" : "메일함 비우기"}</h3>
             {confirmClear.readOnly ? (
               <p className="text-sm text-muted-foreground mb-4">
-                이 계정의 받은편지함에서 <strong>읽은 메일 전부</strong>를 휴지통으로 옮깁니다. 화면에 불러오지 않은 메일,
-                별표 메일, 보관하거나 분류 메일함에 정리한 읽은 메일도 모두 포함됩니다.
+                이 계정의 받은편지함에서 <strong>읽은 메일 전부</strong>를 휴지통으로 옮깁니다. 화면에 불러오지 않은 메일도
+                포함되며, <strong>별표 메일과 보관함에 있는 메일은 제외</strong>됩니다.
               </p>
             ) : (
               <p className="text-sm text-muted-foreground mb-4">
-                이 계정의 받은편지함 메일 <strong>전체 {totals[confirmClear.accountId] ?? mailsByAccount(confirmClear.accountId).length}개</strong>를
-                휴지통으로 옮깁니다. 화면에 불러오지 않은 메일, 별표 메일, 보관하거나 분류 메일함에 정리한 메일도 모두 포함됩니다.
+                이 계정의 받은편지함 메일을 <strong>전부</strong> 휴지통으로 옮깁니다. 화면에 불러오지 않은 메일도 포함되며,
+                <strong> 별표 메일과 보관함에 있는 메일은 제외</strong>됩니다.
               </p>
             )}
             <div className="flex gap-2 justify-end">

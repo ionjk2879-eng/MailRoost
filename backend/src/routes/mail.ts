@@ -609,7 +609,8 @@ mail.post("/mail/bulk-delete", async (c) => {
 })
 
 // 불러온 페이지와 무관하게 계정 받은편지함의 메일을 전부(readOnly면 읽은 메일만) 휴지통으로 옮긴다
-// (정리하기의 "비우기" / "읽은 메일 비우기"). 서버에서 목록을 직접 구하므로 클라이언트가 메일 id를 보낼 필요가 없다.
+// (정리하기의 "비우기" / "읽은 메일 비우기"). 별표 메일과 앱에서 보관한 메일은 제외한다.
+// 서버에서 목록을 직접 구하므로 클라이언트가 메일 id를 보낼 필요가 없다.
 mail.post("/mail/empty-inbox", async (c) => {
   const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
   if (!sessionId) return c.json({ error: "unauthorized" }, 401)
@@ -624,13 +625,17 @@ mail.post("/mail/empty-inbox", async (c) => {
   const record = accountMap[accountId]
   if (!record) return c.json({ error: "not found" }, 404)
 
+  // 별표 메일은 각 계정 서버의 검색 조건으로 걸러지고, 앱에서 보관한 메일은 여기서 걸러낸다.
+  const org = await resolveMailOrg(c.env, session)
+  const archived = (mailId: string) => isArchived(org, accountId, mailId)
+
   let mailIds: string[]
   if (record.provider === "naver") {
-    mailIds = await naverEmptyInbox(record.email, record.appPassword, readOnly)
+    mailIds = await naverEmptyInbox(record.email, record.appPassword, readOnly, archived)
   } else if (record.provider === "daum") {
-    mailIds = await daumEmptyInbox(record.email, record.password, readOnly)
+    mailIds = await daumEmptyInbox(record.email, record.password, readOnly, archived)
   } else if (record.provider === "imap") {
-    mailIds = await imapEmptyInbox({ host: record.host, port: record.port, email: record.email, password: record.password }, readOnly)
+    mailIds = await imapEmptyInbox({ host: record.host, port: record.port, email: record.email, password: record.password }, readOnly, archived)
   } else {
     const fresh = await ensureFreshToken(c.env, record)
     if (fresh.accessToken !== record.accessToken) {
@@ -638,7 +643,7 @@ mail.post("/mail/empty-inbox", async (c) => {
         [accountId]: gmailTokenPatchOf(fresh),
       })
     }
-    mailIds = await trashAllInboxMails(fresh.accessToken, readOnly)
+    mailIds = await trashAllInboxMails(fresh.accessToken, readOnly, archived)
   }
 
   if (mailIds.length > 0) await mutateMailOrg(c.env, sessionId, session, { type: "clearMailKeys", accountId, mailIds })
