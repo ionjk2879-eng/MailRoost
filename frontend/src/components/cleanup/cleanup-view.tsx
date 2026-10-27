@@ -1,10 +1,10 @@
 import { AlertTriangle, Loader2, Plus, X } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { AutoRulesView } from "@/components/cleanup/auto-rules-view"
-import type { RuleConditions } from "@/lib/api"
+import { fetchMailCounts, type RuleConditions } from "@/lib/api"
 import type { Account, AutoClassifyRule, Contact, Mail, MailCategory, MailFolder, QuickReply } from "@/types/mail"
 
 type MainTab = "mailbox" | "auto" | "quickreply" | "contacts" | "shortcuts"
@@ -15,7 +15,7 @@ interface CleanupViewProps {
   mails: Mail[]
   onMarkAllRead: (accountId?: string) => Promise<void>
   onDeleteBeforeDate: (cutoff: Date, accountId?: string) => Promise<void>
-  onDeleteReadMails: (accountId: string) => Promise<void>
+  onEmptyInbox: (accountId: string, readOnly: boolean) => Promise<void>
   shortcutsEnabled: boolean
   onToggleShortcuts: () => void
   onUpdateSignature: (accountId: string, signature: string) => Promise<{ ok: boolean; error?: string }>
@@ -62,14 +62,20 @@ function MailboxManageTab({
   mails,
   onMarkAllRead,
   onDeleteBeforeDate,
-  onDeleteReadMails,
+  onEmptyInbox,
   onUpdateSignature,
-}: Pick<CleanupViewProps, "accounts" | "mails" | "onMarkAllRead" | "onDeleteBeforeDate" | "onDeleteReadMails" | "onUpdateSignature">) {
+}: Pick<CleanupViewProps, "accounts" | "mails" | "onMarkAllRead" | "onDeleteBeforeDate" | "onEmptyInbox" | "onUpdateSignature">) {
   const [subTab, setSubTab] = useState<MailboxSubTab>("manage")
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [cutoffDate, setCutoffDate] = useState("")
   const [cutoffAccountId, setCutoffAccountId] = useState<string>("all")
   const [isDeleting, setIsDeleting] = useState(false)
+  // 서버에 있는 계정별 전체 메일 개수 — 로드 전/실패 시에는 화면에 불러온 개수로 대신 보여준다.
+  const [totals, setTotals] = useState<Record<string, number>>({})
+  const loadTotals = () => fetchMailCounts().then(setTotals)
+  useEffect(() => {
+    void loadTotals()
+  }, [])
   const [confirmClear, setConfirmClear] = useState<{ accountId: string; readOnly: boolean } | null>(null)
   const [signatureEditAccountId, setSignatureEditAccountId] = useState<string | null>(null)
   const [signatureDraft, setSignatureDraft] = useState("")
@@ -100,14 +106,9 @@ function MailboxManageTab({
   const handleClear = async (accountId: string, readOnly: boolean) => {
     setConfirmClear(null)
     setLoadingId(readOnly ? `clear-read-${accountId}` : `clear-${accountId}`)
-    if (readOnly) {
-      await onDeleteReadMails(accountId)
-    } else {
-      const cutoff = new Date()
-      cutoff.setFullYear(cutoff.getFullYear() + 1)
-      await onDeleteBeforeDate(cutoff, accountId)
-    }
+    await onEmptyInbox(accountId, readOnly)
     setLoadingId(null)
+    void loadTotals()
   }
 
   const handleDeleteByDate = async () => {
@@ -116,6 +117,7 @@ function MailboxManageTab({
     await onDeleteBeforeDate(new Date(cutoffDate), cutoffAccountId === "all" ? undefined : cutoffAccountId)
     setIsDeleting(false)
     setCutoffDate("")
+    void loadTotals()
   }
 
   const subTabs: { key: MailboxSubTab; label: string }[] = [
@@ -159,7 +161,8 @@ function MailboxManageTab({
             </thead>
             <tbody className="divide-y">
               {accounts.map((account) => {
-                const total = mailsByAccount(account.id).length
+                const loaded = mailsByAccount(account.id).length
+                const total = totals[account.id] ?? loaded
                 const unread = unreadByAccount(account.id).length
                 const label =
                   account.provider === "gmail" || account.provider === "naver" || account.provider === "daum"
@@ -216,7 +219,7 @@ function MailboxManageTab({
                           variant="outline"
                           size="sm"
                           className="h-7 text-xs text-destructive hover:text-destructive"
-                          disabled={total - unread === 0 || !!loadingId}
+                          disabled={total === 0 || !!loadingId}
                           onClick={() => setConfirmClear({ accountId: account.id, readOnly: true })}
                         >
                           {loadingId === `clear-read-${account.id}` ? <Loader2 className="size-3 animate-spin" /> : "읽은 메일 비우기"}
@@ -352,16 +355,17 @@ function MailboxManageTab({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-background rounded-lg border p-6 shadow-xl max-w-sm w-full mx-4">
             <h3 className="font-semibold mb-2">{confirmClear.readOnly ? "읽은 메일 비우기" : "메일함 비우기"}</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              이 계정의 로드된 {confirmClear.readOnly ? "읽은 " : ""}메일{" "}
-              <strong>
-                {confirmClear.readOnly
-                  ? mailsByAccount(confirmClear.accountId).length - unreadByAccount(confirmClear.accountId).length
-                  : mailsByAccount(confirmClear.accountId).length}
-                개
-              </strong>
-              를 모두 삭제합니다. 이 작업은 되돌릴 수 없습니다.
-            </p>
+            {confirmClear.readOnly ? (
+              <p className="text-sm text-muted-foreground mb-4">
+                이 계정의 받은편지함에서 <strong>읽은 메일 전부</strong>를 휴지통으로 옮깁니다. 화면에 불러오지 않은 메일,
+                별표 메일, 보관하거나 분류 메일함에 정리한 읽은 메일도 모두 포함됩니다.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground mb-4">
+                이 계정의 받은편지함 메일 <strong>전체 {totals[confirmClear.accountId] ?? mailsByAccount(confirmClear.accountId).length}개</strong>를
+                휴지통으로 옮깁니다. 화면에 불러오지 않은 메일, 별표 메일, 보관하거나 분류 메일함에 정리한 메일도 모두 포함됩니다.
+              </p>
+            )}
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setConfirmClear(null)}>취소</Button>
               <Button variant="destructive" size="sm" onClick={() => handleClear(confirmClear.accountId, confirmClear.readOnly)}>삭제</Button>
@@ -633,7 +637,7 @@ export function CleanupView({
   mails,
   onMarkAllRead,
   onDeleteBeforeDate,
-  onDeleteReadMails,
+  onEmptyInbox,
   shortcutsEnabled,
   onToggleShortcuts,
   onUpdateSignature,
@@ -694,7 +698,7 @@ export function CleanupView({
             mails={mails}
             onMarkAllRead={onMarkAllRead}
             onDeleteBeforeDate={onDeleteBeforeDate}
-            onDeleteReadMails={onDeleteReadMails}
+            onEmptyInbox={onEmptyInbox}
             onUpdateSignature={onUpdateSignature}
           />
         )}

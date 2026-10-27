@@ -1232,7 +1232,7 @@ function App() {
               mails={allMails}
               onMarkAllRead={workspace.handleMarkAllRead}
               onDeleteBeforeDate={workspace.handleDeleteBeforeDate}
-              onDeleteReadMails={workspace.handleDeleteReadMails}
+              onEmptyInbox={workspace.handleEmptyInbox}
               shortcutsEnabled={shortcutsEnabled}
               onToggleShortcuts={handleToggleShortcuts}
               onUpdateSignature={workspace.handleUpdateSignature}

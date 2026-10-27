@@ -296,6 +296,38 @@ export async function listInboxMails(
   return listMailsByLabel(accessToken, accountId, "INBOX", maxResults, pageToken)
 }
 
+// 받은편지함 라벨에 붙은 메일 전체 개수 (불러온 페이지와 무관). 대화가 아니라 메일 단위 개수다.
+export async function getInboxTotal(accessToken: string): Promise<number> {
+  const res = await fetchWithRetry(`${GMAIL_API_BASE}/labels/INBOX`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) throw new Error(`Gmail label fetch failed: ${res.status}`)
+  const json = (await res.json()) as { messagesTotal?: number }
+  return json.messagesTotal ?? 0
+}
+
+// 받은편지함 전체(readOnly면 읽은 메일만)를 휴지통으로 옮긴다 (불러온 페이지와 무관). 옮긴 메일 id를 돌려준다.
+export async function trashAllInboxMails(accessToken: string, readOnly = false): Promise<string[]> {
+  const ids: string[] = []
+  let pageToken: string | undefined
+  do {
+    const params = new URLSearchParams({ maxResults: "500", labelIds: "INBOX" })
+    if (readOnly) params.set("q", "is:read")
+    if (pageToken) params.set("pageToken", pageToken)
+    const res = await fetchWithRetry(`${GMAIL_API_BASE}/messages?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    if (!res.ok) throw new Error(`Gmail list failed: ${res.status}`)
+    const json = (await res.json()) as { messages?: { id: string }[]; nextPageToken?: string }
+    for (const m of json.messages ?? []) ids.push(m.id)
+    pageToken = json.nextPageToken
+  } while (pageToken)
+
+  // batchModify는 한 번에 최대 1000개까지만 받는다
+  for (let i = 0; i < ids.length; i += 1000) await trashMailBulk(accessToken, ids.slice(i, i + 1000))
+  return ids
+}
+
 // Gmail 자체 검색(q 파라미터)으로 받은편지함 안에서 검색한다.
 export async function searchMails(
   accessToken: string,

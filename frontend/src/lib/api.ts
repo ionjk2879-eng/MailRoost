@@ -91,6 +91,14 @@ export async function fetchMails(
   return res.json()
 }
 
+// 계정별 받은편지함 전체 메일 개수 (불러온 페이지와 무관). 실패한 계정은 빠져 있다.
+export async function fetchMailCounts(): Promise<Record<string, number>> {
+  const res = await fetch("/api/mail/counts")
+  if (!res.ok) return {}
+  const data = (await res.json()) as { counts: Record<string, number> }
+  return data.counts
+}
+
 export async function fetchFolders(): Promise<MailFolder[]> {
   const res = await fetch("/api/folders")
   if (!res.ok) return []
@@ -533,6 +541,21 @@ export async function bulkDeleteMails(accountId: string, mailIds: string[]): Pro
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     return { ok: false, error: data.error ?? "메일 삭제에 실패했습니다." }
+  }
+  return { ok: true }
+}
+
+// 계정 받은편지함의 메일을 불러온 페이지와 무관하게 전부(readOnly면 읽은 메일만) 휴지통으로 옮긴다
+// (서버가 목록을 직접 구한다).
+export async function emptyInbox(accountId: string, readOnly = false): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("/api/mail/empty-inbox", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ accountId, readOnly }),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    return { ok: false, error: data.error ?? "메일함을 비우지 못했습니다." }
   }
   return { ok: true }
 }

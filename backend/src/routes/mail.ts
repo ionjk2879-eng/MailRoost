@@ -3,8 +3,10 @@ import type { Env, ForwardedAttachmentRef, Mail, MailCategory } from "../types"
 import {
   batchModifyMessages as gmailBatchModify,
   ensureFreshToken,
+  getInboxTotal,
   getMailDetail,
   getRawMessage,
+  trashAllInboxMails,
   listAllInboxMailsByFilter,
   listInboxMails,
   markAsRead as gmailMarkAsRead,
@@ -24,14 +26,18 @@ import {
   daumMarkAsRead,
   daumMarkAsReadBulk,
   daumMarkAllInboxUnreadAsRead,
+  daumEmptyInbox,
+  daumInboxTotal,
   daumMarkAsUnread,
   daumSearchMailsByFilter,
   daumToggleStar,
   daumToggleStarBulk,
   imapDeleteMail,
   imapDeleteMailBulk,
+  imapEmptyInbox,
   imapGetMailDetail,
   imapGetRawMessage,
+  imapInboxTotal,
   imapMarkAsRead,
   imapMarkAllInboxUnreadAsRead,
   imapMarkAsReadBulk,
@@ -42,8 +48,10 @@ import {
   type MailStatusFilter,
   naverDeleteMail,
   naverDeleteMailBulk,
+  naverEmptyInbox,
   naverGetMailDetail,
   naverGetRawMessage,
+  naverInboxTotal,
   naverListInbox,
   naverMarkAsRead,
   naverMarkAsReadBulk,
@@ -271,6 +279,41 @@ mail.get("/mail", async (c) => {
   results.sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime())
   const nextCursor = Object.keys(nextCursorMap).length > 0 ? encodeCursor(nextCursorMap) : null
   return c.json({ mails: results, nextCursor, failedAccountIds, failedAccountErrors })
+})
+
+// 계정별 받은편지함 전체 메일 개수 — 화면에 불러온 페이지 수와 무관하다 (정리하기의 "전체 메일").
+// 계정 하나가 실패해도 나머지는 그대로 돌려주고, 실패한 계정은 결과에서 빠진다.
+mail.get("/mail/counts", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ counts: {} })
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const counts: Record<string, number> = {}
+  const accountPatch: Record<string, GmailTokenPatch> = {}
+
+  await Promise.all(
+    Object.entries(accountMap).map(async ([accountId, record]) => {
+      try {
+        if (record.provider === "naver") {
+          counts[accountId] = await naverInboxTotal(record.email, record.appPassword)
+        } else if (record.provider === "daum") {
+          counts[accountId] = await daumInboxTotal(record.email, record.password)
+        } else if (record.provider === "imap") {
+          counts[accountId] = await imapInboxTotal({ host: record.host, port: record.port, email: record.email, password: record.password })
+        } else {
+          const fresh = await ensureFreshToken(c.env, record)
+          counts[accountId] = await getInboxTotal(fresh.accessToken)
+          if (fresh.accessToken !== record.accessToken) accountPatch[accountId] = gmailTokenPatchOf(fresh)
+        }
+      } catch (err) {
+        console.error(`[mail/counts] account ${accountId} failed, skipping:`, err)
+      }
+    }),
+  )
+
+  if (Object.keys(accountPatch).length > 0) await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, accountPatch)
+  return c.json({ counts })
 })
 
 // 이미 불러온 메일 안에서만 훑는 클라이언트 검색과 달리, 계정 서버(Gmail 검색 / IMAP SEARCH)에서
@@ -563,6 +606,43 @@ mail.post("/mail/bulk-delete", async (c) => {
 
   await mutateMailOrg(c.env, sessionId, session, { type: "clearMailKeys", accountId, mailIds })
   return c.json({ ok: true })
+})
+
+// 불러온 페이지와 무관하게 계정 받은편지함의 메일을 전부(readOnly면 읽은 메일만) 휴지통으로 옮긴다
+// (정리하기의 "비우기" / "읽은 메일 비우기"). 서버에서 목록을 직접 구하므로 클라이언트가 메일 id를 보낼 필요가 없다.
+mail.post("/mail/empty-inbox", async (c) => {
+  const sessionId = readRawCookie(c.req.header("Cookie"), SESSION_COOKIE)
+  if (!sessionId) return c.json({ error: "unauthorized" }, 401)
+
+  const body = await c.req.json<{ accountId?: string; readOnly?: boolean }>().catch(() => null)
+  const accountId = body?.accountId
+  if (!accountId) return c.json({ error: "bad request" }, 400)
+  const readOnly = body?.readOnly === true
+
+  const session = await readSession(c.env, sessionId)
+  const accountMap = await resolveAccounts(c.env, session)
+  const record = accountMap[accountId]
+  if (!record) return c.json({ error: "not found" }, 404)
+
+  let mailIds: string[]
+  if (record.provider === "naver") {
+    mailIds = await naverEmptyInbox(record.email, record.appPassword, readOnly)
+  } else if (record.provider === "daum") {
+    mailIds = await daumEmptyInbox(record.email, record.password, readOnly)
+  } else if (record.provider === "imap") {
+    mailIds = await imapEmptyInbox({ host: record.host, port: record.port, email: record.email, password: record.password }, readOnly)
+  } else {
+    const fresh = await ensureFreshToken(c.env, record)
+    if (fresh.accessToken !== record.accessToken) {
+      await persistAccountTokenRefresh(c.env, sessionId, session, accountMap, {
+        [accountId]: gmailTokenPatchOf(fresh),
+      })
+    }
+    mailIds = await trashAllInboxMails(fresh.accessToken, readOnly)
+  }
+
+  if (mailIds.length > 0) await mutateMailOrg(c.env, sessionId, session, { type: "clearMailKeys", accountId, mailIds })
+  return c.json({ ok: true, count: mailIds.length })
 })
 
 const MAIL_STATUS_FILTERS: MailStatusFilter[] = ["read", "unread", "starred", "unstarred"]

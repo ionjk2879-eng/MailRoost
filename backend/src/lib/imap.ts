@@ -351,6 +351,51 @@ export async function imapListInbox(
   })
 }
 
+// 받은편지함 전체 메일 개수 (SELECT 응답의 EXISTS).
+export async function imapInboxTotal(config: ImapConfig): Promise<number> {
+  return withImap(config, async (client) => {
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
+    let exists = 0
+    for (const line of selectResult.lines) {
+      const match = line.match(/^\*\s+(\d+)\s+EXISTS/i)
+      if (match) exists = Number(match[1])
+    }
+    return exists
+  })
+}
+
+// 받은편지함 전체(readOnly면 읽은 메일만)를 휴지통으로 옮기고 지운다 (불러온 페이지와 무관). 지운 UID를 돌려준다.
+export async function imapEmptyInbox(config: ImapConfig, readOnly = false): Promise<string[]> {
+  return withImap(config, async (client) => {
+    const selectResult = await client.command("SELECT INBOX")
+    if (!selectResult.ok) throw new Error(`받은편지함을 열 수 없습니다 (${selectResult.statusLine}).`)
+
+    const searchResult = await client.command(`UID SEARCH ${readOnly ? "SEEN" : "ALL"}`)
+    if (!searchResult.ok) throw new Error(`메일 검색에 실패했습니다 (${searchResult.statusLine}).`)
+    const line = searchResult.lines.find((l) => /^\*\s+SEARCH/i.test(l))
+    const uids = line ? line.replace(/^\*\s+SEARCH\s*/i, "").trim().split(/\s+/).filter(Boolean) : []
+    if (uids.length === 0) return []
+    assertValidUids(uids)
+
+    const trash = await imapFindTrashMailbox(client)
+    // UID를 한 명령에 다 넣으면 서버의 명령 길이 제한에 걸릴 수 있어 나눠서 보낸다.
+    const CHUNK = 200
+    for (let i = 0; i < uids.length; i += CHUNK) {
+      const set = uids.slice(i, i + CHUNK).join(",")
+      if (trash) {
+        const copyResult = await client.command(`UID COPY ${set} ${quoteImap(trash)}`)
+        if (!copyResult.ok) throw new Error(`메일을 휴지통으로 이동하지 못했습니다 (${copyResult.statusLine}).`)
+      }
+      const storeResult = await client.command(`UID STORE ${set} +FLAGS (\\Deleted)`)
+      if (!storeResult.ok) throw new Error(`메일 삭제에 실패했습니다 (${storeResult.statusLine}).`)
+    }
+    const expungeResult = await client.command("EXPUNGE")
+    if (!expungeResult.ok) throw new Error(`메일 삭제에 실패했습니다 (${expungeResult.statusLine}).`)
+    return uids
+  })
+}
+
 // 받은편지함 안에서 보낸사람/제목/본문에 검색어가 포함된 메일을 찾는다.
 // 이미 불러온 메일 안에서만 훑던 클라이언트 검색과 달리 서버(IMAP SEARCH)까지 실제로 검색한다.
 export async function imapSearchInbox(
@@ -759,6 +804,14 @@ export async function naverListInbox(
   return imapListInbox(naverConfig(email, appPassword), accountId, maxResults, offset)
 }
 
+export async function naverInboxTotal(email: string, appPassword: string): Promise<number> {
+  return imapInboxTotal(naverConfig(email, appPassword))
+}
+
+export async function naverEmptyInbox(email: string, appPassword: string, readOnly = false): Promise<string[]> {
+  return imapEmptyInbox(naverConfig(email, appPassword), readOnly)
+}
+
 export async function naverSearchInbox(
   email: string,
   appPassword: string,
@@ -880,6 +933,14 @@ export async function daumListInbox(
   offset = 0,
 ): Promise<{ mails: Mail[]; hasMore: boolean }> {
   return imapListInbox(daumConfig(email, password), accountId, maxResults, offset)
+}
+
+export async function daumInboxTotal(email: string, password: string): Promise<number> {
+  return imapInboxTotal(daumConfig(email, password))
+}
+
+export async function daumEmptyInbox(email: string, password: string, readOnly = false): Promise<string[]> {
+  return imapEmptyInbox(daumConfig(email, password), readOnly)
 }
 
 export async function daumSearchInbox(

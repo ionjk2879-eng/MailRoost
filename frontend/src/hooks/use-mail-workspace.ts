@@ -4,6 +4,7 @@ import {
   bulkMarkRead,
   bulkToggleStar,
   emptyAllTrash,
+  emptyInbox,
   emptyTrash,
   fetchAccounts,
   type FailedAccountError,
@@ -571,8 +572,27 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     await deleteMailsWithRevert(targets)
   }
 
-  const handleDeleteReadMails = async (accountId: string) => {
-    await deleteMailsWithRevert(realMails.filter((m) => m.accountId === accountId && m.isRead))
+  // 서버가 받은편지함 전체(readOnly면 읽은 메일 전체)를 비우므로, 성공한 뒤에 화면 상태에서도 해당 메일을 걷어낸다.
+  const handleEmptyInbox = async (accountId: string, readOnly: boolean) => {
+    const result = await emptyInbox(accountId, readOnly)
+    if (!result.ok) {
+      showError(result.error ?? "메일함을 비우지 못했습니다. 다시 시도해주세요.")
+      return
+    }
+    const isRemoved = (m: Mail) => m.accountId === accountId && (!readOnly || m.isRead)
+    const removedIds = new Set<string>()
+    for (const m of realMails) {
+      if (!isRemoved(m)) continue
+      deletedKeysRef.current.add(`${m.accountId}:${m.id}`)
+      removedIds.add(m.id)
+    }
+    setRealMails((prev) => prev.filter((m) => !isRemoved(m)))
+    setMailDetails((prev) => {
+      const next = { ...prev }
+      for (const id of removedIds) delete next[id]
+      return next
+    })
+    setSelectedMailId((prev) => (prev && removedIds.has(prev) ? null : prev))
   }
 
   const loadTrash = () => {
@@ -812,7 +832,7 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     handleLoadMore,
     handleMarkAllRead,
     handleDeleteBeforeDate,
-    handleDeleteReadMails,
+    handleEmptyInbox,
     handleLoadMoreTrash,
     handleEmptyTrashAccount,
     handleEmptyAllTrash,
