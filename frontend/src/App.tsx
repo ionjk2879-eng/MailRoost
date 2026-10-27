@@ -121,6 +121,11 @@ function App() {
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<MailCategory | null>(null)
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
+  const [shortcutsEnabled, setShortcutsEnabled] = useState(() => localStorage.getItem("mailroost_shortcuts_enabled") !== "false")
+  const handleToggleShortcuts = () => {
+    localStorage.setItem("mailroost_shortcuts_enabled", String(!shortcutsEnabled))
+    setShortcutsEnabled(!shortcutsEnabled)
+  }
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
@@ -693,7 +698,7 @@ function App() {
     }
 
     const handler = (e: KeyboardEvent) => {
-      if (composeState) return
+      if (composeState || !shortcutsEnabled) return
       const target = e.target
       if (target instanceof HTMLElement) {
         const tag = target.tagName
@@ -782,7 +787,7 @@ function App() {
       window.removeEventListener("keydown", globalHandler)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [composeState, view, visibleMails, workspace.folderMails, workspace.selectedMailId, selectedMail, workspace.focusedMailId, workspace.checkedMailIds, shortcutsHelpOpen])
+  }, [composeState, view, visibleMails, workspace.folderMails, workspace.selectedMailId, selectedMail, workspace.focusedMailId, workspace.checkedMailIds, shortcutsHelpOpen, shortcutsEnabled])
 
   const handleLogout = async () => {
     await logout()
@@ -1228,6 +1233,8 @@ function App() {
               onMarkAllRead={workspace.handleMarkAllRead}
               onDeleteBeforeDate={workspace.handleDeleteBeforeDate}
               onDeleteReadMails={workspace.handleDeleteReadMails}
+              shortcutsEnabled={shortcutsEnabled}
+              onToggleShortcuts={handleToggleShortcuts}
               onUpdateSignature={workspace.handleUpdateSignature}
               folders={mailOrg.folders}
               rules={mailOrg.rules}

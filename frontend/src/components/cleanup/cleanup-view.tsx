@@ -16,6 +16,8 @@ interface CleanupViewProps {
   onMarkAllRead: (accountId?: string) => Promise<void>
   onDeleteBeforeDate: (cutoff: Date, accountId?: string) => Promise<void>
   onDeleteReadMails: (accountId: string) => Promise<void>
+  shortcutsEnabled: boolean
+  onToggleShortcuts: () => void
   onUpdateSignature: (accountId: string, signature: string) => Promise<{ ok: boolean; error?: string }>
   folders: MailFolder[]
   rules: AutoClassifyRule[]
@@ -632,6 +634,8 @@ export function CleanupView({
   onMarkAllRead,
   onDeleteBeforeDate,
   onDeleteReadMails,
+  shortcutsEnabled,
+  onToggleShortcuts,
   onUpdateSignature,
   folders,
   rules,
@@ -728,8 +732,20 @@ export function CleanupView({
 
         {mainTab === "shortcuts" && (
           <div className="max-w-md">
-            <p className="text-sm text-muted-foreground mb-4">자주 사용하는 단축키 목록입니다.</p>
-            <div className="overflow-hidden rounded-lg border">
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">자주 사용하는 단축키 목록입니다.</p>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={shortcutsEnabled}
+                aria-label="단축키 사용"
+                onClick={onToggleShortcuts}
+                className={cn("h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors", shortcutsEnabled ? "bg-green-600" : "bg-muted-foreground/30")}
+              >
+                <span className={cn("block size-5 rounded-full bg-white shadow transition-transform", shortcutsEnabled && "translate-x-5")} />
+              </button>
+            </div>
+            <div className={cn("overflow-hidden rounded-lg border", !shortcutsEnabled && "opacity-50")}>
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
