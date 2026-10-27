@@ -571,6 +571,10 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     await deleteMailsWithRevert(targets)
   }
 
+  const handleDeleteReadMails = async (accountId: string) => {
+    await deleteMailsWithRevert(realMails.filter((m) => m.accountId === accountId && m.isRead))
+  }
+
   const loadTrash = () => {
     if (trashRequestRef.current) return trashRequestRef.current
     setIsTrashLoading(true)
@@ -808,6 +812,7 @@ export function useMailWorkspace({ currentUser, view, selectedFolderId, showErro
     handleLoadMore,
     handleMarkAllRead,
     handleDeleteBeforeDate,
+    handleDeleteReadMails,
     handleLoadMoreTrash,
     handleEmptyTrashAccount,
     handleEmptyAllTrash,

@@ -1227,7 +1227,7 @@ function App() {
               mails={allMails}
               onMarkAllRead={workspace.handleMarkAllRead}
               onDeleteBeforeDate={workspace.handleDeleteBeforeDate}
-              onEmptyTrashAccount={workspace.handleEmptyTrashAccount}
+              onDeleteReadMails={workspace.handleDeleteReadMails}
               onUpdateSignature={workspace.handleUpdateSignature}
               folders={mailOrg.folders}
               rules={mailOrg.rules}

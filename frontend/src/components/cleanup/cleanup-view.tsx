@@ -15,7 +15,7 @@ interface CleanupViewProps {
   mails: Mail[]
   onMarkAllRead: (accountId?: string) => Promise<void>
   onDeleteBeforeDate: (cutoff: Date, accountId?: string) => Promise<void>
-  onEmptyTrashAccount: (accountId: string) => Promise<void>
+  onDeleteReadMails: (accountId: string) => Promise<void>
   onUpdateSignature: (accountId: string, signature: string) => Promise<{ ok: boolean; error?: string }>
   folders: MailFolder[]
   rules: AutoClassifyRule[]
@@ -60,17 +60,15 @@ function MailboxManageTab({
   mails,
   onMarkAllRead,
   onDeleteBeforeDate,
-  onEmptyTrashAccount,
+  onDeleteReadMails,
   onUpdateSignature,
-}: Pick<CleanupViewProps, "accounts" | "mails" | "onMarkAllRead" | "onDeleteBeforeDate" | "onEmptyTrashAccount" | "onUpdateSignature">) {
+}: Pick<CleanupViewProps, "accounts" | "mails" | "onMarkAllRead" | "onDeleteBeforeDate" | "onDeleteReadMails" | "onUpdateSignature">) {
   const [subTab, setSubTab] = useState<MailboxSubTab>("manage")
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [cutoffDate, setCutoffDate] = useState("")
   const [cutoffAccountId, setCutoffAccountId] = useState<string>("all")
   const [isDeleting, setIsDeleting] = useState(false)
-  const [confirmClear, setConfirmClear] = useState<string | null>(null)
-  const [confirmEmptyTrash, setConfirmEmptyTrash] = useState<string | null>(null)
-  const [emptyingTrashAccountId, setEmptyingTrashAccountId] = useState<string | null>(null)
+  const [confirmClear, setConfirmClear] = useState<{ accountId: string; readOnly: boolean } | null>(null)
   const [signatureEditAccountId, setSignatureEditAccountId] = useState<string | null>(null)
   const [signatureDraft, setSignatureDraft] = useState("")
   const [isSavingSignature, setIsSavingSignature] = useState(false)
@@ -97,20 +95,17 @@ function MailboxManageTab({
     setLoadingId(null)
   }
 
-  const handleClear = async (accountId: string) => {
+  const handleClear = async (accountId: string, readOnly: boolean) => {
     setConfirmClear(null)
-    setLoadingId(`clear-${accountId}`)
-    const cutoff = new Date()
-    cutoff.setFullYear(cutoff.getFullYear() + 1)
-    await onDeleteBeforeDate(cutoff, accountId)
+    setLoadingId(readOnly ? `clear-read-${accountId}` : `clear-${accountId}`)
+    if (readOnly) {
+      await onDeleteReadMails(accountId)
+    } else {
+      const cutoff = new Date()
+      cutoff.setFullYear(cutoff.getFullYear() + 1)
+      await onDeleteBeforeDate(cutoff, accountId)
+    }
     setLoadingId(null)
-  }
-
-  const handleEmptyTrash = async (accountId: string) => {
-    setConfirmEmptyTrash(null)
-    setEmptyingTrashAccountId(accountId)
-    await onEmptyTrashAccount(accountId)
-    setEmptyingTrashAccountId(null)
   }
 
   const handleDeleteByDate = async () => {
@@ -211,7 +206,7 @@ function MailboxManageTab({
                           size="sm"
                           className="h-7 text-xs text-destructive hover:text-destructive"
                           disabled={total === 0 || !!loadingId}
-                          onClick={() => setConfirmClear(account.id)}
+                          onClick={() => setConfirmClear({ accountId: account.id, readOnly: false })}
                         >
                           {loadingId === `clear-${account.id}` ? <Loader2 className="size-3 animate-spin" /> : "비우기"}
                         </Button>
@@ -219,14 +214,10 @@ function MailboxManageTab({
                           variant="outline"
                           size="sm"
                           className="h-7 text-xs text-destructive hover:text-destructive"
-                          disabled={!!emptyingTrashAccountId}
-                          onClick={() => setConfirmEmptyTrash(account.id)}
+                          disabled={total - unread === 0 || !!loadingId}
+                          onClick={() => setConfirmClear({ accountId: account.id, readOnly: true })}
                         >
-                          {emptyingTrashAccountId === account.id ? (
-                            <Loader2 className="size-3 animate-spin" />
-                          ) : (
-                            "휴지통 비우기"
-                          )}
+                          {loadingId === `clear-read-${account.id}` ? <Loader2 className="size-3 animate-spin" /> : "읽은 메일 비우기"}
                         </Button>
                       </div>
                     </td>
@@ -358,30 +349,20 @@ function MailboxManageTab({
       {confirmClear && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-background rounded-lg border p-6 shadow-xl max-w-sm w-full mx-4">
-            <h3 className="font-semibold mb-2">메일함 비우기</h3>
+            <h3 className="font-semibold mb-2">{confirmClear.readOnly ? "읽은 메일 비우기" : "메일함 비우기"}</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              이 계정의 로드된 메일 <strong>{mailsByAccount(confirmClear).length}개</strong>를 모두 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+              이 계정의 로드된 {confirmClear.readOnly ? "읽은 " : ""}메일{" "}
+              <strong>
+                {confirmClear.readOnly
+                  ? mailsByAccount(confirmClear.accountId).length - unreadByAccount(confirmClear.accountId).length
+                  : mailsByAccount(confirmClear.accountId).length}
+                개
+              </strong>
+              를 모두 삭제합니다. 이 작업은 되돌릴 수 없습니다.
             </p>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" size="sm" onClick={() => setConfirmClear(null)}>취소</Button>
-              <Button variant="destructive" size="sm" onClick={() => handleClear(confirmClear)}>삭제</Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 휴지통 비우기 확인 다이얼로그 */}
-      {confirmEmptyTrash && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-background rounded-lg border p-6 shadow-xl max-w-sm w-full mx-4">
-            <h3 className="font-semibold mb-2">휴지통 비우기</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              이 계정의 휴지통에 있는 메일을 <strong>전부</strong> 영구 삭제합니다. 화면에 로드된 것뿐 아니라
-              서버에 있는 전체 휴지통 메일이 대상이며, 이 작업은 되돌릴 수 없습니다.
-            </p>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" size="sm" onClick={() => setConfirmEmptyTrash(null)}>취소</Button>
-              <Button variant="destructive" size="sm" onClick={() => handleEmptyTrash(confirmEmptyTrash)}>비우기</Button>
+              <Button variant="destructive" size="sm" onClick={() => handleClear(confirmClear.accountId, confirmClear.readOnly)}>삭제</Button>
             </div>
           </div>
         </div>
@@ -650,7 +631,7 @@ export function CleanupView({
   mails,
   onMarkAllRead,
   onDeleteBeforeDate,
-  onEmptyTrashAccount,
+  onDeleteReadMails,
   onUpdateSignature,
   folders,
   rules,
@@ -709,7 +690,7 @@ export function CleanupView({
             mails={mails}
             onMarkAllRead={onMarkAllRead}
             onDeleteBeforeDate={onDeleteBeforeDate}
-            onEmptyTrashAccount={onEmptyTrashAccount}
+            onDeleteReadMails={onDeleteReadMails}
             onUpdateSignature={onUpdateSignature}
           />
         )}
